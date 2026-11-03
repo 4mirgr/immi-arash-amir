@@ -10,11 +10,12 @@
     "server": "python -m server.app"
   },
   "dependencies": {
+    "lucide-react": "^0.468.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "lucide-react": "^0.468.0"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "esbuild": "0.25.12",
     "vite": "^6.0.0"
   }
 }

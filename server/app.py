@@ -3,6 +3,7 @@ import json, os, sqlite3, uuid
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
+from server import cv, mail, opportunities
 PROFILES=('arash','amir')
 DEFAULT_SETTINGS={'emailPolicy':'auto_after_connection','defaultTemplate':'','notifications':False}
 STATIONS=[{'id':'PESCI-EDU-001','title':'Chest pain in a rural clinic','prompt':'A 58-year-old patient presents with 30 minutes of central chest pressure and diaphoresis. You are the GP in a rural clinic. Describe your immediate assessment, emergency escalation and safe handover.','questions':['What immediate threats will you assess?','How will you activate emergency assistance?','What clinical information will you communicate at handover?'],'rubric':['Recognises potential acute coronary syndrome and prioritises ABC assessment.','Arranges urgent emergency transfer and follows current local emergency protocols.','Communicates clearly, considers consent and documents actions.'],'minutes':10,'educational':True,'disclaimer':'Original educational practice case. Timing is configurable practice timing, not a verified official PESCI format. Not clinical advice.'}]
@@ -30,6 +31,9 @@ def initialize(db):
     for id,name,role in [('arash','Dr Arash Entezar','GP / PESCI'),('amir','Dr Amir Houshang Gerami','Internal medicine / specialist pathways')]:
         db.execute('insert or ignore into profiles values (?,?)',(id,json.dumps(dict(id=id,name=name,role=role,cvText='',verification='user_supplied_unverified'))))
     db.commit()
+    cv.init_schema(db)
+    mail.init_schema(db)
+    opportunities.init_schema(db)
 
 def profile_id(value):
     if value not in PROFILES: raise ValueError('Unknown profile')
@@ -63,11 +67,16 @@ class Handler(BaseHTTPRequestHandler):
         if origin and urlparse(origin).hostname not in ('localhost','127.0.0.1'): return self.send({'error':'Origin rejected'},403)
         db=connect()
         try:
-            parsed=urlparse(self.path); path=parsed.path; profile=profile_id(parse_qs(parsed.query).get('profile',['arash'])[0])
+            parsed=urlparse(self.path); path=parsed.path; params=parse_qs(parsed.query); profile=profile_id(params.get('profile',['arash'])[0])
             def rows(table):return [json.loads(r[0]) for r in db.execute(f'select data from {table}')]
             settings_row=db.execute('select data from settings where profile_id=?',(profile,)).fetchone(); settings=json.loads(settings_row[0]) if settings_row else dict(DEFAULT_SETTINGS)
             if method=='GET':
+                if path=='/api/cv/export':
+                    content,mime,filename=cv.export_version(db,profile,params.get('id',[''])[0],params.get('format',['txt'])[0])
+                    self.send_response(200);self.send_header('Content-Type',mime);self.send_header('Content-Length',str(len(content)));self.send_header('Content-Disposition',f'attachment; filename="{filename}"');self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(content);return
                 integrations={k:{'connected':False,'status':'setup_required'} for k in ('gmail','drive','calendar','telegram','ai','crawler')}
+                extras={'/api/public-config':lambda:dict(mode='local_demo',authRequired=False),'/api/cv/versions':lambda:cv.list_versions(db,profile),'/api/presets':lambda:mail.list_presets(db,profile),'/api/mail/queue':lambda:mail.list_queue(db,profile),'/api/opportunities':lambda:opportunities.list_opportunities(db,profile),'/api/sources':lambda:opportunities.list_sources(db)}
+                if path in extras:return self.send(extras[path]())
                 data={'/api/health':{'ok':True,'mode':'local_demo','authenticated':False},'/api/clinics':lambda:rows('clinics'),'/api/profiles':lambda:rows('profiles'),'/api/stations':load_stations,'/api/settings':settings,'/api/drafts':lambda:list_drafts(db,profile),'/api/bootstrap':lambda:dict(clinics=rows('clinics'),profiles=rows('profiles'),stations=load_stations(),settings=settings,integrations=integrations)}
                 if path not in data:return self.send({'error':'Not found'},404)
                 value=data[path];return self.send(value() if callable(value) else value)
@@ -75,6 +84,9 @@ class Handler(BaseHTTPRequestHandler):
             if length<1 or length>100000:return self.send({'error':'Invalid payload size'},413)
             payload=json.loads(self.rfile.read(length))
             if not isinstance(payload,dict):raise ValueError('Object required')
+            if method=='POST':
+                actions={'/api/cv/versions':lambda:cv.create_version(db,profile,payload),'/api/cv/default':lambda:cv.set_default(db,profile,payload.get('id')),'/api/presets':lambda:mail.save_preset(db,profile,payload),'/api/presets/default':lambda:mail.set_default_preset(db,profile,payload.get('id')),'/api/mail/preview':lambda:mail.preview_queue(db,profile,payload),'/api/mail/queue':lambda:mail.enqueue(db,profile,payload),'/api/mail/suppress':lambda:mail.suppress(db,profile,payload.get('email'),payload.get('reason','User suppression'))}
+                if path in actions:return self.send(actions[path](),201)
             if method=='POST' and path=='/api/drafts':return self.send(save_draft(db,payload),201)
             if method=='PUT' and path=='/api/settings':
                 if payload.get('emailPolicy','auto_after_connection') not in ('approval_required','auto_after_connection'):raise ValueError('Unknown email policy')

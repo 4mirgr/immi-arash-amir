@@ -11,6 +11,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - run: node --test tests/cloud*.mjs
+      - run: node scripts/build_worker.mjs
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

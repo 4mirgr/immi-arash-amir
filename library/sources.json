@@ -1,0 +1,10 @@
+[
+ {"id":"nsw-health","name":"NSW Health recruitment","state":"NSW","portalUrl":"https://jobs.health.nsw.gov.au/","allowedHosts":["jobs.health.nsw.gov.au"],"feedUrl":null,"portalCheck":"HTTP 200; portal only","checkedAt":"2026-11-03"},
+ {"id":"qld-smartjobs","name":"Queensland Smart Jobs","state":"QLD","portalUrl":"https://smartjobs.qld.gov.au/","allowedHosts":["smartjobs.qld.gov.au"],"feedUrl":null,"portalCheck":"HTTP 200; portal only","checkedAt":"2026-11-03"},
+ {"id":"vic-careers","name":"Careers Victoria","state":"VIC","portalUrl":"https://www.careers.vic.gov.au/","allowedHosts":["www.careers.vic.gov.au"],"feedUrl":null,"portalCheck":"HTTP 200; portal only","checkedAt":"2026-11-03"},
+ {"id":"wa-jobs","name":"WA government jobs","state":"WA","portalUrl":"https://search.jobs.wa.gov.au/","allowedHosts":["search.jobs.wa.gov.au"],"feedUrl":null,"portalCheck":"HTTP 200; portal only","checkedAt":"2026-11-03"},
+ {"id":"sa-iworkfor","name":"I WORK FOR SA","state":"SA","portalUrl":"https://www.iworkfor.sa.gov.au/","allowedHosts":["www.iworkfor.sa.gov.au"],"feedUrl":null,"portalCheck":"HTTP 200; portal only","checkedAt":"2026-11-03"},
+ {"id":"tas-jobs","name":"Tasmanian government jobs","state":"TAS","portalUrl":"https://www.jobs.tas.gov.au/","allowedHosts":["www.jobs.tas.gov.au"],"feedUrl":null,"portalCheck":"HTTP 403; contents not verified","checkedAt":"2026-11-03"},
+ {"id":"nt-jobs","name":"NT government jobs","state":"NT","portalUrl":"https://jobs.nt.gov.au/Home/Search","allowedHosts":["jobs.nt.gov.au"],"feedUrl":null,"portalCheck":"HTTP 200; portal only","checkedAt":"2026-11-03"},
+ {"id":"act-jobs","name":"ACT government jobs","state":"ACT","portalUrl":"https://www.jobs.act.gov.au/","allowedHosts":["www.jobs.act.gov.au"],"feedUrl":null,"portalCheck":"HTTP 200; portal only","checkedAt":"2026-11-03"}
+]

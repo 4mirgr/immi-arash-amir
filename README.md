@@ -2,7 +2,11 @@
 
 دو فضای کاری برای مسیر پزشکی استرالیا: GP/PESCI دکتر آرش انتظار و مسیر تخصصی دکتر امیرهوشنگ گرامی.
 
-**وضعیت: پایهٔ محلی قابل اجرا؛ سامانهٔ آنلاین تولیدی نیست.** فایل‌های شخصی در GitHub قرار نمی‌گیرند. جابه‌جایی پروفایل، احراز هویت محسوب نمی‌شود. لیست کلینیک‌ها سرنخ‌های فایل‌های ورودی است و آگهی زنده یا تضمین پذیرش نیست.
+**وضعیت: نسخهٔ آنلاین اولیه با ورود و دیتابیس مستقل، به‌علاوه اجرای محلی.**
+
+[بازکردن سایت](https://immi-arash-amir.dr-gerami-md.workers.dev) · [وضعیت اتصال‌ها و ورود](docs/DEPLOYMENT.fa.md)
+
+ فایل‌های شخصی در GitHub قرار نمی‌گیرند. جابه‌جایی پروفایل، احراز هویت محسوب نمی‌شود. لیست کلینیک‌ها سرنخ‌های فایل‌های ورودی است و آگهی زنده یا تضمین پذیرش نیست.
 
 ## اجرا
 
@@ -31,4 +35,4 @@ python -m unittest discover -s tests -v
 - [طراحی و محدودهٔ نسخه](docs/superpowers/specs/2026-11-03-platform-design.md)
 - [تحقیقات مسیرها](docs/research/)
 
-Gmail, Google Drive/Calendar, Telegram, AI, cloud database, production login and live external job collectors are not connected in this version. Only local imports, browsing, persisted drafts and educational practice are available. Ten-second refresh polls the local database, not external websites. No email is sent.
+Cloudflare hosting and a dedicated Supabase database with authenticated owner-scoped access are deployed. CV snapshots/TXT/DOCX, mail presets, drafts, contact browsing and educational practice are implemented. Real users must finish email verification. Gmail, Google Drive/Calendar, Telegram, AI and continuous external collectors remain disconnected; no email is sent by this app. The blocked mail queue and feed collector foundation are currently local-only. See docs/DEPLOYMENT.fa.md for verified status and remaining manual setup.
