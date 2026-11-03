@@ -90,27 +90,63 @@ export async function handleGoogleRequest(request,env,context,fetcher=fetch){
  }
  return null;
 }
-function finish(ok,status=200){return new Response('<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>اتصال Google</title><body><h1>'+(ok?'اتصال Google ثبت شد':'اتصال Google انجام نشد')+'</h1><p>'+(ok?'به پنل اصلی برگردید. می‌توانید این پنجره را ببندید.':'به پنل اصلی برگردید و اتصال را دوباره آغاز کنید.')+'</p></body></html>',{status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'; base-uri 'none'",'Set-Cookie':COOKIE+'=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0'}});}
+const CALLBACK_STAGES=Object.freeze(['configuration','state','browser_binding','state_consume','token_exchange','identity','refresh_grant','account_store']);
+const TOKEN_ERRORS=Object.freeze(['invalid_client','invalid_grant','redirect_uri_mismatch','access_denied','unauthorized_client','invalid_request']);
+const CALLBACK_CODES=new Set(['setup_required','invalid_callback','invalid_state','state_not_found','state_expired','browser_binding_missing','browser_binding_invalid','browser_binding_mismatch','authorization_denied','provider_unavailable','identity_not_verified','identity_in_use','offline_grant_missing','reconnect_required','token_exchange_rejected',...TOKEN_ERRORS.map(code=>'token_exchange_'+code),...CALLBACK_STAGES.map(stage=>stage+'_failed')]);
+function callbackDiagnostic(stage,error){return {stage:CALLBACK_STAGES.includes(stage)?stage:'configuration',code:CALLBACK_CODES.has(error?.code)?error.code:(CALLBACK_STAGES.includes(stage)?stage:'configuration')+'_failed'};}
+async function recordCallbackDiagnostic(env,ownerId,diagnostic){
+ // Only fixed stage/code identifiers are retained. Never record provider bodies,
+ // query strings, state hashes, cookies, authorization codes or credentials.
+ if(!env.GOOGLE_DB)return;
+ try{
+  const at=now();
+  await env.GOOGLE_DB.prepare('DELETE FROM google_oauth_diagnostics WHERE created_at<?').bind(at-7*86400000).run();
+  await env.GOOGLE_DB.prepare('INSERT INTO google_oauth_diagnostics(id,owner_id,stage,code,created_at) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),ownerId||null,diagnostic.stage,diagnostic.code,at).run();
+  await env.GOOGLE_DB.prepare('DELETE FROM google_oauth_diagnostics WHERE owner_id IS ? AND id NOT IN (SELECT id FROM google_oauth_diagnostics WHERE owner_id IS ? ORDER BY created_at DESC,rowid DESC LIMIT 50)').bind(ownerId||null,ownerId||null).run();
+ }catch{/* Diagnostics are best effort and must not alter OAuth outcomes. */}
+}
+function finish(ok,status=200,diagnostic=null){
+ const safe=diagnostic&&CALLBACK_STAGES.includes(diagnostic.stage)&&CALLBACK_CODES.has(diagnostic.code)?diagnostic:null;
+ const detail=!ok&&safe?'<p>کد خطای قابل گزارش: <code dir="ltr">'+safe.stage+'/'+safe.code+'</code></p>':'';
+ return new Response('<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>اتصال Google</title><body><h1>'+(ok?'اتصال Google ثبت شد':'اتصال Google انجام نشد')+'</h1><p>'+(ok?'به پنل اصلی برگردید. می‌توانید این پنجره را ببندید.':'به پنل اصلی برگردید و اتصال را دوباره آغاز کنید.')+'</p>'+detail+'</body></html>',{status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'; base-uri 'none'",'Set-Cookie':COOKIE+'=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0'}});
+}
 export async function handleGoogleCallback(request,env,fetcher=fetch){
+ let stage='configuration',ownerId=null;
  try{
   const expected=configured(env),url=new URL(request.url);if(request.method!=='GET'||url.origin!==expected.origin||url.pathname!==expected.pathname)throw new GoogleError(400,'invalid_callback','Invalid callback');
+  stage='state';
   const state=url.searchParams.get('state');if(!state||!/^[A-Za-z0-9_-]{43}$/.test(state))throw new GoogleError(400,'invalid_state','Invalid connection state');
-  const cookies=(request.headers.get('Cookie')||'').split(';').map(v=>v.trim().split('='));const binding=cookies.find(([k])=>k===COOKIE)?.[1];if(!binding||!/^[A-Za-z0-9_-]{43}$/.test(binding))throw new GoogleError(400,'invalid_state','Invalid connection state');
-  const stateHash=await hash(state),browserHash=await hash(binding);
+  const stateHash=await hash(state);
+  const stateInfo=await env.GOOGLE_DB.prepare('SELECT owner_id,browser_hash,expires_at FROM google_oauth_states WHERE state_hash=?').bind(stateHash).first();
+  if(!stateInfo)throw new GoogleError(400,'state_not_found','Connection state was not found or already used');
+  ownerId=stateInfo.owner_id;
+  if(stateInfo.expires_at<=now())throw new GoogleError(400,'state_expired','Connection state expired');
+  stage='browser_binding';
+  const cookies=(request.headers.get('Cookie')||'').split(';').map(v=>v.trim().split('='));const binding=cookies.find(([k])=>k===COOKIE)?.[1];
+  if(!binding)throw new GoogleError(400,'browser_binding_missing','Connection browser binding is missing');
+  if(!/^[A-Za-z0-9_-]{43}$/.test(binding))throw new GoogleError(400,'browser_binding_invalid','Connection browser binding is invalid');
+  const browserHash=await hash(binding);
+  if(stateInfo.browser_hash!==browserHash)throw new GoogleError(400,'browser_binding_mismatch','Connection browser binding does not match');
+  stage='state_consume';
   const pending=await env.GOOGLE_DB.prepare('DELETE FROM google_oauth_states WHERE state_hash=? AND browser_hash=? AND expires_at>? RETURNING *').bind(stateHash,browserHash,now()).first();
-  if(!pending)throw new GoogleError(400,'invalid_state','Connection state expired or already used');
+  if(!pending)throw new GoogleError(400,'state_not_found','Connection state expired or already used');
   const code=url.searchParams.get('code');if(url.searchParams.has('error')||!code||code.length>4096)throw new GoogleError(400,'authorization_denied','Google connection was not authorized');
   const {verifier}=await decryptGoogleSecret(env,'oauth:'+stateHash+':'+pending.owner_id,pending.verifier_cipher);
+  stage='token_exchange';
   const response=await googleFetch(fetcher,TOKEN_URL,form({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,code,code_verifier:verifier,grant_type:'authorization_code',redirect_uri:expected.href}));const grant=await responseJson(response);
-  if(!response.ok||typeof grant.access_token!=='string'||!grant.access_token||!Number.isFinite(Number(grant.expires_in))||Number(grant.expires_in)<=0)throw new GoogleError(400,'authorization_denied','Google connection could not be completed');
+  if(!response.ok){const safeCode=TOKEN_ERRORS.includes(grant.error)?'token_exchange_'+grant.error:'token_exchange_rejected';throw new GoogleError(400,safeCode,'Google token exchange was rejected');}
+  if(typeof grant.access_token!=='string'||!grant.access_token||!Number.isFinite(Number(grant.expires_in))||Number(grant.expires_in)<=0)throw new GoogleError(400,'token_exchange_rejected','Google connection could not be completed');
+  stage='identity';
   const identityResponse=await googleFetch(fetcher,USERINFO_URL,{headers:{Authorization:'Bearer '+grant.access_token}});const identity=await responseJson(identityResponse);
   if(!identityResponse.ok||typeof identity.sub!=='string'||!identity.sub||identity.sub.length>255||typeof identity.email!=='string'||identity.email.length>320||![true,'true'].includes(identity.email_verified))throw new GoogleError(400,'identity_not_verified','Google identity could not be verified');
   const duplicate=await env.GOOGLE_DB.prepare('SELECT owner_id FROM google_accounts WHERE google_sub=? AND owner_id<>?').bind(identity.sub,pending.owner_id).first();if(duplicate)throw new GoogleError(409,'identity_in_use','This Google account is already connected to another workspace');
+  stage='refresh_grant';
   const previous=await account(env,pending.owner_id);let refreshToken=grant.refresh_token;
   if(!refreshToken&&previous?.google_sub===identity.sub){refreshToken=(await decryptGoogleSecret(env,pending.owner_id,previous.token_cipher)).refresh_token;}
   if(!refreshToken)throw new GoogleError(400,'offline_grant_missing','Reconnect Google with offline access permission');
   const scopes=scopeList(grant.scope);const cipher=await encryptGoogleSecret(env,pending.owner_id,{access_token:grant.access_token,refresh_token:refreshToken});
+  stage='account_store';
   await env.GOOGLE_DB.prepare('INSERT INTO google_accounts(owner_id,profile_id,google_sub,email,scopes_json,token_cipher,expires_at,status,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(owner_id) DO UPDATE SET profile_id=excluded.profile_id,google_sub=excluded.google_sub,email=excluded.email,scopes_json=excluded.scopes_json,token_cipher=excluded.token_cipher,expires_at=excluded.expires_at,status=excluded.status,updated_at=excluded.updated_at').bind(pending.owner_id,pending.profile_id,identity.sub,identity.email.toLowerCase(),JSON.stringify(scopes),cipher,now()+Math.min(Number(grant.expires_in),86400)*1000,'connected',now()).run();
   return finish(true);
- }catch(error){return finish(false,error instanceof GoogleError?error.status:400);}
+ }catch(error){const diagnostic=callbackDiagnostic(stage,error);await recordCallbackDiagnostic(env,ownerId,diagnostic);return finish(false,error instanceof GoogleError?error.status:400,diagnostic);}
 }

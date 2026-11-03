@@ -20,3 +20,12 @@ CREATE TABLE IF NOT EXISTS google_oauth_states (
 );
 CREATE INDEX IF NOT EXISTS google_oauth_states_expiry ON google_oauth_states(expires_at);
 CREATE INDEX IF NOT EXISTS google_oauth_states_owner ON google_oauth_states(owner_id);
+
+-- Safe troubleshooting identifiers only; never provider content or credentials.
+CREATE TABLE IF NOT EXISTS google_oauth_diagnostics (
+ id TEXT PRIMARY KEY, owner_id TEXT,
+ stage TEXT NOT NULL CHECK(stage IN ('configuration','state','browser_binding','state_consume','token_exchange','identity','refresh_grant','account_store')),
+ code TEXT NOT NULL, created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS google_oauth_diagnostics_owner_time ON google_oauth_diagnostics(owner_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS google_oauth_diagnostics_time ON google_oauth_diagnostics(created_at);

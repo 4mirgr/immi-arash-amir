@@ -55,3 +55,26 @@ Official references retrieved 2026-11-03:
 - https://developers.google.com/workspace/gmail/api/auth/scopes
 - https://developers.google.com/workspace/drive/api/guides/api-specific-auth
 - https://developers.google.com/identity/protocols/oauth2#expiration
+
+## Safe callback troubleshooting
+
+A failed callback displays only a fixed stage/error identifier, for example
+`browser_binding/browser_binding_missing` or
+`token_exchange/token_exchange_invalid_client`. These identifiers distinguish
+configuration, state/browser binding, token exchange, identity, offline grant and
+account persistence failures. They do not identify a cause until the actual code
+is observed; a Google testing/unverified-app screen alone is not evidence of a
+callback bug.
+
+The additive `google_oauth_diagnostics` D1 table retains only an ID, known owner
+ID when available, fixed stage/code identifiers and a timestamp. No state hash,
+URL, browser cookie, authorization code, provider description, email, token,
+secret or IP is recorded. Entries older than seven days are removed and each
+owner (including unknown-owner diagnostics) is capped at 50 records. Diagnostic
+writes are best effort and cannot change a normal OAuth outcome. Apply the
+additive table/index DDL from `cloud/google-schema.sql` before using retained
+diagnostics. Error identifiers remain available in safe HTML if storage fails.
+
+A missing or incorrect browser-binding cookie still does **not** consume a valid
+pending state. PKCE, state expiry, one-use consumption and owner binding are
+unchanged; diagnostic instrumentation does not relax consent or browser checks.

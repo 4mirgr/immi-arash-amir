@@ -49,3 +49,55 @@ for (const nextSubject of ['google-new','google-original']) {
   assert.equal((await getGoogleAccess(env,arash.userId)).subject,nextSubject);
  });
 }
+
+test('callback diagnostics distinguish missing/mismatched browser binding without consuming state',async()=>{
+ const {env,db}=fixture();const p=await begin(env,arash);
+ const callbackUrl=origin+'/api/google/callback?state='+p.url.searchParams.get('state')+'&code=secret-callback-code';
+ const absent=await handleGoogleCallback(new Request(callbackUrl),env,google());
+ const absentHtml=await absent.text();assert.match(absentHtml,/browser_binding\/browser_binding_missing/);
+ assert.equal(db.prepare('select count(*) as n from google_oauth_states').get().n,1);
+ const wrong=await handleGoogleCallback(new Request(callbackUrl,{headers:{Cookie:'__Host-immi_google_oauth='+'x'.repeat(43)}}),env,google());
+ assert.match(await wrong.text(),/browser_binding\/browser_binding_mismatch/);
+ assert.equal(db.prepare('select count(*) as n from google_oauth_states').get().n,1);
+ const diagnostic=db.prepare('select owner_id,stage,code from google_oauth_diagnostics order by rowid desc').get();assert.deepEqual({...diagnostic},{owner_id:arash.userId,stage:'browser_binding',code:'browser_binding_mismatch'});
+ for(const sensitive of ['secret-callback-code',p.cookie,p.url.searchParams.get('state'),env.GOOGLE_CLIENT_SECRET,env.GOOGLE_TOKEN_KEY])assert.equal(absentHtml.includes(sensitive),false);
+ assert.equal((await finish(env,p)).status,200);
+});
+test('callback diagnostics distinguish expired state from already used or unknown state',async()=>{
+ const {env,db}=fixture();let p=await begin(env,arash);db.prepare('update google_oauth_states set expires_at=0').run();
+ assert.match(await(await finish(env,p)).text(),/state\/state_expired/);
+ p=await begin(env,arash);assert.equal((await finish(env,p)).status,200);
+ assert.match(await(await finish(env,p)).text(),/state\/state_not_found/);
+});
+for(const providerCode of ['invalid_client','invalid_grant']){
+ test('token rejection diagnostic whitelists '+providerCode+' and never provider details',async()=>{
+  const {env,db}=fixture();const p=await begin(env,arash);
+  const r=await finish(env,p,async()=>Response.json({error:providerCode,error_description:'PRIVATE-provider-detail secret-callback-code',client_secret:'PRIVATE-secret'},{status:400}));
+  const html=await r.text();assert.match(html,new RegExp('token_exchange/token_exchange_'+providerCode));assert.equal(html.includes('PRIVATE'),false);
+  assert.equal(db.prepare('select count(*) as n from google_accounts').get().n,0);
+  const rows=db.prepare('select * from google_oauth_diagnostics').all();assert.equal(rows[0].code,'token_exchange_'+providerCode);assert.equal(JSON.stringify(rows).includes('PRIVATE'),false);
+ });
+}
+test('unknown provider code is replaced with fixed diagnostic identifier',async()=>{
+ const {env,db}=fixture();const p=await begin(env,arash);
+ const r=await finish(env,p,async()=>Response.json({error:'<script>PRIVATE-secret</script>'},{status:400}));
+ const html=await r.text();assert.match(html,/token_exchange_rejected/);assert.equal(html.includes('PRIVATE-secret'),false);assert.equal(JSON.stringify(db.prepare('select * from google_oauth_diagnostics').all()).includes('PRIVATE-secret'),false);
+});
+test('storage failure diagnostics stay safe and optional diagnostic storage never changes OAuth outcomes',async()=>{
+ const {env,db}=fixture();let p=await begin(env,arash);const prepare=env.GOOGLE_DB.prepare;
+ env.GOOGLE_DB.prepare=sql=>{if(sql.startsWith('INSERT INTO google_accounts'))throw Error('PRIVATE-provider-detail with token');return prepare(sql);};
+ const failure=await finish(env,p);const html=await failure.text();assert.match(html,/account_store\/account_store_failed/);assert.equal(html.includes('PRIVATE'),false);
+ assert.equal(db.prepare('select count(*) as n from google_accounts').get().n,0);
+ env.GOOGLE_DB.prepare=sql=>{if(sql.includes('google_oauth_diagnostics'))throw Error('PRIVATE-diagnostic-store');return prepare(sql);};
+ p=await begin(env,arash);
+ const noCookie=await handleGoogleCallback(new Request(origin+'/api/google/callback?state='+p.url.searchParams.get('state')+'&code=synthetic'),env,google());assert.equal(noCookie.status,400);assert.match(await noCookie.text(),/browser_binding_missing/);
+ assert.equal((await finish(env,p)).status,200);
+});
+test('diagnostic retention is bounded per owner and expired entries are pruned',async()=>{
+ const {env,db}=fixture();const p=await begin(env,arash);
+ db.prepare('insert into google_oauth_diagnostics values(?,?,?,?,?)').run('old',arash.userId,'state','invalid_state',Date.now()-8*86400000);
+ for(let i=0;i<55;i++)await handleGoogleCallback(new Request(origin+'/api/google/callback?state='+p.url.searchParams.get('state')+'&code=synthetic'),env,google());
+ assert.equal(db.prepare('select count(*) as n from google_oauth_diagnostics where owner_id=?').get(arash.userId).n,50);
+ assert.equal(db.prepare('select count(*) as n from google_oauth_diagnostics where id=?').get('old').n,0);
+ assert.equal(db.prepare('select count(*) as n from google_oauth_states').get().n,1);
+});
