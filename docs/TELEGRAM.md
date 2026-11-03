@@ -2,6 +2,10 @@
 
 This adapter is implemented but is not connected merely because code is deployed. It sends no message until the owner links a private Telegram chat and explicitly enables notifications. It never sends email or publishes a LinkedIn post. Initial historical records are not broadcast on activation.
 
+Project bot: **[@AUSPlanAlertsBot](https://t.me/AUSPlanAlertsBot)** (username supplied by the owner; live identity is verified through `getMe` during setup). This public link opens the bot but does not bind a website account. Fresh private binding links must be generated inside each doctor’s authenticated workspace, never shared between doctors.
+
+All outgoing opportunity and test messages address the recipient by the trusted stored profile: «دکتر آرش انتظار عزیز،» or «دکتر امیر هوشنگ گرامی عزیز،». Display names submitted in messages or browser input are not used.
+
 ## Free owner setup
 
 1. In Telegram open the verified **@BotFather**, send `/newbot`, and choose the project's bot name and a free username ending in `bot`.
