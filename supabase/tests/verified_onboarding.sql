@@ -1,3 +1,4 @@
+-- Initial provisioning test; requires arash membership to be unclaimed. Never remove a real membership to rerun it.
 -- Fully rolled-back synthetic test. Does not send verification mail.
 begin;
 update immi_private.approved_accounts set email='onboarding-test@example.invalid',profile_data='{"id":"arash","cvText":"Synthetic staged CV"}' where profile_id='arash';
