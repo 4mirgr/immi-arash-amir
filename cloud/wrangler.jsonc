@@ -3,6 +3,7 @@
   "main": "worker.mjs",
   "compatibility_date": "2026-11-03",
   "workers_dev": true,
+  "triggers": {"crons": ["0 */3 * * *"]},
   "vars": {
     "GOOGLE_REDIRECT_URI": "https://immi-arash-amir.dr-gerami-md.workers.dev/api/google/callback"
   },
@@ -10,6 +11,10 @@
     "binding": "GOOGLE_DB",
     "database_name": "immi-google-private",
     "database_id": "faf37526-9c8c-4a86-9f91-3ab41ee8ddff"
+  },{
+    "binding": "OPPORTUNITY_DB",
+    "database_name": "immi-opportunities",
+    "database_id": "a9605bec-79b7-430d-8d15-cfacb4cb1a58"
   }],
   "assets": {
     "directory": "../dist",

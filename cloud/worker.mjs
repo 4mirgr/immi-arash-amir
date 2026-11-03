@@ -3,6 +3,7 @@ import {GoogleError,handleGoogleCallback,handleGoogleRequest,googleStatus} from 
 import {handleGoogleMailRequest,getOwnedMailReplyContext} from './google-mail.mjs';
 import {handleGoogleSendRequest} from './google-send.mjs';
 import {handleGoogleServicesRequest} from './google-services.mjs';
+import {handleOpportunityRequest,collectOpportunities} from './job-opportunities.mjs';
 import educationalCase from '../library/pesci/PESCI-PRACTICE-COMM-001.json' with { type: 'json' };
 
 const DEFAULT_SETTINGS = { emailPolicy: 'auto_after_connection', defaultTemplate: '', notifications: false };
@@ -58,6 +59,10 @@ export function createHandler(fetcher = fetch) {
       if (!['arash','amir'].includes(profileId)) throw new ApiError(403, 'Account has not been provisioned for this workspace');
       const requestedProfile = url.searchParams.get('profile');
       if (requestedProfile && requestedProfile !== profileId) throw new ApiError(403, 'Profile access denied');
+      if(url.pathname==='/api/opportunities'||url.pathname.startsWith('/api/opportunities/')){
+        const response=await handleOpportunityRequest(request,env,{userId:user.id,profileId},fetcher);
+        if(response)return response;
+      }
       if(url.pathname.startsWith('/api/google/')){
         const context={userId:user.id,profileId,rest};
         for(const handler of [handleGoogleRequest,handleGoogleMailRequest,handleGoogleSendRequest,handleGoogleServicesRequest]){
@@ -156,4 +161,4 @@ export function createHandler(fetcher = fetch) {
     } catch (error) { const expected=error instanceof ApiError||error instanceof GoogleError;return json({error:expected ? error.message : 'Request failed',...(error instanceof GoogleError?{code:error.code}:{})},expected ? error.status : 500); }
   };
 }
-export default {fetch:createHandler()};
+export default {fetch:createHandler(),async scheduled(event,env){await collectOpportunities(env);}};

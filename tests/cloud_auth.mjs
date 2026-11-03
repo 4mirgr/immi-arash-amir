@@ -77,3 +77,11 @@ test('secret keys are never exposed even if misconfigured as publishable',async(
 test('updates returns revision without downloading clinic or private profile rows',async()=>{
   const m=mock();const res=await m.handle(request('/api/updates'),env);assert.equal(res.status,200);assert.deepEqual(await res.json(),{revision:'2026-11-03T10:00:00+00:00'});assert.equal(m.calls.filter(c=>c.url.includes('/rest/v1/immi_clinics')||c.url.includes('immi_profiles')).length,0);assert.equal(m.calls.length,3);
 });
+
+test('public-source opportunities still require the authenticated workspace owner',async()=>{
+ const m=mock();
+ assert.equal((await m.handle(new Request('https://immi.example/api/opportunities'),env)).status,401);
+ assert.equal(m.calls.length,0);
+ assert.equal((await m.handle(request('/api/opportunities?profile=amir'),env)).status,403);
+ assert.equal(m.calls.length,2);
+});

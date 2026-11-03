@@ -42,6 +42,8 @@ import { CVVersions, Presets } from "./workspace-tools";
 import { useGoogleConnection, GoogleConnection, GoogleInbox } from "./google-tools";
 import { GoogleSendPanel } from "./google-send-panel";
 import { CalendarDriveTools } from "./calendar-drive-tools";
+import { ProfilePlanning } from "./profile-planning";
+import { JobOpportunitiesPanel } from "./job-opportunities-panel";
 import sourceRegistry from "../library/sources.json";
 const nav = [
   ["overview", "نمای کلی", LayoutDashboard],
@@ -317,7 +319,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
             <small>
               {arash
                 ? "پزشک عمومی · مسیر استرالیا"
-                : "متخصص داخلی · مسیر استرالیا"}
+                : profile?.planning?.training?.currentStatus === "internal_medicine_resident" ? "رزیدنت داخلی · مسیر استرالیا" : "مسیر تخصص داخلی · استرالیا"}
             </small>
           </div>
           {!cloud && <span className="switch">⇄</span>}
@@ -598,6 +600,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
               </div>
             </>
           )}
+          {tab === "opportunities" && <JobOpportunitiesPanel person={person} notify={notify} />}
           {(tab === "opportunities" || tab === "overview") && (
             <section className="panel opportunities">
               <div className="section-head">
@@ -916,6 +919,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
           )}
           {tab === "cv" && (
             <>
+              <ProfilePlanning profile={profile} />
               <section className="upgrade-banner">
                 <div>
                   <div className="eyebrow">YOUR NEXT PROFESSIONAL EDGE</div>
@@ -937,7 +941,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                   <p>
                     {arash
                       ? "پزشک عمومی · متقاضی فرصت‌های استرالیا"
-                      : "متخصص داخلی · بررسی مسیر تخصص استرالیا"}
+                      : profile?.planning?.training?.currentStatus === "internal_medicine_resident" ? "پزشک در حال آموزش تخصصی داخلی · بررسی مسیر استرالیا" : "بررسی مسیر تخصص داخلی در استرالیا"}
                   </p>
                   <div className="cv-details">
                     <span>وضعیت اطلاعات</span>
