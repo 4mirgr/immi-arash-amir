@@ -82,7 +82,7 @@ export async function handleLinkedInOAuthRequest(request,env,context,fetcher=fet
   if(path==='/api/linkedin/connect'&&request.method==='POST'){
    const cfg=config(env);if(cfg.origin!==url.origin)fail(503,'linkedin_setup_required');
    const state=random(),binding=random();await stmt(env.GOOGLE_DB,'DELETE FROM linkedin_oauth_states WHERE owner_id=? OR expires_at<?',id,Date.now()).run();await stmt(env.GOOGLE_DB,'INSERT INTO linkedin_oauth_states VALUES(?,?,?,?,?)',await hash(state),id,context.profileId,await hash(binding),Date.now()+600000).run();
-   const params=new URLSearchParams({response_type:'code',client_id:env.LINKEDIN_CLIENT_ID,redirect_uri:cfg.href,state,scope:SCOPES.join(' ')});
+   const params=new URLSearchParams({response_type:'code',client_id:env.LINKEDIN_CLIENT_ID,redirect_uri:cfg.href,state,scope:[...SCOPES,...(env.LINKEDIN_ANALYTICS_APPROVED==='true'?['r_member_profileAnalytics']:[])].join(' ')});
    return json({authorizationUrl:AUTH+'?'+params},200,{'Set-Cookie':COOKIE+'='+binding+'; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=600'});
   }
   if(path==='/api/linkedin/disconnect'&&request.method==='POST'){if(!env.GOOGLE_DB)fail(503,'linkedin_setup_required');await stmt(env.GOOGLE_DB,'DELETE FROM linkedin_accounts WHERE owner_id=?',id).run();await stmt(env.GOOGLE_DB,'DELETE FROM linkedin_oauth_states WHERE owner_id=?',id).run();return json({connected:false,status:'not_connected',providerRevocationConfirmed:false});}

@@ -53,6 +53,46 @@ export function rankMessage(text,direction='received'){
  if(/\b(application (?:received|under review)|review (?:your|the) application|send (?:us )?(?:your )?(?:cv|resume)|further information|more information)\b/.test(lower))return explained('medium',['application_or_information_request_signal']);
  return explained('weak',['no_explicit_positive_signal']);
 }
+const CONSUMER_MAIL_DOMAINS=new Set(['gmail.com','googlemail.com','yahoo.com','yahoo.co.uk','outlook.com','hotmail.com','live.com','icloud.com','aol.com']);
+const PROJECT_QUERY='{PESCI AHPRA AMC RACP RACGP ACRRM "medical registration" "medical officer" "general practitioner" "physician" "registrar" "clinical fellowship" "visa sponsorship" "PhD" "scholarship" "research grant" "medical conference" "clinical research" "IELTS" "OET"} -in:spam -in:trash';
+export function classifyProjectMessage(message,{matchedEmails=[],matchedDomains=[]}={}){
+ const current=latestReply((message.plainBody||message.snippet||'').slice(0,8000));
+ const text=(String(message.subject||'')+'\n'+current.text).toLowerCase();
+ const emails=extractEmails(String(message.from||'')+' '+String(message.replyTo||''));
+ const emailSet=new Set(matchedEmails),domainSet=new Set(matchedDomains);
+ const knownEmail=emails.some(email=>emailSet.has(email)),knownDomain=emails.some(email=>domainSet.has(email.split('@')[1]));
+ const reasons=[],categories=[];let score=0;
+ const add=(category,reason,points)=>{categories.push(category);reasons.push(reason);score+=points;};
+ if(/\b(pesci|ahpra|racgp|acrrm|racp|amc\s*(?:mcq|exam|assessment)|medical (?:registration|board)|international medical graduate|limited registration|general registration)\b/.test(text))add('registration','medical_registration_or_assessment',70);
+ if(/\b(visa|immigration|sponsorship|subclass\s*(?:482|186|494|189|190|491))\b/.test(text)&&/\b(australia|australian|medical|doctor|physician|job|employment|visa|immigration)\b/.test(text))add('migration','migration_or_sponsorship',45);
+ const health=/\b(medic(?:al|ine)|clinical|doctor|physician|hospital|clinic|healthcare|health care|registrar|general practitioner|rural health|nurs(?:e|ing))\b/.test(text);
+ const career=/\b(job|vacanc(?:y|ies)|recruit(?:ment|er|ing)?|employment|position|career|interview|application|curriculum vitae|resume|supervis(?:ion|or)|fellowship)\b/.test(text);
+ if(health&&career)add('career','medical_career_or_supervision',55);
+ if(/\b(phd|doctoral|postgraduate research|scholarship|studentship|research (?:grant|funding|fellowship|degree)|graduate research|research training program|rtp scholarship)\b/.test(text))add('study','research_study_or_funding',55);
+ if(/\b(ielts|oet|pte academic|english (?:language|test|exam)|pesci (?:course|practice))\b/.test(text))add('language','language_or_exam_preparation',45);
+ if(health&&/\b(congress|conference|webinar|workshop|course|cme|cpd|continuing professional|training|systematic review|meta-analysis|clinical audit)\b/.test(text))add('development','medical_learning_or_scientific_event',45);
+ const simpleInvite=/\b(interview invitation|schedule (?:an? )?(?:interview|call|meeting)|arrange (?:an? )?(?:interview|call|meeting)|application (?:received|under review)|send (?:us )?(?:your )?(?:cv|resume))\b/.test(text)||(/^\s*(?:re:\s*)?interview(?: invitation)?\b/.test(String(message.subject||'').toLowerCase()));
+ if(simpleInvite&&!categories.includes('career'))add('application','application_process_requires_context_review',35);
+ if(knownEmail||knownDomain)add('known_source',knownEmail?'sender_matches_imported_clinic_email':'sender_matches_imported_clinic_website_domain',55);
+ const retail=/\b(coupon|discount|black friday|flash sale|order confirmation|payment receipt|shopping|promo code|your purchase|one.time password|verification code|security alert|password reset)\b/.test(text);
+ if(retail&&!categories.some(category=>['registration','study','migration','career','application','development','language'].includes(category))){score=0;reasons.push('unrelated_transactional_or_retail_content');}
+ const related=score>=35;
+ const special=related&&((message.labels||[]).some(label=>['STARRED','IMPORTANT'].includes(label))||message.priority==='strong'||/\b(deadline|closing date|action required|offer of employment|job offer|interview invitation)\b/.test(text));
+ return {related,score:Math.min(score,100),special,categories:[...new Set(categories)],reasons:reasons.length?reasons:['no_project_signal_in_reviewed_content'],sourceMatch:knownEmail?'email':knownDomain?'website_domain':null,reviewRequired:true,method:'rule_based_content_and_imported_sender_match'};
+}
+async function matchedClinicSenders(context,messages){
+ if(typeof context.rest!=='function')return {matchedEmails:[],matchedDomains:[],status:'not_available'};
+ const emails=[...new Set(messages.flatMap(m=>extractEmails(String(m.from||'')+' '+String(m.replyTo||''))).filter(e=>/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(e)))].slice(0,100);
+ const domains=[...new Set(emails.map(email=>email.split('@')[1]).filter(domain=>!CONSUMER_MAIL_DOMAINS.has(domain)))].slice(0,8);
+ if(!emails.length)return {matchedEmails:[],matchedDomains:[],status:'no_sender_candidates'};
+ const clauses=['data->>email.in.('+emails.map(e=>'"'+e+'"').join(',')+')',...domains.map(d=>'data->>website.ilike.*'+d+'*')];
+ try{
+  const rows=await context.rest('immi_clinics','?select=data&limit=300&or='+encodeURIComponent('('+clauses.join(',')+')'));
+  const foundEmails=new Set(),foundDomains=new Set();
+  for(const row of rows||[]){const clinic=row.data||{},email=String(clinic.email||'').toLowerCase();if(emails.includes(email))foundEmails.add(email);let website;try{website=new URL(/^https?:\/\//i.test(clinic.website||'')?clinic.website:'https://'+clinic.website);}catch{}if(website){const host=website.hostname.toLowerCase().replace(/^www\./,'');for(const domain of domains)if(host===domain||host.endsWith('.'+domain)||domain.endsWith('.'+host))foundDomains.add(domain);}}
+  return {matchedEmails:[...foundEmails],matchedDomains:[...foundDomains],status:'bounded_sender_lookup',candidateEmails:emails.length,candidateDomains:domains.length};
+ }catch{return {matchedEmails:[],matchedDomains:[],status:'lookup_unavailable_content_analysis_only'};}
+}
 export function normalizeMessage(raw){
  if(!gmailId(raw?.id))throw new MailError(502,'invalid_gmail_response');
  const labels=Array.isArray(raw.labelIds)?raw.labelIds.filter(v=>typeof v==='string').slice(0,50):[];
@@ -90,8 +130,8 @@ async function syncMailbox(db,owner,subject,accessToken,fetcher,reset){
   if(!historyId){
    const profile=await googleJson(fetcher,accessToken,'profile');
    if(typeof profile.historyId!=='string'||!/^\d+$/.test(profile.historyId))throw new MailError(502,'invalid_gmail_response');
-   const list=await googleJson(fetcher,accessToken,'messages?maxResults=20&q='+encodeURIComponent('{in:inbox in:sent}'));
-   ids=[...new Set((list.messages||[]).map(v=>v.id).filter(gmailId))].slice(0,20);historyId=profile.historyId;pageToken=null;targetHistory=null;coverage='recent20_initial_then_incremental';resetUsed=reset;
+   const list=await googleJson(fetcher,accessToken,'messages?maxResults=20&q='+encodeURIComponent(PROJECT_QUERY));
+   ids=[...new Set((list.messages||[]).map(v=>v.id).filter(gmailId))].slice(0,20);historyId=profile.historyId;pageToken=null;targetHistory=null;coverage='project_recent20_initial_then_incremental';resetUsed=reset;
   }else if(!ids.length){
    let history;
    try{history=await googleJson(fetcher,accessToken,'history?startHistoryId='+encodeURIComponent(historyId)+'&maxResults=20'+(pageToken?'&pageToken='+encodeURIComponent(pageToken):''));}
@@ -123,10 +163,31 @@ async function syncMailbox(db,owner,subject,accessToken,fetcher,reset){
   return {synced,deleted,pendingCount:remaining.length,moreHistory:!!pageToken,coverage,resetUsed,sendingEnabled:false};
  }finally{await run(db,'UPDATE google_mail_sync SET lock_token=NULL,lock_until=0 WHERE owner_id=? AND google_sub=? AND lock_token=?',owner,subject,lock);}
 }
+async function searchOlderProjectMessages(db,owner,subject,accessToken,fetcher,restart){
+ await run(db,'INSERT OR IGNORE INTO google_mail_project_search(owner_id,google_sub) VALUES (?,?)',owner,subject);
+ const now=Date.now(),lock=crypto.randomUUID();
+ const acquired=await run(db,'UPDATE google_mail_project_search SET lock_token=?,lock_until=? WHERE owner_id=? AND google_sub=? AND lock_until<?',lock,now+300000,owner,subject,now);
+ if(!acquired.meta?.changes)throw new MailError(409,'sync_in_progress');
+ try{
+  const state=await row(db,'SELECT * FROM google_mail_project_search WHERE owner_id=? AND google_sub=?',owner,subject);
+  if(state.completed&&!restart)return {synced:0,completed:true,scannedCount:state.scanned_count,more:false,note:'جست‌وجوی محدود قبلی به پایان نتایج Gmail رسیده است؛ این نتیجه تأیید کامل‌بودن تشخیص ارتباط نیست.'};
+  const pageToken=restart?null:state.page_token;
+  if(pageToken&&(typeof pageToken!=='string'||pageToken.length>2000))throw new MailError(409,'invalid_sync_state');
+  const list=await googleJson(fetcher,accessToken,'messages?maxResults=20&q='+encodeURIComponent(PROJECT_QUERY)+(pageToken?'&pageToken='+encodeURIComponent(pageToken):''));
+  if(list.messages!==undefined&&!Array.isArray(list.messages))throw new MailError(502,'invalid_gmail_response');
+  const ids=[...new Set((list.messages||[]).map(v=>v.id).filter(gmailId))].slice(0,20);
+  const next=typeof list.nextPageToken==='string'?list.nextPageToken:null;if(next?.length>2000)throw new MailError(502,'invalid_gmail_response');
+  let synced=0;
+  for(const id of ids){try{const message=normalizeMessage(await googleJson(fetcher,accessToken,'messages/'+encodeURIComponent(id)+'?format=full'));await run(db,'INSERT INTO google_mail_messages(owner_id,google_sub,gmail_id,thread_id,message_date,priority,data,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(owner_id,google_sub,gmail_id) DO UPDATE SET thread_id=excluded.thread_id,message_date=excluded.message_date,priority=excluded.priority,data=excluded.data,updated_at=excluded.updated_at',owner,subject,message.id,message.threadId,message.dateTimestamp,message.priority,JSON.stringify(message),Date.now());synced++;}catch(error){if(error.code!=='gmail_not_found')throw error;}}
+  const scannedCount=(restart?0:state.scanned_count)+ids.length;
+  await run(db,'UPDATE google_mail_project_search SET page_token=?,completed=?,scanned_count=?,last_synced_at=? WHERE owner_id=? AND google_sub=? AND lock_token=?',next,next?0:1,scannedCount,Date.now(),owner,subject,lock);
+  return {synced,completed:!next,more:!!next,scannedCount,note:next?'یک صفحهٔ محدود از جست‌وجوی مکاتبات مرتبط بررسی شد؛ ادامه با درخواست بعدی انجام می‌شود.':'این جست‌وجوی کلیدواژه‌ای به پایان نتایج رسید؛ ممکن است پیام مرتبطی خارج از کلیدواژه‌ها وجود داشته باشد.',querySource:'fixed_project_keywords',sendingEnabled:false};
+ }finally{await run(db,'UPDATE google_mail_project_search SET lock_token=NULL,lock_until=0 WHERE owner_id=? AND google_sub=? AND lock_token=?',owner,subject,lock);}
+}
 export async function handleGoogleMailRequest(request,env,context,fetcher=fetch,accessProvider=getGoogleAccess){
  try{
   const url=new URL(request.url);
-  if(!['/api/google/mail/messages','/api/google/mail/sync','/api/google/mail/extract-contact'].includes(url.pathname))return null;
+  if(!['/api/google/mail/messages','/api/google/mail/sync','/api/google/mail/project-search','/api/google/mail/extract-contact'].includes(url.pathname))return null;
   if(!context?.userId||!['arash','amir'].includes(context.profileId))throw new MailError(403,'workspace_required');
   if(!env.GOOGLE_DB)throw new MailError(503,'google_storage_required');
   const profile=url.searchParams.get('profile');if(profile&&profile!==context.profileId)throw new MailError(403,'profile_access_denied');
@@ -136,14 +197,23 @@ export async function handleGoogleMailRequest(request,env,context,fetcher=fetch,
   const db=env.GOOGLE_DB,owner=context.userId,subject=access.subject;
   if(!subject||!access.accessToken)throw new MailError(401,'reconnect_required');
   if(request.method==='GET'&&url.pathname==='/api/google/mail/messages'){
-   const priority=url.searchParams.get('priority')||'all',q=(url.searchParams.get('q')||'').trim().toLowerCase();
-   if(!['all','strong','medium','weak'].includes(priority)||q.length>200)throw new MailError(400,'invalid_filter');
+   const priority=url.searchParams.get('priority')||'all',q=(url.searchParams.get('q')||'').trim().toLowerCase(),scope=url.searchParams.get('scope')||'project',order=url.searchParams.get('order')||'relevant';
+   if(!['all','strong','medium','weak'].includes(priority)||q.length>200||!['project','all'].includes(scope)||!['relevant','newest','special'].includes(order))throw new MailError(400,'invalid_filter');
    const limit=Number(url.searchParams.get('limit')||50),offset=Number(url.searchParams.get('offset')||0);
    if(!Number.isInteger(limit)||limit<1||limit>100||!Number.isInteger(offset)||offset<0||offset>10000)throw new MailError(400,'invalid_pagination');
-   // Filtering is parameterised and owner+Google identity are mandatory predicates.
-   const result=await db.prepare("SELECT data FROM google_mail_messages WHERE owner_id=? AND google_sub=? AND (?='all' OR priority=?) AND (?='' OR instr(lower(data),?)>0) ORDER BY CASE priority WHEN 'strong' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,message_date DESC LIMIT ? OFFSET ?").bind(owner,subject,priority,priority,q,q,limit,offset).all();
+   // Owner and verified Google subject are mandatory. Relevance examines a bounded
+   // recent cache window, never silently scans all imported contacts or all Gmail.
+   const result=await db.prepare("SELECT data FROM google_mail_messages WHERE owner_id=? AND google_sub=? AND (?='all' OR priority=?) AND (?='' OR instr(lower(data),?)>0) ORDER BY message_date DESC LIMIT 500").bind(owner,subject,priority,priority,q,q).all();
+   const cached=(result.results||[]).map(r=>JSON.parse(r.data)),matches=await matchedClinicSenders(context,cached);
+   const reviewed=cached.map(message=>({...message,projectRelevance:classifyProjectMessage(message,matches)}));
+   const filtered=reviewed.filter(message=>scope==='all'||message.projectRelevance.related);
+   filtered.sort(order==='newest'?(a,b)=>b.dateTimestamp-a.dateTimestamp:order==='special'?(a,b)=>Number(b.projectRelevance.special)-Number(a.projectRelevance.special)||b.projectRelevance.score-a.projectRelevance.score||b.dateTimestamp-a.dateTimestamp:(a,b)=>b.projectRelevance.score-a.projectRelevance.score||b.dateTimestamp-a.dateTimestamp);
    const state=await row(db,'SELECT last_synced_at,coverage,pending_ids,page_token FROM google_mail_sync WHERE owner_id=? AND google_sub=?',owner,subject);
-   return json({messages:(result.results||[]).map(r=>JSON.parse(r.data)),sync:{lastSyncedAt:state?.last_synced_at?new Date(state.last_synced_at).toISOString():null,coverage:state?.coverage||'not_synced',pendingCount:pendingIds(state?.pending_ids).length,moreHistory:!!state?.page_token},analysis:'rule_based',sendingEnabled:false,limit,offset});
+   return json({messages:filtered.slice(offset,offset+limit),sync:{lastSyncedAt:state?.last_synced_at?new Date(state.last_synced_at).toISOString():null,coverage:state?.coverage||'not_synced',pendingCount:pendingIds(state?.pending_ids).length,moreHistory:!!state?.page_token},analysis:'rule_based',scope,order,reviewedCacheWindow:cached.length,cacheWindowLimit:500,matchedWithinWindow:filtered.length,more:offset+limit<filtered.length,sourceMatching:{status:matches.status,candidateEmails:matches.candidateEmails||0,candidateDomains:matches.candidateDomains||0},sendingEnabled:false,limit,offset});
+  }
+  if(request.method==='POST'&&url.pathname==='/api/google/mail/project-search'){
+   const body=await readPayload(request);if(Object.keys(body).some(k=>k!=='restart')||('restart'in body&&typeof body.restart!=='boolean'))throw new MailError(400,'invalid_sync_payload');
+   return json(await searchOlderProjectMessages(db,owner,subject,access.accessToken,fetcher,body.restart===true));
   }
   if(request.method==='POST'&&url.pathname==='/api/google/mail/sync'){
    const body=await readPayload(request);if(Object.keys(body).some(k=>k!=='reset')||('reset'in body&&typeof body.reset!=='boolean'))throw new MailError(400,'invalid_sync_payload');

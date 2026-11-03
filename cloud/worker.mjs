@@ -9,6 +9,8 @@ import {handleLinkedInRequest} from './linkedin-workspace.mjs';
 import {handleLinkedInOAuthCallback,handleLinkedInOAuthRequest} from './linkedin-oauth.mjs';
 import {handleRoadmapRequest} from './roadmap.mjs';
 import {watchEvidenceSources} from './evidence-watch.mjs';
+import {googleAccountContext} from './google-account-scope.mjs';
+import {handleLinkedInInsightsRequest} from './linkedin-insights.mjs';
 import educationalCase from '../library/pesci/PESCI-PRACTICE-COMM-001.json' with { type: 'json' };
 
 const DEFAULT_SETTINGS = { emailPolicy: 'auto_after_connection', defaultTemplate: '', notifications: false };
@@ -76,14 +78,14 @@ export function createHandler(fetcher = fetch) {
         throw new ApiError(404,'Not found');
       }
       if(url.pathname.startsWith('/api/linkedin/')){
-        for(const handler of [handleLinkedInOAuthRequest,handleLinkedInRequest]){
+        for(const handler of [handleLinkedInInsightsRequest,handleLinkedInOAuthRequest,handleLinkedInRequest]){
           const response=await handler(request,env,{userId:user.id,profileId,rest},fetcher);
           if(response)return response;
         }
         throw new ApiError(404,'Not found');
       }
       if(url.pathname.startsWith('/api/google/')){
-        const context={userId:user.id,profileId,rest};
+        const context=googleAccountContext(request,{userId:user.id,profileId,rest});
         for(const handler of [handleGoogleRequest,handleGoogleMailRequest,handleGoogleSendRequest,handleGoogleServicesRequest]){
           const response=await handler(request,env,context,fetcher);
           if(response)return response;
@@ -160,10 +162,12 @@ export function createHandler(fetcher = fetch) {
           const known = await rest('immi_clinics','?select=id&id=in.('+clinicIds.join(',')+')');
           if (known.length !== clinicIds.length) throw new ApiError(400, 'Unknown clinic');
         }
-        const data = {id:crypto.randomUUID(),profileId,clinicIds,subject:body.subject,body:body.body,status:'draft'};
+        const draftUrl=new URL(request.url);draftUrl.searchParams.set('mailbox',body.mailbox===undefined?'primary':body.mailbox);
+        const draftAccount=googleAccountContext(new Request(draftUrl),{userId:user.id,profileId,rest});
+        const data = {id:crypto.randomUUID(),profileId,clinicIds,subject:body.subject,body:body.body,status:'draft',mailbox:draftAccount.mailbox};
         if(body.replyContext!==undefined){
           if(!body.replyContext||typeof body.replyContext!=='object'||Array.isArray(body.replyContext)||Object.keys(body.replyContext).some(k=>!['messageId','threadId','to'].includes(k)))throw new ApiError(400,'Invalid reply context');
-          try{data.replyContext=await getOwnedMailReplyContext(env,user.id,body.replyContext,fetcher);}catch(error){if(/^[a-z_]{3,80}$/.test(error.code||'')&&Number.isInteger(error.status)&&error.status>=400&&error.status<600)throw new ApiError(error.status,error.code);throw error;}
+          try{data.replyContext=await getOwnedMailReplyContext(env,draftAccount.userId,body.replyContext,fetcher);}catch(error){if(/^[a-z_]{3,80}$/.test(error.code||'')&&Number.isInteger(error.status)&&error.status>=400&&error.status<600)throw new ApiError(error.status,error.code);throw error;}
         }
         await rest('immi_drafts','',{method:'POST',body:JSON.stringify({id:data.id,user_id:user.id,profile_id:profileId,data}),headers:{Prefer:'return=minimal'}});
         return json(data,201);

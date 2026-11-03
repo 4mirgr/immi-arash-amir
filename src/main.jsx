@@ -46,6 +46,10 @@ import { CalendarDriveTools } from "./calendar-drive-tools";
 import { ProfilePlanning } from "./profile-planning";
 import { LinkedInPanel } from "./linkedin-panel";
 import { JobOpportunitiesPanel } from "./job-opportunities-panel";
+import { ThemeControl } from "./theme-control";
+import { LinkedInInsights } from "./linkedin-insights";
+import { downloadCVPDF } from "./cv-pdf.mjs";
+import { MixedText } from "./mixed-text";
 import { TextSizeControl } from "./text-size-control";
 import { RoadmapPanel } from "./roadmap-panel";
 import sourceRegistry from "../library/sources.json";
@@ -95,6 +99,9 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
     [loading, setLoading] = useState(false),
     [page, setPage] = useState(1);
   const googleConnection = useGoogleConnection(person, cloud);
+  const secondaryGoogleConnection = useGoogleConnection(person, cloud && person === "amir", "secondary");
+  const [composeMailbox,setComposeMailbox] = useState("primary");
+  const mailConnection = composeMailbox === "secondary" ? secondaryGoogleConnection : googleConnection;
   const [replyContext, setReplyContext] = useState(null);
   const notify = (t) => {
     setToast(t);
@@ -206,7 +213,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
   const profile = Array.isArray(data.profiles)
     ? data.profiles.find((p) => p.id === person)
     : data.profiles?.[person];
-  function download() {
+  function download(format = "txt") {
     if (!profile) {
       notify("اطلاعات رزومه هنوز از سرور دریافت نشده است");
       return;
@@ -216,6 +223,9 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
       return;
     }
     const text = profile.cvText;
+    if(format === "pdf"){
+      try{const result=downloadCVPDF({name:person === "amir" ? "Amir Houshang Gerami" : "Arash Entezar",cvText:text,filename:person+"-profile.pdf"});notify(result.requiresPrint?"برای حفظ متن فارسی، نمای چاپ باز شد؛ مقصد Save as PDF را انتخاب کنید.":"PDF رزومه دریافت شد؛ محتوا را پیش از ارسال بازبینی کنید.");}catch(e){notify(e.message);}return;
+    }
     const a = document.createElement("a");
     a.href = URL.createObjectURL(
       new Blob([text], { type: "text/plain;charset=utf-8" }),
@@ -242,7 +252,8 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
           body,
           clinicIds: selected,
           clinic_ids: selected,
-          ...(replyContext ? {replyContext} : {}),
+          mailbox:composeMailbox,
+          ...(replyContext ? {replyContext:{messageId:replyContext.messageId,...(replyContext.threadId?{threadId:replyContext.threadId}:{})}} : {}),
           to: clinics
             .filter((c) => selected.includes(c.id))
             .map((c) => c.email)
@@ -373,6 +384,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
           </div>
           <div className="header-actions">
             <TextSizeControl personId={person} />
+            <ThemeControl personId={person} />
             {cloud && (
               <button className="secondary" onClick={onSignOut}>
                 خروج امن
@@ -826,8 +838,9 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
               <section className="panel">
                 <div className="section-head">
                   <h3>پیش‌نویس مکاتبه</h3>
-                  <span className="tag">{googleConnection.state.connected ? "Gmail همین حساب متصل است" : "Gmail متصل نیست"}</span>
+                  <span className="tag">{mailConnection.state.connected ? "Gmail همین حساب متصل است" : "Gmail متصل نیست"}</span>
                 </div>
+                {person === "amir" && <label>صندوق فرستندهٔ همین پیش‌نویس<select value={composeMailbox} onChange={e=>{setComposeMailbox(e.target.value);setReplyContext(null);if(e.target.value==='secondary')secondaryGoogleConnection.refresh();}}><option value="primary">Google اصلی</option><option value="secondary">Google دوم</option></select></label>}
                 {replyContext && <div className="notice">پاسخ به پیام همین صندوق: <span dir="ltr">{replyContext.to}</span><button className="text-button" onClick={()=>setReplyContext(null)}>حذف زمینهٔ پاسخ</button><small>این مرحله فقط متن پیش‌نویس را آماده می‌کند؛ ارسال هنوز انجام نمی‌شود.</small></div>}
                 <label>مخاطبان انتخاب‌شده</label>
                 <div className="recipient-list">
@@ -894,7 +907,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                   پیوست و ارسال واقعی، پس از راه‌اندازی OAuth و انتخاب CV
                   تأییدشده فعال می‌شود.
                 </p>
-                <GoogleSendPanel person={person} selected={selected} subject={subject} body={body} connection={googleConnection} replyContext={replyContext} notify={notify}/>
+                <GoogleSendPanel person={person} selected={selected} subject={subject} body={body} connection={mailConnection} mailbox={composeMailbox} replyContext={replyContext} notify={notify}/>
                 <Presets
                   person={person}
                   subject={subject}
@@ -909,7 +922,9 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
               <section className="panel">
                 <GoogleInbox person={person} connection={googleConnection} onSettings={()=>setTab("settings")} notify={notify} onReply={message=>{
                   setSelected([]);
-                  setReplyContext({messageId:message.id,threadId:message.threadId,to:message.from||""});
+                  const mailbox=message.mailbox === "secondary" ? "secondary" : "primary";
+                  setComposeMailbox(mailbox);if(mailbox === "secondary")secondaryGoogleConnection.refresh();
+                  setReplyContext({messageId:message.id,threadId:message.threadId,to:message.from||"",mailbox});
                   setSubject(/^re:/i.test(message.subject||"")?message.subject:"Re: "+(message.subject||""));
                   setBody("\n\n"+(message.plainBody||message.body||message.snippet||"").split("\n").map(line=>"> "+line).join("\n"));
                 }}/>
@@ -917,7 +932,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                 {drafts.map((d, i) => (
                   <div className="agent-row" key={i}>
                     <FileText size={16} />
-                    {d.subject || subject}
+                    <MixedText>{d.subject || subject}</MixedText>
                     <span className="status">ذخیره شد</span>
                   </div>
                 ))}
@@ -962,9 +977,10 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                     <span>همگام‌سازی خودکار دستاوردها</span>
                     <b>در انتظار اتصال منابع</b>
                   </div>
-                  <button className="primary" onClick={download}>
-                    <ArrowDownToLine size={16} /> دانلود اطلاعات پروفایل
+                  <button className="primary" onClick={()=>download("txt")}>
+                    <ArrowDownToLine size={16} /> دریافت TXT پروفایل
                   </button>
+                  <button className="secondary" onClick={()=>download("pdf")}><ArrowDownToLine size={16}/> دریافت PDF پروفایل</button>
                   <p className="muted">
                     نسخه‌های نام‌گذاری‌شده و خروجی DOCX از بخش پایین در
                     دسترس‌اند؛ خروجی PDF هنوز فعال نیست.
@@ -1129,7 +1145,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                 </p>
               </section>
             ))}
-          {tab === "linkedin" && <LinkedInPanel person={person} notify={notify} />}
+          {tab === "linkedin" && <><LinkedInPanel person={person} notify={notify} /><LinkedInInsights person={person} notify={notify}/></>}
           {tab === "roadmap" && <RoadmapPanel key={person+":pathways"} person={person} category="pathways" notify={notify} cloud={cloud} />}
           {tab === "study" && person === "amir" && <RoadmapPanel key={person+":study"} person={person} category="study" notify={notify} cloud={cloud} />}
           {tab === "development" && <RoadmapPanel key={person+":development"} person={person} category="development" notify={notify} cloud={cloud} />}
@@ -1198,6 +1214,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
               <section className="panel">
                 <h3>اتصال سرویس‌ها</h3>
                 <GoogleConnection person={person} connection={googleConnection} notify={notify}/>
+                {person === "amir" && <GoogleConnection person={person} mailbox="secondary" connection={secondaryGoogleConnection} notify={notify}/>}
                 <CalendarDriveTools key={person+":"+Boolean(googleConnection.state.connected)+":"+(googleConnection.state.email||"")} person={person} notify={notify}/>
                 {[
                   ["Telegram", "اعلان موقعیت‌ها و پیگیری‌ها"],

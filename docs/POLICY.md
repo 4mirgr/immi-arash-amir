@@ -20,3 +20,7 @@ Each doctor must authorize their own distinct Google account. A shared OAuth app
 
 ## Independent LinkedIn and action records
 LinkedIn account, encrypted grant, profile snapshots, contacts, metrics, drafts, publication evidence, content schedule and roadmap action notes are owner-scoped. Shared OAuth app credentials never imply shared provider identity. An expired/missing grant blocks only its owner; no cross-account fallback. Manual statistics stay labeled manual; completed planning actions never automatically verify credentials or mutate CVs. Source page availability/change checks never silently renew research conclusions.
+
+CV output follows docs/CV-STANDARD.md: institution-specific forms first, otherwise readable searchable single-column international medical/academic structure; no unsupported achievements or automatic specialization labels. A PDF export is formatting, not credential verification.
+
+Amir may authorize one configured secondary Gmail account; server-side mailbox scope keeps its tokens/cache/queue separate. Do not replace the primary grant or use a missing sender as a reason to fall back. Supabase profile/CV ownership stays with the actual authenticated user. Before unattended multi-sender campaigns, add owner-level deduplication/suppression across mailboxes; current sends remain explicit. Historical mail search and cached relevance windows are bounded, never claimed to cover the whole inbox.

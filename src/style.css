@@ -1518,3 +1518,134 @@ header { min-height: 80px; height: auto; padding-block: 14px; gap: 12px; }
   .text-size-control button { min-width: 26px; }
   .text-size-control .text-size-reset { min-width: 38px; }
 }
+
+/* A real light palette; identity-specific display preference is not account data. */
+:root { color-scheme: dark; }
+:root[data-theme="light"] {
+  color-scheme: light;
+  color: #17263a;
+  background: #f3f6fb;
+  --accent: #12633f;
+  --line: #d4deea;
+  --muted: #52647b;
+  --panel: #ffffff;
+}
+:root[data-theme="light"] .app { background: #f3f6fb; color: #17263a; }
+:root[data-theme="light"] .sidebar { background: #edf2f9; }
+:root[data-theme="light"] header { background: #ffffffed; border-color: #d4deea; }
+:root[data-theme="light"] .profile,
+:root[data-theme="light"] .stat,
+:root[data-theme="light"] .panel,
+:root[data-theme="light"] .text-size-control,
+:root[data-theme="light"] .secondary,
+:root[data-theme="light"] .linkedin-workspace .li-card,
+:root[data-theme="light"] .linkedin-workspace .li-metric,
+:root[data-theme="light"] .inbox-message { background: #fff; border-color: #cdd9e7; color: #20334a; }
+:root[data-theme="light"] .stat { background: linear-gradient(130deg,#fff,#edf3fb); }
+:root[data-theme="light"] .hero,
+:root[data-theme="light"] .amir .hero { background: radial-gradient(ellipse at 15% 50%,#bfdfd34f,transparent 60%),linear-gradient(110deg,#e0f0e8,#e8f0fb); border-color: #aac8bc; }
+:root[data-theme="light"] .upgrade-banner { background: linear-gradient(120deg,#e0f1e8,#e9f0fb); border-color: #aac8bc; }
+:root[data-theme="light"] .hero h2,
+:root[data-theme="light"] .hero em,
+:root[data-theme="light"] .upgrade-banner h2,
+:root[data-theme="light"] .australia,
+:root[data-theme="light"] .stat strong,
+:root[data-theme="light"] .cv-details b,
+:root[data-theme="light"] .clinic strong,
+:root[data-theme="light"] .timer,
+:root[data-theme="light"] .station h2,
+:root[data-theme="light"] .case-text { color: #173c33; text-shadow: none; }
+:root[data-theme="light"] .muted,
+:root[data-theme="light"] .profile small,
+:root[data-theme="light"] .profile strong,
+:root[data-theme="light"] .breadcrumb,
+:root[data-theme="light"] .breadcrumb span,
+:root[data-theme="light"] .timezone,
+:root[data-theme="light"] .brand span:not(.brand-icon),
+:root[data-theme="light"] .workspace-label,
+:root[data-theme="light"] .sidebar-bottom small,
+:root[data-theme="light"] .mini-logo,
+:root[data-theme="light"] .page-heading p,
+:root[data-theme="light"] .hero p,
+:root[data-theme="light"] .stat-top,
+:root[data-theme="light"] .stat small,
+:root[data-theme="light"] .step small,
+:root[data-theme="light"] .agent-row small,
+:root[data-theme="light"] .agent-note,
+:root[data-theme="light"] .data-note,
+:root[data-theme="light"] .sync,
+:root[data-theme="light"] .location,
+:root[data-theme="light"] .clinic small,
+:root[data-theme="light"] .empty,
+:root[data-theme="light"] .empty p,
+:root[data-theme="light"] .cv-details span,
+:root[data-theme="light"] .integration small,
+:root[data-theme="light"] .policy small,
+:root[data-theme="light"] .source-card p,
+:root[data-theme="light"] .message-snippet,
+:root[data-theme="light"] .message-summary small,
+:root[data-theme="light"] .message-details ul,
+:root[data-theme="light"] .queue-review-row small,
+:root[data-theme="light"] .send-queue-row small,
+:root[data-theme="light"] .version-row small { color: #4e627b; }
+:root[data-theme="light"] nav button { color: #3c536e; }
+:root[data-theme="light"] nav button:hover,
+:root[data-theme="light"] .icon:hover,
+:root[data-theme="light"] .secondary:hover,
+:root[data-theme="light"] .text-size-control button:hover:not(:disabled) { background: #e1eaf5; }
+:root[data-theme="light"] nav button.active { background: linear-gradient(90deg,#d8ebdf,#cde4d6); color: #164f35; }
+:root[data-theme="light"] .primary { background: #186a44; color: #fff; border-color: #186a44; }
+:root[data-theme="light"] .primary:hover { background: #0d5735; }
+:root[data-theme="light"] input,
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea,
+:root[data-theme="light"] .search,
+:root[data-theme="light"] .message-details pre,
+:root[data-theme="light"] .linkedin-workspace input,
+:root[data-theme="light"] .linkedin-workspace select,
+:root[data-theme="light"] .linkedin-workspace textarea { background: #f8fbff; color: #20334a; border-color: #bccbdd; }
+:root[data-theme="light"] input::placeholder,
+:root[data-theme="light"] textarea::placeholder { color: #617189; opacity: 1; }
+:root[data-theme="light"] table { color: #263b53; }
+:root[data-theme="light"] th { background: #edf3fa; color: #4d617a; }
+:root[data-theme="light"] td,
+:root[data-theme="light"] th,
+:root[data-theme="light"] .step,
+:root[data-theme="light"] .agent-row,
+:root[data-theme="light"] .message-details,
+:root[data-theme="light"] .google-connection,
+:root[data-theme="light"] .send-queue-panel,
+:root[data-theme="light"] .send-queue-row,
+:root[data-theme="light"] .queue-review-row,
+:root[data-theme="light"] .version-row { border-color: #d4deea; }
+:root[data-theme="light"] .notice,
+:root[data-theme="light"] .data-note { background: #fff6df; color: #66501a; border-color: #dfcca0; }
+:root[data-theme="light"] .status,
+:root[data-theme="light"] .tag,
+:root[data-theme="light"] .pill,
+:root[data-theme="light"] .step-num,
+:root[data-theme="light"] .floating-badge,
+:root[data-theme="light"] .clinic-icon,
+:root[data-theme="light"] .send-preview { background: #e1f2e7; color: #1c6040; border-color: #a2c8b1; }
+:root[data-theme="light"] .status.red { background: #fde6e9; color: #9c2639; }
+:root[data-theme="light"] .text-button,
+:root[data-theme="light"] .eyebrow,
+:root[data-theme="light"] .email,
+:root[data-theme="light"] .source-card span,
+:root[data-theme="light"] .google-mailbox,
+:root[data-theme="light"] .google-connection .notice a,
+:root[data-theme="light"] .count,
+:root[data-theme="light"] .view-all,
+:root[data-theme="light"] .mini-logo span { color: #175e3e; }
+:root[data-theme="light"] .toast { background: #e2f2e8; color: #194d32; border-color: #95bea6; box-shadow: 0 10px 35px #17263a26; }
+:root[data-theme="light"] .toast button { color: #194d32; }
+:root[data-theme="light"] .brand-icon { background: #d9ece2; border-color: #a3c5b4; }
+:root[data-theme="light"] .small-avatar,
+:root[data-theme="light"] .avatar { color: #1b5138; background: #c5e1d2; }
+:root[data-theme="light"] .text-size-control button { color: #314862; }
+.theme-control { display: inline-grid; place-items: center; flex: 0 0 auto; }
+:root[data-theme="light"] .amir { --accent: #245a99; }
+
+/* Latin fragments remain isolated inside RTL prose. */
+bdi[dir="ltr"] { direction: ltr; unicode-bidi: isolate; }
+.message-details pre { white-space: pre-wrap; overflow-wrap: anywhere; unicode-bidi: plaintext; }

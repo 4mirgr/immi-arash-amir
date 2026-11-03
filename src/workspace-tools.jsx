@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ArrowDownToLine,
   Check,
@@ -7,14 +7,18 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { api, apiResponse } from "./api";
+import { downloadCVPDF } from "./cv-pdf.mjs";
 
 export function CVVersions({ person, notify }) {
+  const alive=useRef(true),owner=useRef(person);owner.current=person;
+  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
   const [versions, setVersions] = useState([]),
     [name, setName] = useState(""),
     [error, setError] = useState("");
   async function load() {
     try {
       const data = await api(`cv/versions?profile=${person}`);
+      if(!alive.current||owner.current!==person)return;
       setVersions(Array.isArray(data) ? data : data.versions || []);
       setError("");
     } catch (e) {
@@ -60,9 +64,13 @@ export function CVVersions({ person, notify }) {
   async function exportCV(id, format) {
     try {
       const response = await apiResponse(
-        `cv/export?profile=${person}&id=${encodeURIComponent(id)}&format=${format}`,
+        `cv/export?profile=${person}&id=${encodeURIComponent(id)}&format=${format === "pdf" ? "txt" : format}`,
       );
-      const blob = await response.blob();
+      if(format === "pdf"){
+        const text=await response.text();if(!alive.current||owner.current!==person)return;
+        const result=downloadCVPDF({name:person === "amir" ? "Amir Houshang Gerami" : "Arash Entezar",cvText:text,versionName:versions.find(v=>v.id===id)?.name,filename:person+"-cv.pdf"});notify(result.requiresPrint?"برای حفظ همهٔ نویسه‌ها، نمای چاپ باز شد؛ Save as PDF را انتخاب کنید.":"فایل PDF همین نسخهٔ رزومه دریافت شد.");return;
+      }
+      const blob = await response.blob();if(!alive.current||owner.current!==person)return;
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -135,6 +143,7 @@ export function CVVersions({ person, notify }) {
                 >
                   <ArrowDownToLine size={14} /> DOCX
                 </button>
+                <button className="text-button" onClick={() => exportCV(v.id, "pdf")}>PDF</button>
                 <button
                   className="text-button"
                   onClick={() => exportCV(v.id, "txt")}

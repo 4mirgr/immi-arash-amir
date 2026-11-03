@@ -32,6 +32,7 @@ npm run build
 python -m unittest discover -s tests -v
 ```
 
+- [راه‌اندازی LinkedIn — راهنمای فارسی](docs/LINKEDIN-SETUP.fa.md)
 - [اتصال Google هر پزشک — راهنمای فارسی](docs/GOOGLE-SETUP.fa.md)
 - [راهنمای حساب‌ها، اتصال‌ها و دامنه](docs/SETUP.fa.md)
 - [قوانین اصلی](docs/POLICY.md) · [شروع کار ایجنت‌ها](AGENTS.md)

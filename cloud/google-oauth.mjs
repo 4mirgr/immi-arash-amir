@@ -4,6 +4,8 @@ const TOKEN_URL='https://oauth2.googleapis.com/token';
 const USERINFO_URL='https://openidconnect.googleapis.com/v1/userinfo';
 const REVOKE_URL='https://oauth2.googleapis.com/revoke';
 const COOKIE='__Host-immi_google_oauth';
+export const GOOGLE_SECONDARY_MAILBOX_SUFFIX=':secondary';
+export const isSecondaryGoogleOwner=id=>typeof id==='string'&&id.endsWith(GOOGLE_SECONDARY_MAILBOX_SUFFIX);
 export const GOOGLE_SCOPES=Object.freeze(['openid','email','profile','https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send','https://www.googleapis.com/auth/calendar.events','https://www.googleapis.com/auth/drive.file']);
 export class GoogleError extends Error {constructor(status,code,message){super(message);this.status=status;this.code=code;}}
 const json=(data,status=200,headers={})=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
@@ -21,7 +23,10 @@ function configured(env){
  if(!uri||uri.protocol!=='https:'||uri.pathname!=='/api/google/callback'||uri.search||uri.hash||uri.username||uri.password)throw new GoogleError(503,'setup_required','Google redirect configuration is invalid');
  return uri;
 }
-function owner(context){if(!context?.userId||!['arash','amir'].includes(context.profileId))throw new GoogleError(403,'owner_required','An authenticated workspace owner is required');return context.userId;}
+function owner(context){if(!context?.userId||!['arash','amir'].includes(context.profileId))throw new GoogleError(403,'owner_required','An authenticated workspace owner is required');if(isSecondaryGoogleOwner(context.userId)&&context.profileId!=='amir')throw new GoogleError(403,'mailbox_access_denied','This mailbox is unavailable for this workspace');return context.userId;}
+function secondaryEmail(env){const value=typeof env.GOOGLE_SECONDARY_EMAIL==='string'?env.GOOGLE_SECONDARY_EMAIL.trim().toLowerCase():'';if(!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value))throw new GoogleError(503,'secondary_setup_required','The secondary mailbox setup is incomplete');return value;}
+function assertMailboxIdentity(env,id,email,profileId){if(!isSecondaryGoogleOwner(id))return;if(profileId!=='amir'||typeof email!=='string'||email.toLowerCase()!==secondaryEmail(env))throw new GoogleError(409,'identity_mailbox_mismatch','Select the configured secondary Google account');}
+
 async function encryptionKey(env){
  try{const raw=unb64(env.GOOGLE_TOKEN_KEY);if(raw.length!==32)throw Error();return await crypto.subtle.importKey('raw',raw,{name:'AES-GCM'},false,['encrypt','decrypt']);}catch{throw new GoogleError(503,'setup_required','Google token encryption is not configured');}
 }
@@ -43,6 +48,7 @@ export async function getGoogleAccess(env,userId,fetcher=fetch){
  configured(env);if(typeof userId!=='string'||!userId)throw new GoogleError(403,'owner_required','An authenticated workspace owner is required');
  const row=await account(env,userId);
  if(!row)throw new GoogleError(409,'not_connected','Connect your own Google account first');
+ assertMailboxIdentity(env,userId,row.email,row.profile_id);
  if(row.status!=='connected')throw new GoogleError(409,'reconnect_required','Google connection must be renewed');
  let tokens;try{tokens=await decryptGoogleSecret(env,userId,row.token_cipher);}catch(e){if(e.code==='reconnect_required')await reconnect(env,userId,row);throw e;}
  if(row.expires_at<=now()+60000){
@@ -62,22 +68,24 @@ export async function getGoogleAccess(env,userId,fetcher=fetch){
  return {accessToken:tokens.access_token,email:row.email,subject:row.google_sub,scopes:JSON.parse(row.scopes_json)};
 }
 export async function googleStatus(env,id){
- const absent=missing(env);if(absent.length)return {configured:false,connected:false,status:'setup_required',missing:absent,email:null,scopes:[],capabilities:{gmailRead:false,gmailSend:false,calendar:false,drive:false}};
+ const absent=missing(env);if(isSecondaryGoogleOwner(id)){try{secondaryEmail(env);}catch{absent.push('GOOGLE_SECONDARY_EMAIL');}}if(absent.length)return {configured:false,connected:false,status:'setup_required',missing:absent,email:null,scopes:[],capabilities:{gmailRead:false,gmailSend:false,calendar:false,drive:false}};
  try{configured(env);await encryptionKey(env);}catch{return {configured:false,connected:false,status:'setup_required',missing:[],email:null,scopes:[]};}
  const row=await account(env,id);const scopes=row?JSON.parse(row.scopes_json):[];
- return {configured:true,connected:row?.status==='connected',status:row?.status||'not_connected',email:row?.email||null,scopes,capabilities:{gmailRead:scopes.includes(GOOGLE_SCOPES[3]),gmailSend:scopes.includes(GOOGLE_SCOPES[4]),calendar:scopes.includes(GOOGLE_SCOPES[5]),drive:scopes.includes(GOOGLE_SCOPES[6])}};
+ if(row&&isSecondaryGoogleOwner(id)){try{assertMailboxIdentity(env,id,row.email,row.profile_id);}catch{return {configured:true,connected:false,status:'identity_mailbox_mismatch',email:row.email,scopes:[],capabilities:{gmailRead:false,gmailSend:false,calendar:false,drive:false}};}}
+ return {configured:true,connected:row?.status==='connected',status:row?.status||'not_connected',email:row?.email||null,scopes,capabilities:{gmailRead:scopes.includes(GOOGLE_SCOPES[3]),gmailSend:scopes.includes(GOOGLE_SCOPES[4]),calendar:!isSecondaryGoogleOwner(id)&&scopes.includes(GOOGLE_SCOPES[5]),drive:!isSecondaryGoogleOwner(id)&&scopes.includes(GOOGLE_SCOPES[6])}};
 }
 export async function handleGoogleRequest(request,env,context,fetcher=fetch){
  const url=new URL(request.url);const id=owner(context);
  if(request.method==='GET'&&url.pathname==='/api/google/status')return json(await googleStatus(env,id));
  if(request.method==='POST'&&request.headers.has('Origin')&&request.headers.get('Origin')!==url.origin)throw new GoogleError(403,'origin_rejected','Origin rejected');
  if(request.method==='POST'&&url.pathname==='/api/google/start'){
-  const redirect=configured(env);await encryptionKey(env);
+  const redirect=configured(env);await encryptionKey(env);const expectedMailbox=isSecondaryGoogleOwner(id)?secondaryEmail(env):null;
   if(redirect.origin!==url.origin)throw new GoogleError(503,'setup_required','Google callback must use this site origin');
   const state=random(),binding=random(),verifier=random(),stateHash=await hash(state);
   await env.GOOGLE_DB.prepare('DELETE FROM google_oauth_states WHERE expires_at<? OR owner_id=?').bind(now(),id).run();
   await env.GOOGLE_DB.prepare('INSERT INTO google_oauth_states(state_hash,owner_id,profile_id,browser_hash,verifier_cipher,expires_at) VALUES(?,?,?,?,?,?)').bind(stateHash,id,context.profileId,await hash(binding),await encryptGoogleSecret(env,'oauth:'+stateHash+':'+id,{verifier}),now()+600000).run();
-  const params=new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,redirect_uri:redirect.href,response_type:'code',scope:GOOGLE_SCOPES.join(' '),access_type:'offline',prompt:'consent select_account',include_granted_scopes:'true',state,code_challenge:await hash(verifier),code_challenge_method:'S256'});
+  const params=new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,redirect_uri:redirect.href,response_type:'code',scope:(isSecondaryGoogleOwner(id)?GOOGLE_SCOPES.slice(0,5):GOOGLE_SCOPES).join(' '),access_type:'offline',prompt:'consent select_account',include_granted_scopes:'true',state,code_challenge:await hash(verifier),code_challenge_method:'S256'});
+  if(expectedMailbox)params.set('login_hint',expectedMailbox);
   return json({authorizationUrl:AUTH_URL+'?'+params},200,{'Set-Cookie':COOKIE+'='+binding+'; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600'});
  }
  if(request.method==='POST'&&url.pathname==='/api/google/disconnect'){
@@ -92,7 +100,7 @@ export async function handleGoogleRequest(request,env,context,fetcher=fetch){
 }
 const CALLBACK_STAGES=Object.freeze(['configuration','state','browser_binding','state_consume','token_exchange','identity','refresh_grant','account_store']);
 const TOKEN_ERRORS=Object.freeze(['invalid_client','invalid_grant','redirect_uri_mismatch','access_denied','unauthorized_client','invalid_request']);
-const CALLBACK_CODES=new Set(['setup_required','invalid_callback','invalid_state','state_not_found','state_expired','browser_binding_missing','browser_binding_invalid','browser_binding_mismatch','authorization_denied','provider_unavailable','identity_not_verified','identity_in_use','offline_grant_missing','reconnect_required','token_exchange_rejected',...TOKEN_ERRORS.map(code=>'token_exchange_'+code),...CALLBACK_STAGES.map(stage=>stage+'_failed')]);
+const CALLBACK_CODES=new Set(['setup_required','invalid_callback','invalid_state','state_not_found','state_expired','browser_binding_missing','browser_binding_invalid','browser_binding_mismatch','authorization_denied','provider_unavailable','identity_not_verified','identity_in_use','identity_mailbox_mismatch','secondary_setup_required','offline_grant_missing','reconnect_required','token_exchange_rejected',...TOKEN_ERRORS.map(code=>'token_exchange_'+code),...CALLBACK_STAGES.map(stage=>stage+'_failed')]);
 function callbackDiagnostic(stage,error){return {stage:CALLBACK_STAGES.includes(stage)?stage:'configuration',code:CALLBACK_CODES.has(error?.code)?error.code:(CALLBACK_STAGES.includes(stage)?stage:'configuration')+'_failed'};}
 async function recordCallbackDiagnostic(env,ownerId,diagnostic){
  // Only fixed stage/code identifiers are retained. Never record provider bodies,
@@ -139,6 +147,7 @@ export async function handleGoogleCallback(request,env,fetcher=fetch){
   stage='identity';
   const identityResponse=await googleFetch(fetcher,USERINFO_URL,{headers:{Authorization:'Bearer '+grant.access_token}});const identity=await responseJson(identityResponse);
   if(!identityResponse.ok||typeof identity.sub!=='string'||!identity.sub||identity.sub.length>255||typeof identity.email!=='string'||identity.email.length>320||![true,'true'].includes(identity.email_verified))throw new GoogleError(400,'identity_not_verified','Google identity could not be verified');
+  assertMailboxIdentity(env,pending.owner_id,identity.email,pending.profile_id);
   const duplicate=await env.GOOGLE_DB.prepare('SELECT owner_id FROM google_accounts WHERE google_sub=? AND owner_id<>?').bind(identity.sub,pending.owner_id).first();if(duplicate)throw new GoogleError(409,'identity_in_use','This Google account is already connected to another workspace');
   stage='refresh_grant';
   const previous=await account(env,pending.owner_id);let refreshToken=grant.refresh_token;

@@ -12,3 +12,5 @@
 10. Verify `npm run build`, `node --test tests/cloud*.mjs`, `python -m unittest discover -s tests -q`, `node scripts/build_worker.mjs`. Deploy public bundled assets only; preserve secret_text bindings. Confirm health/public assets/401 barriers and report what was actually tested. Never expose OAuth callbacks, auth codes, CV text or secret values in output.
 
 The repository preserves architecture, public research and decisions; it does not recreate private accounts or credentials. Restoring private state requires the owner's authorized database/backups. No claim of uninterrupted background AI agents: real cron collectors/watchers are bounded scheduled jobs.
+
+Recent integration notes: google-account-scope.mjs validates Amir-only secondary mailbox selection; GOOGLE_SECONDARY_EMAIL is a server-only configured address. Keep primary account encryption identity unchanged. Apply google-mail-project-schema.sql and linkedin-insights-schema.sql to GOOGLE_DB. LINKEDIN_ANALYTICS_APPROVED stays absent/off until actual provider approval; the flag never grants permissions. See docs/LINKEDIN-SETUP.fa.md and docs/GOOGLE-SECONDARY.md selectively.
