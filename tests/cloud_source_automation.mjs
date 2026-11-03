@@ -1,0 +1,9 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {readFileSync} from 'node:fs';
+import {runScheduledCollection,sourceAutomationStatus} from '../cloud/source-automation.mjs';
+function fixture(){const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../cloud/source-automation-schema.sql',import.meta.url),'utf8'));return {db,env:{OPPORTUNITY_DB:{prepare(sql){return {bind(...args){return {async run(){return db.prepare(sql).run(...args);},async first(){return db.prepare(sql).get(...args)||null;}};}};}}}};}
+test('no receipt means no observed scheduled execution, never an inferred live status',async()=>{const {env}=fixture();const status=await sourceAutomationStatus(env);assert.equal(status.observed,false);assert.equal(status.status,'not_observed');assert.equal(status.lastStartedAt,null);});
+test('scheduled receipt records real execution separately from source observations',async()=>{const {env}=fixture();const at=Date.now()-1000;let calls=0;await runScheduledCollection({scheduledTime:at},env,async()=>{calls++;assert.equal((await sourceAutomationStatus(env)).status,'running');return {status:'partial_failure'};});const status=await sourceAutomationStatus(env);assert.equal(calls,1);assert.equal(status.status,'partial_failure');assert.equal(status.scheduledAt,new Date(at).toISOString());assert(status.lastFinishedAt);assert.equal(status.requiresOnlineUser,false);assert.equal(status.overdue,false);});
+test('collector exceptions leave failed evidence and are rethrown, stale receipts warn',async()=>{const {env,db}=fixture();await assert.rejects(runScheduledCollection({},env,async()=>{throw Error('synthetic failure');}),/synthetic failure/);assert.equal((await sourceAutomationStatus(env)).status,'failed');db.prepare('UPDATE source_scheduler_state SET started_at=?').run(Date.now()-3*3600000);assert.equal((await sourceAutomationStatus(env)).overdue,true);});

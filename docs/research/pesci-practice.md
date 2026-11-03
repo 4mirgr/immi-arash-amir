@@ -35,3 +35,16 @@ The initially guessed Healthdirect `/suicidal-thoughts` and `/suicide` URLs retu
 Use one case for a spoken structured presentation, discuss reasoning with an appropriately qualified supervisor, then record reflections separately from the source material. Escalation, scope/supervision, professional interpreting, culturally responsive communication, consent, handover and explicit follow-up are recurrent learning goals. Do not paste real patient identifiers into notes. A self-reported completed practice session is not a credential or automatic CV achievement.
 
 Cases are checked for JSON shape, stable IDs, original-educational flags, nonofficial timing, source URLs and nonempty scenario/prompts/reflections. Those checks establish data integrity only; they do not establish clinical validation or equivalence to PESCI. Future clinical revisions should retain a version trail and record the qualified review status explicitly.
+
+## Additional original variants — same checked source basis
+
+Four further discussion stations extend the source basis reviewed above on 2026-11-03. They are new fictional narratives, not new provider exam claims or a clinical revalidation:
+
+| Case | New learning emphasis | Existing source basis and limitation |
+|---|---|---|
+| PAED-006 | Older-child fever, uncertainty, language/access barriers and achievable safety-netting | RCH Febrile child; no assumption of viral illness or safe discharge from the vignette, no drug doses. |
+| ABDO-007 | Adolescent abdominal pain, sensitive history and possible acute scrotal cause | RCH acute abdominal pain includes testicular torsion among urgent causes. This is not a specialist torsion algorithm or a claim about a safe delay window. |
+| DM-008 | Newly diagnosed type 2 diabetes, shared priorities, health literacy and multidisciplinary care | RACGP handbook introduction and its person-centred/education principles. No universal glycaemic target, medication regimen or diet is supplied. |
+| MH-009 | Current safety after a crisis, incomplete handover and practical continuity | Healthdirect warning-signs/direct asking/help/follow-up principles. Public safety guidance is not a complete professional post-discharge psychiatric protocol; local clinical pathways and qualified review remain essential. |
+
+The added library integrity tests verify stable IDs, complete educational metadata, provenance and preservation of nonofficial timing/review flags. They do not clinically validate the cases. All nine library records remain unvalidated educational exercises. The API's explicit case imports must be updated by its owner before newly added records are exposed in the panel.

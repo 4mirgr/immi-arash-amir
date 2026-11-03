@@ -23,3 +23,5 @@ migrationهای D1 از `cloud/*schema.sql` طبق نقش private/public اجر�
 - cronها باید با router در `cloud/worker.mjs` یکسان باشند. کارهای خصوصی در اجرای منابع عمومی ادغام نشوند؛ سقف query و تعداد trigger پلن رایگان محدود است.
 - CI موفق به معنی انجام ارسال واقعی، ورود واقعی تازه یا تأیید تمام معیارهای بالینی نیست. شواهد واقعی و mock جدا گزارش شوند.
 - برای `.ir` مراحل [DOMAIN-IR](DOMAIN-IR.fa.md) و برای بازیابی [BACKUP-RESTORE](BACKUP-RESTORE.md) را دنبال کنید.
+
+برای رسید مستقل اجرای cron، `cloud/source-automation-schema.sql` را روی OPPORTUNITY_DB اعمال کنید. این رسید از دریافت دستی منابع جداست؛ نبودن آن اجرای خودکار را تأیید نمی‌کند.

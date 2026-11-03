@@ -1,5 +1,6 @@
 // Public, fixed publisher feeds only. No user-supplied endpoints or private integrations.
 import registry from './source-registry.json' with {type:'json'};
+import {sourceAutomationStatus} from './source-automation.mjs';
 import {plainJobText,pageUpDate} from './job-opportunities.mjs';
 import {upsertOpportunityBatch} from './opportunity-store.mjs';
 export const SOURCE_REGISTRY=Object.freeze(registry.map(source=>Object.freeze({...source,allowedHosts:Object.freeze([...source.allowedHosts])})));
@@ -171,7 +172,7 @@ export async function handleRegisteredSourcesRequest(request,env,context,fetcher
  try{
   if(!context?.userId||!['arash','amir'].includes(context.profileId))throw new SourceError('workspace_required',403);
   if(url.searchParams.has('profile')&&url.searchParams.get('profile')!==context.profileId)throw new SourceError('profile_access_denied',403);
-  if(request.method==='GET'&&url.pathname.endsWith('/sources'))return json({sources:await registeredSourceStatuses(env,context.profileId),coverage:'bounded_registered_public_sources_only'});
+  if(request.method==='GET'&&url.pathname.endsWith('/sources'))return json({sources:await registeredSourceStatuses(env,context.profileId),automation:await sourceAutomationStatus(env),coverage:'bounded_registered_public_sources_only'});
   if(request.method==='POST'&&url.pathname.endsWith('/refresh')){
    if(request.headers.has('Origin')&&request.headers.get('Origin')!==url.origin)throw new SourceError('origin_rejected',403);
    const body=await request.text();if(body.length>1000)throw new SourceError('payload_too_large',413);let value;try{value=JSON.parse(body||'{}');}catch{throw new SourceError('invalid_payload',400);}

@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "language": "en-AU",
+  "kind": "original-educational-practice",
+  "official_exam_item": false,
+  "review_status": "requires-qualified-clinician-review",
+  "created_at": "2026-11-03",
+  "timing": {
+    "practice_seconds": 600,
+    "official_timing": false
+  },
+  "format_source": "https://www.medicalboard.gov.au/Registration/International-Medical-Graduates/pesci.aspx",
+  "source_retrieved_at": "2026-11-03",
+  "disclaimer": "Original unvalidated discussion exercise based on public safety guidance; not a recalled or official examination item, clinical protocol or validated scoring instrument. Not for patient care. Confirm current local guidance and supervision arrangements.",
+  "id": "PESCI-PRACTICE-MH-009",
+  "title": "After a mental health crisis: continuity, safety and practical follow-up",
+  "topic": "mental-health-continuity-and-safety-netting",
+  "setting": "A fictional supervised Australian general practice. The clinician has access to local crisis services but has not yet received complete information about a recent assessment. All people and events are invented; no suicide method is described.",
+  "case": "A 41-year-old adult books a GP appointment several days after an emergency mental health assessment for suicidal thoughts. They say they feel somewhat better but have missed a follow-up call, have limited phone access and are uncertain who is responsible for their next appointment. A support person is available, but the patient is unsure whether to involve them. Present how you would assess current safety and establish a practical continuity plan.",
+  "prompts": [
+    "How would you ask directly and sensitively about current suicidal thoughts, intent, changes since the crisis and whether the person can remain safe now?",
+    "What information would you seek from the patient and recent treating service, with appropriate consent, rather than assuming that an earlier discharge proves current safety?",
+    "How would you respond if immediate safety is uncertain or risk has increased, including supervisor support and the local emergency/crisis pathway?",
+    "If a non-emergency plan is clinically appropriate, how would you collaborate on support, crisis contacts, access barriers and clear ownership of follow-up?",
+    "How would you discuss confidentiality and support-person involvement, check understanding and document the communication and safety arrangements?"
+  ],
+  "reflection_rubric": [
+    "Makes a fresh assessment of immediate safety and takes new or persistent suicidal thoughts seriously; does not infer safety from improved mood or previous discharge alone.",
+    "Uses direct, respectful questions and obtains relevant continuity information without replacing clinical judgement with a score, a promise or an incomplete letter.",
+    "Seeks urgent supervisor and crisis/emergency assistance if immediate safety cannot be maintained; does not leave the patient unsupported while help is arranged.",
+    "Where a supported non-emergency plan is appropriate, agrees concrete follow-up responsibilities, explores reliable contact options and considers trusted support with consent and applicable confidentiality limits.",
+    "Documents assessment, consultation, handover and review arrangements, and recognises that crisis contacts or a written plan do not substitute for emergency care when it is indicated."
+  ],
+  "sourceUrls": [
+    "https://www.medicalboard.gov.au/Registration/International-Medical-Graduates/pesci.aspx",
+    "https://www.healthdirect.gov.au/warning-signs-of-suicide"
+  ],
+  "source_notes": "Extends the previously reviewed Healthdirect principles of direct asking, appropriate immediate help, ongoing professional support and follow-up into an original continuity scenario. Healthdirect is public safety information, not a complete clinical post-discharge guideline; this case requires qualified clinician review and local mental-health protocols."
+}

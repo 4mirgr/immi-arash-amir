@@ -1,3 +1,4 @@
+import {screenOpportunity} from './opportunity-screening.mjs';
 // Server-controlled source configurations enter here; public HTTP routes are read-only.
 const TYPES = new Set(['job', 'university', 'grant', 'funding', 'scholarship']);
 const AU_STATES = new Set(['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'UNKNOWN']);
@@ -155,7 +156,7 @@ function whereFor(f,profile,now) {
   return {sql:'WHERE '+clauses.join(' AND '),args};
 }
 function publicItem(row,profile,ms) {
-  const item=JSON.parse(row.data);return {...item,status:statusAt({...item,status:row.status},ms),firstSeenAt:row.first_seen_at,lastSeenAt:row.last_seen_at,match:match(item,profile)};
+  const item=JSON.parse(row.data);return {...item,status:statusAt({...item,status:row.status},ms),firstSeenAt:row.first_seen_at,lastSeenAt:row.last_seen_at,match:match(item,profile),screening:screenOpportunity(item,profile)};
 }
 export async function handleOpportunityV2Request(request,env,context) {
   const url=new URL(request.url),path=url.pathname;

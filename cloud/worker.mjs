@@ -5,6 +5,7 @@ import {handleGoogleSendRequest} from './google-send.mjs';
 import {handleGoogleServicesRequest} from './google-services.mjs';
 import {handleOpportunityV2Request} from './opportunity-store.mjs';
 import {handleRegisteredSourcesRequest,collectRegisteredSources} from './source-collectors.mjs';
+import {runScheduledCollection} from './source-automation.mjs';
 import {handleLinkedInRequest} from './linkedin-workspace.mjs';
 import {handleLinkedInOAuthCallback,handleLinkedInOAuthRequest} from './linkedin-oauth.mjs';
 import {handleRoadmapRequest} from './roadmap.mjs';
@@ -201,4 +202,4 @@ export function createHandler(fetcher = fetch) {
     } catch (error) { const expected=error instanceof ApiError||error instanceof GoogleError;return json({error:expected ? error.message : 'Request failed',...(error instanceof GoogleError?{code:error.code}:{})},expected ? error.status : 500); }
   };
 }
-export default {fetch:createHandler(),async scheduled(event,env){const cron=event.cron||'0 * * * *';if(cron==='*/15 * * * *')return await dispatchTelegramNotifications(env);if(cron==='*/5 * * * *')return await dispatchScheduledLinkedIn(env);if(cron==='2-57/5 * * * *')return await dispatchScheduledMail(env);if(cron==='15 */6 * * *')return await watchEvidenceSources(env);return await collectRegisteredSources(env);}};
+export default {fetch:createHandler(),async scheduled(event,env){const cron=event.cron||'0 * * * *';if(cron==='*/15 * * * *')return await dispatchTelegramNotifications(env);if(cron==='*/5 * * * *')return await dispatchScheduledLinkedIn(env);if(cron==='2-57/5 * * * *')return await dispatchScheduledMail(env);if(cron==='15 */6 * * *')return await watchEvidenceSources(env);return await runScheduledCollection(event,env,collectRegisteredSources);}};

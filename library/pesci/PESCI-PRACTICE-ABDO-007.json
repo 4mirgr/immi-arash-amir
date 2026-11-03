@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "language": "en-AU",
+  "kind": "original-educational-practice",
+  "official_exam_item": false,
+  "review_status": "requires-qualified-clinician-review",
+  "created_at": "2026-11-03",
+  "timing": {
+    "practice_seconds": 600,
+    "official_timing": false
+  },
+  "format_source": "https://www.medicalboard.gov.au/Registration/International-Medical-Graduates/pesci.aspx",
+  "source_retrieved_at": "2026-11-03",
+  "disclaimer": "Original unvalidated discussion exercise based on public safety guidance; not a recalled or official examination item, clinical protocol or validated scoring instrument. Not for patient care. Confirm current local guidance and supervision arrangements.",
+  "id": "PESCI-PRACTICE-ABDO-007",
+  "title": "Abdominal pain in an adolescent: recognising a possible acute scrotal cause",
+  "topic": "adolescent-care-and-time-critical-differentials",
+  "setting": "A fictional supervised Australian general practice. The clinician must work within competence and arrange urgent specialist/emergency assessment through the local pathway when a time-critical cause is suspected.",
+  "case": "A 14-year-old boy presents with sudden lower abdominal pain and vomiting that began earlier today. He appears uncomfortable and is reluctant to answer some questions in front of his parent. No observations or physical examination have yet been obtained. Present how you would assess the patient, include relevant causes outside the abdomen and explain a safe plan to the young person and parent.",
+  "prompts": [
+    "How would you assess immediate stability and recognise features requiring urgent transfer rather than a prolonged clinic work-up?",
+    "Which focused questions and appropriately consented examinations could identify a time-critical cause outside the abdominal cavity, including a possible acute scrotal problem?",
+    "How would you offer confidential discussion, explain why sensitive questions or an examination may be necessary and arrange a chaperone where appropriate?",
+    "How would you avoid premature reassurance from a nonspecific abdominal examination and involve your supervisor without delaying urgent assessment?",
+    "How would you communicate diagnostic uncertainty, arrange handover and document consent, assessment and the agreed disposition?"
+  ],
+  "reflection_rubric": [
+    "Prioritises observations, clinical stability and time-critical causes; recognises that abdominal pain and vomiting can have important extra-abdominal causes.",
+    "Includes testicular torsion as a differential where clinically relevant, without claiming a diagnosis or relying on a reassuring symptom alone to rule it out.",
+    "Uses sensitive, age-appropriate communication, appropriate consent and a chaperone; does not force disclosure or promise confidentiality beyond applicable local rules.",
+    "Obtains supervisor support and urgent specialist/emergency assessment when indicated, rather than delaying referral for routine investigations or repeated reassurance.",
+    "Provides a concise structured handover and documents reasoning, consent and responsibilities; offers non-emergency follow-up only after a safe disposition is established."
+  ],
+  "sourceUrls": [
+    "https://www.medicalboard.gov.au/Registration/International-Medical-Graduates/pesci.aspx",
+    "https://www.rch.org.au/clinicalguide/guideline_index/Abdominal_pain_-_acute/"
+  ],
+  "source_notes": "The reviewed RCH acute abdominal pain guideline lists testicular torsion among important urgent causes and stresses broad assessment and repeated examination. This exercise does not reproduce or replace a specialist acute-scrotum protocol and makes no claim about a safe diagnostic time window."
+}

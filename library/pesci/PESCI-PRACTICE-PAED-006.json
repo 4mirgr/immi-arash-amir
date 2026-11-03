@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "language": "en-AU",
+  "kind": "original-educational-practice",
+  "official_exam_item": false,
+  "review_status": "requires-qualified-clinician-review",
+  "created_at": "2026-11-03",
+  "timing": {
+    "practice_seconds": 600,
+    "official_timing": false
+  },
+  "format_source": "https://www.medicalboard.gov.au/Registration/International-Medical-Graduates/pesci.aspx",
+  "source_retrieved_at": "2026-11-03",
+  "disclaimer": "Original unvalidated discussion exercise based on public safety guidance; not a recalled or official examination item, clinical protocol or validated scoring instrument. Not for patient care. Confirm current local guidance and supervision arrangements.",
+  "id": "PESCI-PRACTICE-PAED-006",
+  "title": "Fever in an older child: reassessment and an achievable safety net",
+  "topic": "paediatrics-uncertainty-and-follow-up",
+  "setting": "A fictional supervised Australian general practice. A professional interpreter can be arranged. The family has limited transport and telephone credit; the clinic must explore a feasible follow-up plan.",
+  "case": "A parent brings a four-year-old child with three days of fever, a runny nose and reduced appetite. The child has been drinking small amounts and is quieter than usual, but is alert and interacts with the parent. No observations or examination have yet been performed. The parent asks whether a fall in temperature after medicine proves the illness is harmless and says it would be difficult to return to the clinic. Present how you would assess the child, manage uncertainty and agree a safe disposition.",
+  "prompts": [
+    "What immediate observations, hydration assessment and red flags would you prioritise before deciding that this is a minor viral illness?",
+    "What focused history and examination would help you look for a source of fever and serious causes, including relevant medical and immunisation history?",
+    "How would you explain why the height of fever or improvement after an antipyretic cannot alone establish the severity or diagnosis?",
+    "If no concerning features are found after assessment, how would you agree an individualised plan with the supervisor and explain when urgent reassessment is needed?",
+    "How would you check understanding, arrange interpreting if needed and address practical barriers so that follow-up and return advice are achievable?"
+  ],
+  "reflection_rubric": [
+    "Assesses appearance, behaviour, observations, hydration and relevant risk factors together; does not diagnose a simple viral illness from a short vignette or temperature response alone.",
+    "Uses a focused history and examination to identify a possible source and features requiring urgent paediatric or emergency review.",
+    "Recognises that a safe non-emergency disposition requires a justified clinical assessment and reassessment when the child changes, not simply the absence of a named diagnosis.",
+    "Explains uncertainty and specific escalation/return advice in understandable language without providing unsupported drug doses or promising that deterioration cannot occur.",
+    "Works with the supervisor and family to make follow-up feasible, uses professional language support where required and documents the assessment and agreed responsibilities."
+  ],
+  "sourceUrls": [
+    "https://www.medicalboard.gov.au/Registration/International-Medical-Graduates/pesci.aspx",
+    "https://www.rch.org.au/clinicalguide/guideline_index/Febrile_child/"
+  ],
+  "source_notes": "Uses the RCH Febrile child page reviewed on 2026-11-03: appearance and behaviour, identifying serious illness, and the limitation of judging severity from fever or antipyretic response. This is an older-child assessment/safety-net discussion, not a declaration that the child is safe for discharge."
+}

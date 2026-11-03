@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "language": "en-AU",
+  "kind": "original-educational-practice",
+  "official_exam_item": false,
+  "review_status": "requires-qualified-clinician-review",
+  "created_at": "2026-11-03",
+  "timing": {
+    "practice_seconds": 600,
+    "official_timing": false
+  },
+  "format_source": "https://www.medicalboard.gov.au/Registration/International-Medical-Graduates/pesci.aspx",
+  "source_retrieved_at": "2026-11-03",
+  "disclaimer": "Original unvalidated discussion exercise based on public safety guidance; not a recalled or official examination item, clinical protocol or validated scoring instrument. Not for patient care. Confirm current local guidance and supervision arrangements.",
+  "id": "PESCI-PRACTICE-DM-008",
+  "title": "New type 2 diabetes: shared priorities and a sustainable care plan",
+  "topic": "chronic-disease-person-centred-care",
+  "setting": "A fictional supervised Australian general practice with access to diabetes education and multidisciplinary referrals. Treatment decisions require the full clinical record and current local guidance.",
+  "case": "A 49-year-old person attends to discuss a recent diagnosis of type 2 diabetes. They feel overwhelmed, work irregular hours, support relatives at home and are unsure what the diagnosis means. A friend has suggested an expensive restrictive diet. The person asks for one plan that will work immediately. They have not yet had a comprehensive diabetes assessment in this practice. Present how you would establish priorities, assess immediate needs and begin a collaborative care plan.",
+  "prompts": [
+    "How would you first check for symptoms requiring urgent assessment and establish what the patient understands and most wants help with?",
+    "What clinical history, medicines, risk factors and baseline complication assessment would you review before selecting an individualised management plan?",
+    "How would you explain the diagnosis and realistic care goals without blame, assumptions about diet or culture, or a promise of immediate cure?",
+    "How would you agree a manageable initial plan, explore affordability and literacy barriers and involve appropriate diabetes, pharmacy or allied-health support?",
+    "How would you check understanding, arrange follow-up and explain which changes or symptoms should prompt earlier medical advice?"
+  ],
+  "reflection_rubric": [
+    "Checks immediate clinical safety before treating the encounter only as routine education; recognises the need for a comprehensive clinical record and assessment.",
+    "Explores the patient's goals, work and family circumstances, understanding, medicines and barriers, and uses person-centred rather than judgemental communication.",
+    "Individualises goals and review priorities, including relevant cardiovascular, renal, eye, foot and other complication risks, without inventing results or giving an unsupported medication regimen.",
+    "Offers achievable education and multidisciplinary support, discusses the practicality of proposed lifestyle changes and avoids endorsing an expensive diet without appropriate evidence and context.",
+    "Uses teach-back or equivalent checking of understanding, documents agreed responsibilities and arranges continuity and a clear follow-up plan."
+  ],
+  "sourceUrls": [
+    "https://www.medicalboard.gov.au/Registration/International-Medical-Graduates/pesci.aspx",
+    "https://www.racgp.org.au/clinical-resources/clinical-guidelines/key-racgp-guidelines/view-all-racgp-guidelines/management-of-type-2-diabetes"
+  ],
+  "source_notes": "Uses the reviewed RACGP type 2 diabetes handbook introduction: care should respond to the person's preferences, needs and values; education and ongoing review are part of care. The handbook contains complication-specific sections, but this station supplies no treatment doses, universal targets or claims that one diet suits everyone."
+}

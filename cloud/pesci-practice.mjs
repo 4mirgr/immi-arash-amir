@@ -3,7 +3,11 @@ import paediatric from '../library/pesci/PESCI-PRACTICE-PAED-002.json' with {typ
 import abdominal from '../library/pesci/PESCI-PRACTICE-ABDO-003.json' with {type:'json'};
 import mentalHealth from '../library/pesci/PESCI-PRACTICE-MH-004.json' with {type:'json'};
 import diabetes from '../library/pesci/PESCI-PRACTICE-DM-005.json' with {type:'json'};
-const CASES=Object.freeze([communication,paediatric,abdominal,mentalHealth,diabetes]);
+import feverSafety from '../library/pesci/PESCI-PRACTICE-PAED-006.json' with {type:'json'};
+import adolescentPain from '../library/pesci/PESCI-PRACTICE-ABDO-007.json' with {type:'json'};
+import diabetesPlanning from '../library/pesci/PESCI-PRACTICE-DM-008.json' with {type:'json'};
+import crisisFollowup from '../library/pesci/PESCI-PRACTICE-MH-009.json' with {type:'json'};
+const CASES=Object.freeze([communication,paediatric,abdominal,mentalHealth,diabetes,feverSafety,adolescentPain,diabetesPlanning,crisisFollowup]);
 const byId=new Map(CASES.map(item=>[item.id,item]));
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const statement=(db,sql,...args)=>db.prepare(sql).bind(...args);
