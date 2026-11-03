@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "language": "en-AU",
+  "kind": "original-educational-practice",
+  "official_exam_item": false,
+  "review_status": "requires-qualified-clinician-review",
+  "created_at": "2026-11-03",
+  "timing": {
+    "practice_seconds": 600,
+    "official_timing": false
+  },
+  "format_source": "https://www.medicalboard.gov.au/Registration/International-Medical-Graduates/pesci.aspx",
+  "source_retrieved_at": "2026-11-03",
+  "disclaimer": "Original unvalidated discussion exercise based on public safety guidance; not a recalled or official examination item, clinical protocol or validated scoring instrument. Not for patient care. Confirm current local guidance and supervision arrangements.",
+  "id": "PESCI-PRACTICE-PAED-002",
+  "title": "Fever and reduced feeding in a young infant",
+  "topic": "paediatrics-and-escalation",
+  "setting": "A fictional supervised Australian general practice, with a supervisor available by the practice escalation process. Paediatric assessment requires transfer from this clinic.",
+  "case": "A parent brings their six-week-old infant to your general practice. The parent reports a measured temperature of 38.4 degrees Celsius, less feeding than usual and fewer wet nappies since last night. The infant is quieter than usual. You have not yet assessed the infant. The parent asks whether they can go home with advice because they have difficulty arranging transport. Present your immediate assessment, escalation and communication plan.",
+  "prompts": [
+    "How would you assess immediate physiological stability and recognise an unwell young infant without delaying help?",
+    "What focused history, observations and examination would you prioritise, including corrected age, feeding, urine output and relevant perinatal history?",
+    "Why does this age group require a lower threshold for urgent paediatric assessment, even if the infant initially appears relatively settled?",
+    "How would you involve your supervisor, arrange an appropriate urgent transfer and address the parent's transport concerns?",
+    "How would you use a professional interpreter if needed, explain uncertainty, confirm understanding and document the handover?"
+  ],
+  "reflection_rubric": [
+    "Prioritises immediate stability, asks for assistance early and recognises that fever in an infant younger than three months cannot be managed as a routine older-child viral illness.",
+    "Uses age, appearance, behaviour, feeding, hydration and observations together; does not use the fever height or response to antipyretics alone to judge severity.",
+    "Considers serious bacterial infection and other urgent causes without claiming a remote diagnosis; arranges urgent paediatric review rather than promising discharge from a limited-resource clinic.",
+    "Works within the approved supervision arrangement and local transfer protocol; does not delay escalation to complete a lengthy investigation checklist.",
+    "Communicates respectfully with the carer, explores language/access barriers, gives a structured transfer handover and documents the plan."
+  ],
+  "sourceUrls": [
+    "https://www.medicalboard.gov.au/Registration/International-Medical-Graduates/pesci.aspx",
+    "https://www.rch.org.au/clinicalguide/guideline_index/Febrile_child/"
+  ],
+  "source_notes": "RCH Febrile child was read on the checked date. This vignette uses the general under-three-month safety principle; hospital age-specific investigation/admission algorithms are not reproduced or substituted by this exercise."
+}

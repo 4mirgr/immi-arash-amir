@@ -100,6 +100,11 @@ export function ProfilePlanning({ profile }) {
           </div>
         )) : <p className="muted">مورد باز دیگری ثبت نشده است.</p>}
       </section>
+      {text(planning.academicContact?.email) && <section>
+        <h3>راه ارتباطی دانشگاهی گزارش‌شده</h3>
+        <p><bdi dir="ltr">{planning.academicContact.email}</bdi></p>
+        <p className="muted">به گزارش شما ثبت شده؛ مالکیت و امکان ارسال/دریافت هنوز بررسی نشده است. می‌تواند برای مکاتبات پژوهشی استفاده شود، اما نمایندگی دانشگاه یا دسترسی API را اثبات نمی‌کند.</p>
+      </section>}
       <p className="muted">
         این بخش فقط اطلاعات ذخیره‌شدهٔ همین پروفایل را نمایش می‌دهد.
         {hasUpdatedDate && <> آخرین به‌روزرسانی: <time dateTime={updatedAt}>{updatedDate.toLocaleDateString("fa-IR")}</time>.</>}

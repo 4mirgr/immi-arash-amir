@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "language": "en-AU",
+  "kind": "original-educational-practice",
+  "official_exam_item": false,
+  "review_status": "requires-qualified-clinician-review",
+  "created_at": "2026-11-03",
+  "timing": {
+    "practice_seconds": 600,
+    "official_timing": false
+  },
+  "format_source": "https://www.medicalboard.gov.au/Registration/International-Medical-Graduates/pesci.aspx",
+  "source_retrieved_at": "2026-11-03",
+  "disclaimer": "Original unvalidated discussion exercise based on public safety guidance; not a recalled or official examination item, clinical protocol or validated scoring instrument. Not for patient care. Confirm current local guidance and supervision arrangements.",
+  "id": "PESCI-PRACTICE-MH-004",
+  "title": "Responding to suicidal thoughts in general practice",
+  "topic": "mental-health-safety-and-communication",
+  "setting": "A fictional supervised Australian general practice with access to the local mental health crisis pathway. All people and circumstances are invented. This exercise discusses suicide risk without describing a method.",
+  "case": "A 34-year-old adult attends with a friend after several weeks of poor sleep and recent major stress. During a private conversation the patient says that life feels unbearable and acknowledges thoughts of suicide. They are unsure whether they can remain safe after leaving the practice. Present how you would assess immediate safety, seek help and communicate a collaborative plan.",
+  "prompts": [
+    "How would you create a calm, respectful conversation and ask directly about suicidal thoughts, current intent, plans, access to means and recent actions?",
+    "What additional information would you seek about mental state, substance use, previous episodes, supports and the person's account of what helps them remain safe?",
+    "How would you keep the person and staff safe while obtaining urgent supervisor and mental health support if immediate safety cannot be established?",
+    "How would you explain confidentiality and its limits, seek consent to involve a support person and manage necessary escalation under local law and policy?",
+    "What would you document and hand over, and how would you arrange follow-up and crisis contacts if a suitably supported non-emergency plan is clinically appropriate?"
+  ],
+  "reflection_rubric": [
+    "Asks direct, non-judgemental questions and takes the person's disclosure seriously; does not assume that asking about suicide creates suicidal thoughts.",
+    "Uses a clinical formulation and the person's circumstances, not an isolated numerical risk score, a reassuring statement or a promise alone, to determine immediate safety needs.",
+    "If danger is immediate or safety cannot be maintained, seeks urgent local emergency/crisis assessment, does not leave the person unsupported, and maintains staff safety.",
+    "Uses empathic, culturally responsive communication, offers language support when needed and discusses appropriate involvement of trusted supports without promising secrecy.",
+    "Documents assessment, consultation, disposition and follow-up responsibilities; recognises that a safety plan and crisis contacts do not replace emergency care when indicated."
+  ],
+  "sourceUrls": [
+    "https://www.medicalboard.gov.au/Registration/International-Medical-Graduates/pesci.aspx",
+    "https://www.healthdirect.gov.au/warning-signs-of-suicide"
+  ],
+  "source_notes": "Healthdirect suicide warning-signs guidance was read: direct asking, staying with the person while help is obtained, emergency response and follow-up. It is public safety information rather than a complete clinician risk-assessment guideline; the station requires qualified clinician review and local mental-health protocols."
+}

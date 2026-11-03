@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "language": "en-AU",
+  "kind": "original-educational-practice",
+  "official_exam_item": false,
+  "review_status": "requires-qualified-clinician-review",
+  "created_at": "2026-11-03",
+  "timing": {
+    "practice_seconds": 600,
+    "official_timing": false
+  },
+  "format_source": "https://www.medicalboard.gov.au/Registration/International-Medical-Graduates/pesci.aspx",
+  "source_retrieved_at": "2026-11-03",
+  "disclaimer": "Original unvalidated discussion exercise based on public safety guidance; not a recalled or official examination item, clinical protocol or validated scoring instrument. Not for patient care. Confirm current local guidance and supervision arrangements.",
+  "id": "PESCI-PRACTICE-DM-005",
+  "title": "Diabetes medication safety and recurrent possible hypoglycaemia",
+  "topic": "diabetes-person-centred-care-and-medication-safety",
+  "setting": "A fictional supervised Australian general practice. You must confirm the medication list, current glucose and local emergency guidance before giving patient-specific treatment.",
+  "case": "A 62-year-old person with type 2 diabetes attends for review. They report recent episodes of sweating, hunger and difficulty concentrating when meals are delayed; the episodes have improved after eating. They take metformin and a sulfonylurea, but are unsure of the tablet names and doses. Their kidney function was recently reported as reduced. They drive for work and ask whether the medicines should simply be increased because their last HbA1c was above target. Present your immediate assessment and a safe, individualised review plan.",
+  "prompts": [
+    "What would you assess immediately, including current symptoms and glucose, and how would you recognise a glycaemic emergency requiring urgent management?",
+    "How would you reconcile medicines, assess meal patterns and renal function, and explore possible hypoglycaemia without assuming all symptoms have the same cause?",
+    "How would you discuss the risks of intensifying treatment before this safety review and seek supervisor/pharmacist/diabetes-team input?",
+    "How would you agree an individualised plan covering self-management education, monitoring, driving/work safety, sick-day questions and follow-up?",
+    "What other complications, cardiovascular/renal risks and barriers to care would you review at a planned comprehensive appointment?"
+  ],
+  "reflection_rubric": [
+    "Assesses current physiological safety and glucose promptly; prioritises urgent treatment/escalation under local guidance if the patient is acutely unwell.",
+    "Recognises sulfonylurea-associated hypoglycaemia risk and the importance of meals, renal function, medicine reconciliation and alternative causes.",
+    "Does not automatically increase medicines solely because of HbA1c or provide unsupported dose changes; individualises goals and reviews risks with appropriate supervision.",
+    "Provides understandable, culturally responsive education and checks understanding of monitoring, recurrence prevention and how to obtain help; addresses driving/work safety using applicable guidance.",
+    "Plans continuity with diabetes, pharmacy and other relevant services, documents decisions, and reviews complications and cardiovascular/renal protection without replacing acute safety assessment."
+  ],
+  "sourceUrls": [
+    "https://www.medicalboard.gov.au/Registration/International-Medical-Graduates/pesci.aspx",
+    "https://www.racgp.org.au/clinical-resources/clinical-guidelines/key-racgp-guidelines/view-all-racgp-guidelines/management-of-type-2-diabetes",
+    "https://www.racgp.org.au/clinical-resources/clinical-guidelines/key-racgp-guidelines/view-all-racgp-guidelines/management-of-type-2-diabetes/managing-glycaemic-emergencies"
+  ],
+  "source_notes": "RACGP handbook introduction and glycaemic emergencies were read. They emphasise person-centred goals, active education and asking insulin/sulfonylurea users about hypoglycaemia. No treatment doses or licensing decisions are supplied by this exercise."
+}

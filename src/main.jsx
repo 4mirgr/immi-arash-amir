@@ -44,10 +44,10 @@ import { useGoogleConnection, GoogleConnection, GoogleInbox } from "./google-too
 import { GoogleSendPanel } from "./google-send-panel";
 import { CalendarDriveTools } from "./calendar-drive-tools";
 import { ProfilePlanning } from "./profile-planning";
-import { LinkedInPanel } from "./linkedin-panel";
+import { LinkedInWorkspace } from "./linkedin-workspace";
+import { PesciPractice } from "./pesci-practice";
 import { JobOpportunitiesPanel } from "./job-opportunities-panel";
 import { ThemeControl } from "./theme-control";
-import { LinkedInInsights } from "./linkedin-insights";
 import { downloadCVPDF } from "./cv-pdf.mjs";
 import { MixedText } from "./mixed-text";
 import { TextSizeControl } from "./text-size-control";
@@ -347,7 +347,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
             : "تعویض نمای آزمایشی · ورود امن هنوز متصل نیست"}
         </div>
         <nav>
-          {nav.filter(([id])=>id!=="study"||person==="amir").map(([id, title, Icon]) => (
+          {nav.filter(([id])=>(id!=="study"||person==="amir")&&(id!=="pesci"||person==="arash")).map(([id, title, Icon]) => (
             <button
               key={id}
               onClick={() => setTab(id)}
@@ -547,7 +547,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                           ],
                           [
                             "تمرین ارائهٔ بالینی",
-                            "یک ایستگاه آموزشی PESCI",
+                            "کتابخانهٔ کیس و خودبازبینی",
                             "pesci",
                           ],
                         ]
@@ -560,7 +560,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                           [
                             "مطالعهٔ مسیر ارزیابی تخصص",
                             "تفکیک ارزیابی کالج از استخدام",
-                            "sources",
+                            "roadmap",
                           ],
                           [
                             "بررسی موقعیت‌های بیمارستانی",
@@ -1016,136 +1016,11 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
           )}
           {tab === "pesci" &&
             (arash ? (
-              <div className="two-col">
-                <section className="panel station">
-                  <div className="section-head">
-                    <div>
-                      <span className="eyebrow">
-                        CLINICAL COMMUNICATION LAB
-                      </span>
-                      <h3>تمرین ارائهٔ بالینی</h3>
-                    </div>
-                    <span className="tag">نمونهٔ آموزشی</span>
-                  </div>
-                  <div className="notice">
-                    این تمرین ساخته‌شده برای آموزش است؛ سؤال رسمی یا بازسازی
-                    تأییدشدهٔ آزمون نیست. زمان قابل تنظیم است.
-                  </div>
-                  <div dir="ltr">
-                    <small>{station.id}</small>
-                    <h2>{station.title}</h2>
-                    <p className="case-text">
-                      {station.prompt ||
-                        station.case ||
-                        station.scenario ||
-                        station.description ||
-                        fallbackStation.case}
-                    </p>
-                  </div>
-                  <div className="form-actions">
-                    <button className="secondary" onClick={speak}>
-                      <Volume2 size={17} /> خواندن انگلیسی
-                    </button>
-                    <select
-                      value={rate}
-                      onChange={(e) => setRate(e.target.value)}
-                      aria-label="سرعت خواندن"
-                    >
-                      <option value="0.8">آهسته · 0.8×</option>
-                      <option value="1">عادی · 1×</option>
-                      <option value="1.2">سریع · 1.2×</option>
-                    </select>
-                    <button
-                      className="text-button"
-                      onClick={() => speechSynthesis.cancel()}
-                    >
-                      توقف صدا
-                    </button>
-                  </div>
-                  <label>یادداشت پاسخ شما</label>
-                  <textarea
-                    rows="8"
-                    placeholder="ارزیابی، مدیریت، ارتباط و برنامهٔ پیگیری…"
-                  />
-                </section>
-                <section className="panel timer-panel">
-                  <Clock size={30} />
-                  <h3>زمان تمرین</h3>
-                  <div className="timer" dir="ltr">
-                    {String(Math.floor(seconds / 60)).padStart(2, "0")}:
-                    {String(seconds % 60).padStart(2, "0")}
-                  </div>
-                  <div className="form-actions">
-                    <button
-                      className="primary"
-                      onClick={() => setRunning(!running)}
-                    >
-                      {running ? <Pause size={17} /> : <Play size={17} />}{" "}
-                      {running ? "مکث" : "شروع تمرین"}
-                    </button>
-                    <button
-                      className="secondary"
-                      onClick={() => {
-                        setSeconds(480);
-                        setRunning(false);
-                      }}
-                    >
-                      <RefreshCw size={16} />
-                    </button>
-                  </div>
-                  <label>مدت تمرین</label>
-                  <select
-                    onChange={(e) => {
-                      setSeconds(Number(e.target.value));
-                      setRunning(false);
-                    }}
-                    defaultValue="480"
-                  >
-                    <option value="300">۵ دقیقه</option>
-                    <option value="480">۸ دقیقه</option>
-                    <option value="600">۱۰ دقیقه</option>
-                  </select>
-                  <p className="muted">
-                    مدت‌های بالا انتخاب تمرینی هستند؛ استاندارد جلسه را از
-                    برگزارکننده بررسی کنید.
-                  </p>
-                  <h3>محورهای خودارزیابی</h3>
-                  {[
-                    "ایمنی بیمار و تشخیص فوریت",
-                    "استدلال بالینی و مدیریت",
-                    "ارتباط با بیمار و تیم",
-                    "ارجاع و انتقال امن",
-                  ].map((x) => (
-                    <label className="checkline" key={x}>
-                      <input type="checkbox" />
-                      {x}
-                    </label>
-                  ))}
-                </section>
-              </div>
+              <PesciPractice person={person} notify={notify}/>
             ) : (
-              <section className="panel">
-                <h3>مسیر تخصص داخلی شما</h3>
-                <p>
-                  استخدام بیمارستانی، ثبت پزشکی و ارزیابی تخصص توسط کالج مراحل
-                  متفاوتی هستند. پذیرش در سال مشخص رزیدنتی را نباید از پیشنهاد
-                  همکاری نتیجه گرفت.
-                </p>
-                <a
-                  className="primary link"
-                  href="https://www.racp.edu.au/overseas-trained-physicians/international-medical-graduates/standard-specialist-assessment-pathway"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  بررسی ارزیابی RACP <ExternalLink size={16} />
-                </a>
-                <p className="muted">
-                  برای شخصی‌سازی این بخش، رزومه، برنامهٔ تخصص و وضعیت بورد شما
-                  باید تکمیل شود.
-                </p>
-              </section>
+              <RoadmapPanel person={person} category="pathways" notify={notify} cloud={cloud}/>
             ))}
-          {tab === "linkedin" && <><LinkedInPanel person={person} notify={notify} /><LinkedInInsights person={person} notify={notify}/></>}
+          {tab === "linkedin" && <LinkedInWorkspace person={person} notify={notify}/> }
           {tab === "roadmap" && <RoadmapPanel key={person+":pathways"} person={person} category="pathways" notify={notify} cloud={cloud} />}
           {tab === "study" && person === "amir" && <RoadmapPanel key={person+":study"} person={person} category="study" notify={notify} cloud={cloud} />}
           {tab === "development" && <RoadmapPanel key={person+":development"} person={person} category="development" notify={notify} cloud={cloud} />}

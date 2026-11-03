@@ -12,6 +12,7 @@ export function analyseProfile(profileId,profile={}){
  const knownFacts=[],unknowns=[],scenarios=[];
  if(typeof profile.cvText==='string'&&profile.cvText.trim())knownFacts.push('رزومهٔ ذخیره‌شدهٔ همین حساب موجود است؛ وجود متن رزومه به معنی تأیید مستقل مدارک نیست.');
  if(profileId==='amir'){
+  if(p.academicContact?.email)knownFacts.push('ایمیل دانشگاهی به گزارش شما ثبت شده؛ مالکیت، دسترسی و اختیار نمایندگی دانشگاه تأیید نشده‌اند.');
   if(training.completionStatus==='uncertain')knownFacts.push('زمان اتمام دوره در پرونده نامشخص ثبت شده؛ هیچ تاریخ برآوردی، فراغت از تحصیل تلقی نشده است.');
   if(Array.isArray(training.completionScenarios))for(const s of training.completionScenarios)if(typeof s.label==='string')knownFacts.push('سناریوی زمان‌بندی ثبت‌شده: '+s.label);
   if(language.levelEvidence==='self_reported'&&typeof language.level==='string')knownFacts.push('سطح زبان '+language.level+' خوداظهاری است، نه نتیجهٔ آزمون.');

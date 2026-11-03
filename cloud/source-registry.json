@@ -248,5 +248,51 @@
     "portalUrl": "https://www.unimi.it/en",
     "evidenceUrl": "https://www.unimi.it/en",
     "allowedHosts": []
+  },
+  {
+    "id": "unsw-pageup-841",
+    "name": "UNSW Sydney medical and health research opportunities",
+    "country": "AU",
+    "state": "NSW",
+    "trust": "official",
+    "profileScope": "both",
+    "executable": true,
+    "configurationStatus": "executable",
+    "verifiedAt": "2026-11-03",
+    "reason": "Official UNSW careers page embeds PageUp tenant 841; public JSON verified (110 listings). Medical/life-science academic title filter; source listing is not a personal eligibility decision.",
+    "portalUrl": "https://external-careers.jobs.unsw.edu.au/cw/en/listing/",
+    "evidenceUrl": "https://external-careers.jobs.unsw.edu.au/cw/en/listing/",
+    "allowedHosts": [
+      "careers.pageuppeople.com"
+    ],
+    "feedUrl": "https://careers.pageuppeople.com/841/cw/en/jobs.json",
+    "adapter": "pageup_university",
+    "tenant": "841",
+    "organizationName": "UNSW Sydney",
+    "organizationDomain": "unsw.edu.au",
+    "opportunityType": "university"
+  },
+  {
+    "id": "griffith-smartrecruiters",
+    "name": "Griffith University health research and scholarships",
+    "country": "AU",
+    "state": "QLD",
+    "trust": "official",
+    "profileScope": "both",
+    "executable": true,
+    "configurationStatus": "executable",
+    "verifiedAt": "2026-11-03",
+    "reason": "Official Griffith search-jobs page embeds SmartRecruiters widget with company_code GriffithUniversity. Public JSON verified (24 listings); health academic/research/scholarship title filter. Feed has no closing dates; status stays unknown. More than 100 upstream listings requires pagination upgrade and fails visibly.",
+    "portalUrl": "https://www.griffith.edu.au/jobs/search-jobs",
+    "evidenceUrl": "https://www.griffith.edu.au/jobs/search-jobs",
+    "allowedHosts": [
+      "api.smartrecruiters.com",
+      "jobs.smartrecruiters.com"
+    ],
+    "feedUrl": "https://api.smartrecruiters.com/v1/companies/GriffithUniversity/postings?limit=100",
+    "adapter": "smartrecruiters_university",
+    "organizationName": "Griffith University",
+    "organizationDomain": "griffith.edu.au",
+    "opportunityType": "university"
   }
 ]

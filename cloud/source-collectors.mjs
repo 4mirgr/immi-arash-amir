@@ -27,7 +27,7 @@ function opportunityType(title,fallback='university'){
  if(/\bfunding\b|\bcontribut[oi]\b/i.test(title))return 'funding';
  return fallback;
 }
-const HEALTH=/medic|biolog|psicolog|psycholog|pharm|farmac|biomed|clinical|health|neuro|epidem|toxicol|oncolog|cardio|rheumat|microbi|immunolog|inflammat/i;
+const HEALTH=/medic|biolog|psicolog|psycholog|pharm|farmac|biomed|clinical|health|neuro|epidem|toxicol|oncolog|cardio|rheumat|microbi|immunolog|inflammat|biomarker|biopolymer|liver|fibrosis|drug|antigen/i;
 function pageup(source,body){
  let data;try{data=JSON.parse(body);}catch{fail('invalid_source_json');}
  if(!Array.isArray(data)||data.length>500||data.some(r=>!r||typeof r!=='object'||Array.isArray(r)))fail('invalid_source_schema');
@@ -39,11 +39,27 @@ function pageup(source,body){
   if(source.adapter==='pageup_medical'){
    const categories=Array.isArray(row.CategoryList)?row.CategoryList:String(row.Categories||'').split(',');
    relevant=categories.some(c=>String(c).trim().toLowerCase()==='medical')&&/\b(general practitioner|medical officer|medical practitioner|registrar|staff specialist|visiting medical specialist|physician|psychiatrist|surgeon|surgical fellow)\b/i.test(title)&&!/\b(veterinar|nurs(?:e|ing)|radiograph|therapist|roster support)\b/i.test(title);
-  }else relevant=HEALTH.test(title+' '+plainJobText(row.Brand))&&/research|lecturer|professor|PhD|scholarship/i.test(title)&&!/\b(nurs(?:e|ing)|midwifery|physiotherap|technical|engagement officer|program manager)\b/i.test(title);
+  }else relevant=HEALTH.test(title+' '+plainJobText(row.Brand))&&/research|lecturer|professor|PhD|scholarship/i.test(title)&&!/\b(nurs(?:e|ing)|midwifery|physiotherap|technical|engagement officer|program manager|project officer|executive assistant|administrative)\b/i.test(title);
   if(!relevant)continue;
   const publishedAt=pageUpDate(row.OpeningDateUtc),closingAt=pageUpDate(row.ClosingDateUtc);
   if((row.OpeningDateUtc&&!publishedAt)||(row.ClosingDateUtc&&!closingAt))fail('invalid_source_date');
-  records.push({externalId:row.Id,title,url:`https://careers.pageuppeople.com/${source.tenant}/cw/en/job/${row.Id}`,organization:source.adapter==='pageup_medical'?plainJobText(row.Brand,300)||source.organizationName:source.organizationName,organizationDomain:source.adapter==='pageup_medical'?'tas.gov.au':'monash.edu',publishedAt,closingAt,summary:plainJobText(row.Summary,2500),fullText:plainJobText(row.Overview,16000),location:plainJobText(row.Locations,500),city:plainJobText(row.SiteSuburb,200),opportunityType:source.adapter==='pageup_medical'?'job':opportunityType(title),kind:/employment register|expression(?:s)? of interest|talent (?:pool|register)/i.test(title)?'employment_register':'vacancy'});
+  records.push({externalId:row.Id,title,url:`https://careers.pageuppeople.com/${source.tenant}/cw/en/job/${row.Id}`,organization:source.adapter==='pageup_medical'?plainJobText(row.Brand,300)||source.organizationName:source.organizationName,organizationDomain:source.organizationDomain||(source.adapter==='pageup_medical'?'tas.gov.au':'monash.edu'),publishedAt,closingAt,summary:plainJobText(row.Summary,2500),fullText:plainJobText(row.Overview,16000),location:plainJobText(row.Locations,500),city:plainJobText(row.SiteSuburb,200),opportunityType:source.adapter==='pageup_medical'?'job':opportunityType(title),kind:/employment register|expression(?:s)? of interest|talent (?:pool|register)/i.test(title)?'employment_register':'vacancy'});
+ }
+ return records;
+}
+function smartrecruiters(source,body){
+ let data;try{data=JSON.parse(body);}catch{fail('invalid_source_json');}
+ if(!data||Array.isArray(data)||!Array.isArray(data.content)||data.content.length>100||!Number.isSafeInteger(data.totalFound)||data.totalFound<0||data.offset!==0)fail('invalid_source_schema');
+ if(data.totalFound!==data.content.length)fail('source_pagination_required');
+ const records=[];
+ for(const row of data.content){
+  if(!row||typeof row!=='object'||typeof row.id!=='string'||!/^\d{1,20}$/.test(row.id)||typeof row.name!=='string'||row.company?.identifier!=='GriffithUniversity')fail('invalid_source_identity');
+  const title=plainJobText(row.name,500);if(!title)fail('invalid_source_identity');
+  if(row.visibility!=='PUBLIC'||String(row.location?.country).toLowerCase()!=='au')continue;
+  if(!HEALTH.test(title)||!/research|lecturer|professor|PhD|scholarship/i.test(title)||/\b(nurs(?:e|ing)|midwifery|physiotherap|technical|executive officer|program manager|project officer|executive assistant|administrative)\b/i.test(title))continue;
+  const published=typeof row.releasedDate==='string'?Date.parse(row.releasedDate):NaN;if(row.releasedDate&&!Number.isFinite(published))fail('invalid_source_date');
+  const state=String(row.location?.region||'').toUpperCase();
+  records.push({externalId:row.id,title,url:'https://jobs.smartrecruiters.com/GriffithUniversity/'+row.id,organization:source.organizationName,organizationDomain:source.organizationDomain,state:['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'].includes(state)?state:'UNKNOWN',publishedAt:Number.isFinite(published)?new Date(published).toISOString():null,closingAt:null,summary:plainJobText([row.department?.label,row.typeOfEmployment?.label].filter(Boolean).join(' · '),1000),location:plainJobText(row.location?.fullLocation,500),city:plainJobText(row.location?.city,200),opportunityType:opportunityType(title)});
  }
  return records;
 }
@@ -65,7 +81,7 @@ async function rss(source,body){
 }
 export async function normalizeSourceRecords(input,body){
  const source=canonicalSource(input);if(typeof body!=='string'||new TextEncoder().encode(body).length>MAX_BYTES)fail('source_response_too_large');
- const records=source.adapter==='bologna_rss'?await rss(source,body):pageup(source,body);
+ const records=source.adapter==='bologna_rss'?await rss(source,body):source.adapter==='smartrecruiters_university'?smartrecruiters(source,body):pageup(source,body);
  for(const row of records)validateSourceUrl(row.url,source);
  return records;
 }

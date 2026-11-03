@@ -4,6 +4,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {SOURCE_REGISTRY,normalizeSourceRecords,validateSourceUrl,collectRegisteredSources,handleRegisteredSourcesRequest,registeredSourceStatuses} from '../cloud/source-collectors.mjs';
 const source=id=>SOURCE_REGISTRY.find(s=>s.id===id);
+const smartrow=(id='744000000000001',extra={})=>({id,name:'PhD Scholarship in liver fibrosis biomarkers',company:{identifier:'GriffithUniversity'},visibility:'PUBLIC',releasedDate:'2026-11-03T06:00:00.000Z',location:{country:'au',region:'QLD',city:'Nathan',fullLocation:'Nathan, QLD, Australia'},department:{label:'Health'},...extra});
+const smartbody=(rows=[smartrow()])=>JSON.stringify({offset:0,limit:100,totalFound:rows.length,content:rows});
 const pageup=(id='1',extra={})=>({Id:id,Title:'Medical Registrar - Internal Medicine',CategoryList:['Medical'],Brand:'Synthetic Hospital',OpeningDateUtc:'/Date(1793491200000)/',ClosingDateUtc:'/Date(4102444800000)/',...extra});
 function fixture(){
  const db=new DatabaseSync(':memory:');for(const file of ['opportunity-v2-schema.sql','source-registry-schema.sql'])db.exec(readFileSync(new URL('../cloud/'+file,import.meta.url),'utf8'));
@@ -11,11 +13,11 @@ function fixture(){
  return {db,env:{OPPORTUNITY_DB:{prepare,async batch(items){db.exec('BEGIN');try{for(const item of items)item._run();db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}}}}};
 }
 const rss=(url='https://bandi.unibo.it/call/synthetic',extra='')=>`<?xml version="1.0"?><rss><channel><item><title>Borsa di studio in medicina</title><link>${url}</link><guid>${url}</guid><pubDate>Tue, 03 Nov 2026 10:00:00 +0100</pubDate><description>Fictional fixture only.</description>${extra}</item></channel></rss>`;
-function fetchFixture(log=[]){return async(url,options)=>{log.push({url,options});if(url.includes('bandi.unibo'))return new Response(rss(),{headers:{etag:'"rss"'}});return new Response(JSON.stringify([url.includes('/513/')?pageup('2',{Title:'Research Fellow (Inflammation and Immunology)',Brand:'Faculty of Medicine'}):pageup()]),{headers:{etag:'"json"'}});};}
+function fetchFixture(log=[]){return async(url,options)=>{log.push({url,options});if(url.includes('api.smartrecruiters.com'))return new Response(smartbody(),{headers:{etag:'"smart"'}});if(url.includes('bandi.unibo'))return new Response(rss(),{headers:{etag:'"rss"'}});return new Response(JSON.stringify([(/\/(513|841)\//.test(url))?pageup('2',{Title:'Research Fellow (Inflammation and Immunology)',Brand:'Faculty of Medicine'}):pageup()]),{headers:{etag:'"json"'}});};}
 
 test('registry covers all Australian jurisdictions honestly and Italy only Amir',()=>{
  assert.deepEqual([...new Set(SOURCE_REGISTRY.filter(s=>s.country==='AU'&&s.state!=='UNKNOWN').map(s=>s.state))].sort(),['ACT','NSW','NT','QLD','SA','TAS','VIC','WA']);
- assert.equal(SOURCE_REGISTRY.filter(s=>s.executable).length,4);
+ assert.equal(SOURCE_REGISTRY.filter(s=>s.executable).length,6);
  assert(SOURCE_REGISTRY.filter(s=>s.country==='IT').every(s=>s.profileScope==='amir'));
  assert(SOURCE_REGISTRY.filter(s=>!s.executable).every(s=>s.reason&&s.configurationStatus!=='executable'));
 });
@@ -41,12 +43,12 @@ test('bounded three-source rotation, storage scope, and conditional ETags work',
  const {db,env}=fixture(),log=[];
  let receipt=await collectRegisteredSources(env,fetchFixture(log));assert.equal(log.length,3);assert.equal(receipt.sources.length,3);assert(receipt.imported<=100);
  assert(log.every(v=>v.options.redirect==='manual'&&v.options.signal));
- await collectRegisteredSources(env,fetchFixture(log));assert.equal(log.length,4,'remaining fourth source next invocation; earlier sources cool down');
+ await collectRegisteredSources(env,fetchFixture(log));assert.equal(log.length,6,'next invocation visits remaining three sources');
  const it=JSON.parse(db.prepare("SELECT data FROM opportunity_editions WHERE country='IT' LIMIT 1").get().data);assert.equal(it.profileScope,'amir');assert.equal(it.status,'unknown');
  db.exec('UPDATE registered_source_checks SET next_check_at=0');
  const conditional=[];await collectRegisteredSources(env,async(url,options)=>{conditional.push(options);return new Response(null,{status:304});});
  assert(conditional.every(o=>o.headers['If-None-Match']));
- assert.equal(db.prepare('SELECT count(*) n FROM opportunity_editions').get().n,4);
+ assert.equal(db.prepare('SELECT count(*) n FROM opportunity_editions').get().n,6);
 });
 test('source errors preserve previous snapshot and use cooldown',async()=>{
  const {db,env}=fixture();await collectRegisteredSources(env,fetchFixture());const before=db.prepare('SELECT count(*) n FROM opportunity_editions').get().n;
@@ -86,4 +88,16 @@ test('Arash refresh totals and errors cover visible sources only',async()=>{
 test('registered collectors use a Workers-supported redirect mode and never follow an unregistered target',async()=>{
  const {env,db}=fixture(),log=[],base=fetchFixture(log);const result=await collectRegisteredSources(env,async(url,options)=>{if(options.redirect==='error')throw new TypeError('Unsupported Workers redirect mode');assert.equal(options.redirect,'manual');return base(url,options);});assert(result.imported>0);assert(log.length>0);
  const before=db.prepare('SELECT count(*) n FROM opportunity_editions').get().n;db.prepare('UPDATE registered_source_checks SET next_check_at=0').run();let calls=0;const redirected=await collectRegisteredSources(env,async(url,options)=>{if(options.redirect==='error')throw new TypeError('Unsupported Workers redirect mode');assert.equal(options.redirect,'manual');calls++;return new Response(null,{status:302,headers:{Location:'https://unregistered.invalid/feed'}});});assert(calls>0&&calls<=3);assert(redirected.sources.every(s=>s.error==='source_redirect_rejected'));assert.equal(db.prepare('SELECT count(*) n FROM opportunity_editions').get().n,before);
+});
+
+
+test('NSW university uses its own publisher domain and excludes research administration titles',async()=>{
+ const rows=await normalizeSourceRecords(source('unsw-pageup-841'),JSON.stringify([pageup('81',{Title:'Research Fellow in Clinical Medicine',Brand:'Medicine & Health'}),pageup('82',{Title:'EA & Project Officer - Cancer Research Centre',Brand:'Medicine & Health'})]));assert.equal(rows.length,1);assert.equal(rows[0].organizationDomain,'unsw.edu.au');assert.equal(rows[0].organization,'UNSW Sydney');assert.equal(rows[0].opportunityType,'university');assert.match(rows[0].url,/\/841\//);
+});
+test('Griffith public academic feed keeps unknown deadlines, scholarship type and fixed record URLs',async()=>{
+ const rows=await normalizeSourceRecords(source('griffith-smartrecruiters'),smartbody([smartrow(),smartrow('744000000000002',{name:'Executive Officer - Digital Health'}),smartrow('744000000000003',{name:'Research Fellow in Medicine',visibility:'PRIVATE'}),smartrow('744000000000004',{name:'Research Fellow in Medicine',location:{country:'nz',region:'NZ'}})]));assert.equal(rows.length,1);assert.equal(rows[0].opportunityType,'scholarship');assert.equal(rows[0].closingAt,null);assert.equal(rows[0].state,'QLD');assert.equal(rows[0].organizationDomain,'griffith.edu.au');assert.equal(rows[0].url,'https://jobs.smartrecruiters.com/GriffithUniversity/744000000000001');
+});
+test('Griffith rejects foreign company rows, malformed identities and incomplete upstream pages',async()=>{
+ for(const rows of [[smartrow('bad')],[smartrow('744000000000001',{company:{identifier:'ForeignUniversity'}})]])await assert.rejects(()=>normalizeSourceRecords(source('griffith-smartrecruiters'),smartbody(rows)));
+ const incomplete=JSON.parse(smartbody());incomplete.totalFound=101;await assert.rejects(()=>normalizeSourceRecords(source('griffith-smartrecruiters'),JSON.stringify(incomplete)),/source_pagination_required/);
 });

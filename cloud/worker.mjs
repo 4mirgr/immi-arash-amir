@@ -11,6 +11,8 @@ import {handleRoadmapRequest} from './roadmap.mjs';
 import {watchEvidenceSources} from './evidence-watch.mjs';
 import {googleAccountContext} from './google-account-scope.mjs';
 import {handleLinkedInInsightsRequest} from './linkedin-insights.mjs';
+import {handleNetworkTargetsRequest} from './network-targets.mjs';
+import {handlePesciPracticeRequest} from './pesci-practice.mjs';
 import educationalCase from '../library/pesci/PESCI-PRACTICE-COMM-001.json' with { type: 'json' };
 
 const DEFAULT_SETTINGS = { emailPolicy: 'auto_after_connection', defaultTemplate: '', notifications: false };
@@ -67,6 +69,7 @@ export function createHandler(fetcher = fetch) {
       if (!['arash','amir'].includes(profileId)) throw new ApiError(403, 'Account has not been provisioned for this workspace');
       const requestedProfile = url.searchParams.get('profile');
       if (requestedProfile && requestedProfile !== profileId) throw new ApiError(403, 'Profile access denied');
+      if(url.pathname==='/api/pesci/practice'||url.pathname.startsWith('/api/pesci/practice/'))return await handlePesciPracticeRequest(request,env,{userId:user.id,profileId});
       if(url.pathname==='/api/roadmap'||url.pathname==='/api/roadmap/actions'){
         return await handleRoadmapRequest(request,env,{userId:user.id,profileId,rest});
       }
@@ -78,7 +81,7 @@ export function createHandler(fetcher = fetch) {
         throw new ApiError(404,'Not found');
       }
       if(url.pathname.startsWith('/api/linkedin/')){
-        for(const handler of [handleLinkedInInsightsRequest,handleLinkedInOAuthRequest,handleLinkedInRequest]){
+        for(const handler of [handleNetworkTargetsRequest,handleLinkedInInsightsRequest,handleLinkedInOAuthRequest,handleLinkedInRequest]){
           const response=await handler(request,env,{userId:user.id,profileId,rest},fetcher);
           if(response)return response;
         }

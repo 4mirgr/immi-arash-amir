@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "language": "en-AU",
+  "kind": "original-educational-practice",
+  "official_exam_item": false,
+  "review_status": "requires-qualified-clinician-review",
+  "created_at": "2026-11-03",
+  "timing": {
+    "practice_seconds": 600,
+    "official_timing": false
+  },
+  "format_source": "https://www.medicalboard.gov.au/Registration/International-Medical-Graduates/pesci.aspx",
+  "source_retrieved_at": "2026-11-03",
+  "disclaimer": "Original unvalidated discussion exercise based on public safety guidance; not a recalled or official examination item, clinical protocol or validated scoring instrument. Not for patient care. Confirm current local guidance and supervision arrangements.",
+  "id": "PESCI-PRACTICE-ABDO-003",
+  "title": "Acute lower abdominal pain in an adolescent",
+  "topic": "acute-abdominal-pain-and-adolescent-care",
+  "setting": "A fictional supervised Australian general practice. Urgent emergency and surgical/gynaecological assessment can be arranged through local services.",
+  "case": "A 16-year-old girl presents with twelve hours of worsening lower abdominal pain and vomiting. She now finds walking uncomfortable. Her parent is answering most questions. You have not yet obtained observations or a confidential history. Present your assessment and management priorities, including how you would decide whether urgent transfer is needed.",
+  "prompts": [
+    "What immediate red flags and observations would you assess before a detailed history?",
+    "How would you obtain a focused abdominal, urinary, menstrual and, where relevant, sexual history respectfully and with appropriate confidential time?",
+    "Which time-critical causes must be considered, including surgical and gynaecological causes, without assuming the diagnosis?",
+    "How would you seek supervisor support, reassess the patient, provide appropriate comfort measures within local guidance and arrange escalation?",
+    "How would you explain consent and confidentiality limits, involve the young person in decisions, communicate with the carer appropriately and safety-net any non-emergency plan?"
+  ],
+  "reflection_rubric": [
+    "Checks stability, hydration and red flags promptly; recognises that a potentially time-critical surgical or gynaecological presentation requires urgent assessment.",
+    "Considers appendicitis and torsion, and pregnancy-related emergencies when relevant, using sensitive history and appropriate consent rather than assumptions.",
+    "Recognises the value of repeated examination and appropriate analgesia; does not withhold comfort solely to preserve examination signs or delay urgent referral for routine tests.",
+    "Offers confidential discussion and a chaperone as appropriate, works within applicable adolescent consent/confidentiality rules, and does not promise absolute confidentiality.",
+    "Escalates through the supervisor/local emergency pathway, documents reasoning and provides explicit follow-up/return precautions only when a safe non-emergency disposition is justified."
+  ],
+  "sourceUrls": [
+    "https://www.medicalboard.gov.au/Registration/International-Medical-Graduates/pesci.aspx",
+    "https://www.rch.org.au/clinicalguide/guideline_index/Abdominal_pain_-_acute/"
+  ],
+  "source_notes": "RCH acute abdominal pain guidance was read: repeated assessment, directed investigations, appropriate analgesia and urgent causes are central. This is an adolescent exercise, not an adult algorithm or instruction to perform examinations outside competence."
+}
