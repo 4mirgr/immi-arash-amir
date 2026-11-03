@@ -2,7 +2,10 @@ import { getGoogleAccess } from './google-oauth.mjs';
 import { createDocx } from './docx.mjs';
 import { getOwnedMailReplyContext } from './google-mail.mjs';
 
-const LIMIT = 20, MAX_MIME = 750000;
+const LIMIT = 20, MAX_MIME = 1400000, MAX_DRIVE_BYTES=1000000;
+const DRIVE='https://www.googleapis.com/drive/v3/files/';
+const DRIVE_SCOPE='https://www.googleapis.com/auth/drive.file';
+const DRIVE_TYPES=new Map([['application/pdf','pdf'],['application/vnd.openxmlformats-officedocument.wordprocessingml.document','docx'],['text/plain','txt']]);
 const encoder = new TextEncoder();
 const EMAIL = /^[^\s@<>;,"\\]+@[^\s@<>;,"\\]+\.[^\s@<>;,"\\]+$/;
 const CLINIC = /^cl_[a-f0-9]{20}$/;
@@ -15,12 +18,39 @@ function b64(bytes){let text='';for(let offset=0;offset<bytes.length;offset+=819
 const utf8b64=value=>b64(encoder.encode(value));
 const lines=value=>value.match(/.{1,76}/g)?.join('\r\n')||'';
 async function hash(value){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(value))),v=>v.toString(16).padStart(2,'0')).join('');}
+async function digestBytes(value){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',value)),v=>v.toString(16).padStart(2,'0')).join('');}
+async function queueKey(env){try{const raw=Uint8Array.from(atob(env.GOOGLE_TOKEN_KEY),c=>c.charCodeAt(0));if(raw.length!==32)throw Error();return await crypto.subtle.importKey('raw',raw,{name:'AES-GCM'},false,['encrypt','decrypt']);}catch{throw new SendError(503,'queue_encryption_not_configured');}}
+async function protectDriveMime(env,owner,raw){const iv=crypto.getRandomValues(new Uint8Array(12)),cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:encoder.encode('drive-mime:'+owner)},await queueKey(env),encoder.encode(raw));return 'drive-v1.'+b64(iv)+'.'+b64(new Uint8Array(cipher));}
+async function readQueuedMime(env,owner,value){if(!value.startsWith('drive-v1.'))return value;const parts=value.split('.');if(parts.length!==3)throw new SendError(409,'attachment_integrity_failed');try{const iv=Uint8Array.from(atob(parts[1]),c=>c.charCodeAt(0)),cipher=Uint8Array.from(atob(parts[2]),c=>c.charCodeAt(0));if(iv.length!==12)throw Error();return new TextDecoder('utf-8',{fatal:true}).decode(await crypto.subtle.decrypt({name:'AES-GCM',iv,additionalData:encoder.encode('drive-mime:'+owner)},await queueKey(env),cipher));}catch{throw new SendError(409,'attachment_integrity_failed');}}
+async function driveBytes(response,max){if(Number(response.headers.get('content-length')||0)>max)throw new SendError(413,'drive_attachment_too_large');if(!response.body)throw new SendError(502,'drive_attachment_invalid_response');const reader=response.body.getReader(),chunks=[];let length=0;for(;;){const {value,done}=await reader.read();if(done)break;length+=value.length;if(length>max){await reader.cancel();throw new SendError(413,'drive_attachment_too_large');}chunks.push(value);}const bytes=new Uint8Array(length);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}return bytes;}
+async function driveResponse(fetcher,url,account){let response;try{response=await fetcher(url,{headers:{Authorization:'Bearer '+account.accessToken},redirect:'manual',signal:AbortSignal.timeout(15000)});}catch{throw new SendError(502,'drive_attachment_unavailable');}if(response.redirected||response.status>=300&&response.status<400){await response.body?.cancel();throw new SendError(502,'drive_attachment_redirect_rejected');}if(response.status===404)throw new SendError(404,'drive_attachment_not_found');if(response.status===401||response.status===403)throw new SendError(403,'drive_attachment_permission_required');if(!response.ok)throw new SendError(502,'drive_attachment_unavailable');return response;}
+async function driveAttachment(env,context,payload,account,fetcher){
+ if(context.mailbox==='secondary'||context.userId.endsWith(':secondary'))throw new SendError(403,'drive_attachment_primary_only');
+ if(typeof payload.driveFileId!=='string'||!/^[-_A-Za-z0-9]{1,200}$/.test(payload.driveFileId))throw new SendError(400,'invalid_drive_selection');
+ if(!account.scopes?.includes(DRIVE_SCOPE))throw new SendError(403,'drive_attachment_permission_required');
+ const url=DRIVE+encodeURIComponent(payload.driveFileId),fields='id,name,mimeType,size,trashed,capabilities(canDownload)';
+ const metaResponse=await driveResponse(fetcher,url+'?fields='+encodeURIComponent(fields),account);let metadata;try{metadata=JSON.parse(new TextDecoder().decode(await driveBytes(metaResponse,65536)));}catch(e){if(e instanceof SendError)throw e;throw new SendError(502,'drive_attachment_invalid_response');}
+ const size=Number(metadata.size),extension=DRIVE_TYPES.get(metadata.mimeType);
+ if(metadata.id!==payload.driveFileId||metadata.trashed===true||metadata.capabilities?.canDownload===false)throw new SendError(403,'drive_attachment_permission_required');
+ if(!extension||typeof metadata.name!=='string'||!Number.isSafeInteger(size)||size<1)throw new SendError(400,'drive_attachment_type_not_supported');
+ if(size>MAX_DRIVE_BYTES)throw new SendError(413,'drive_attachment_too_large');
+ const bytes=await driveBytes(await driveResponse(fetcher,url+'?alt=media',account),MAX_DRIVE_BYTES);
+ if(bytes.length!==size)throw new SendError(409,'drive_attachment_changed_review_required');
+ if(extension==='pdf'&&new TextDecoder().decode(bytes.subarray(0,5))!=='%PDF-'||extension==='docx'&&!(bytes[0]===80&&bytes[1]===75&&bytes[2]===3&&bytes[3]===4))throw new SendError(400,'drive_attachment_invalid_content');
+ if(extension==='txt'){try{if(new TextDecoder('utf-8',{fatal:true}).decode(bytes).includes('\0'))throw Error();}catch{throw new SendError(400,'drive_attachment_invalid_content');}}
+ const base=metadata.name.replace(/\.(pdf|docx|txt)$/i,'').replace(/[^a-zA-Z0-9._-]/g,'_').replace(/^_+|_+$/g,'').slice(0,100)||'document',name=base+'.'+extension;
+ const hashValue=await hash(JSON.stringify({name,mimeType:metadata.mimeType,digest:await digestBytes(bytes)}));
+ if(payload.driveAttachmentHash!==undefined&&(typeof payload.driveAttachmentHash!=='string'||payload.driveAttachmentHash!==hashValue))throw new SendError(409,'drive_attachment_changed_review_required');
+ const current=await getGoogleAccess(env,context.userId,fetcher);if(current.subject!==account.subject||current.email.toLowerCase()!==account.email.toLowerCase())throw new SendError(409,'drive_attachment_account_changed');
+ return {name,mimeType:metadata.mimeType,bytes,hash:hashValue,size:bytes.length,source:'google_drive'};
+}
 function validText(value,limit){return typeof value==='string'&&value.trim()&&value.length<=limit;}
 async function body(request){if(Number(request.headers.get('Content-Length')||0)>100000)throw new SendError(413,'payload_too_large');let value;const raw=await request.text();if(encoder.encode(raw).length>100000)throw new SendError(413,'payload_too_large');try{value=JSON.parse(raw);}catch{throw new SendError(400,'invalid_payload');}if(!value||Array.isArray(value)||typeof value!=='object')throw new SendError(400,'invalid_payload');return value;}
 function dbFor(env){if(!env.GOOGLE_DB)throw new SendError(503,'google_storage_not_configured');return env.GOOGLE_DB;}
 function stmt(db,sql,...args){return db.prepare(sql).bind(...args);}
 async function all(db,sql,...args){return (await stmt(db,sql,...args).all()).results||[];}
 function publicItem(row){return {id:row.id,recipient:row.recipient,sender:row.google_email,subject:row.subject,status:row.status,createdAt:row.created_at,attemptedAt:row.attempted_at||null,gmailMessageId:row.gmail_message_id||null,cvVersionId:row.cv_version_id||null,attachmentName:row.attachment_name||null,replyThreadId:row.reply_thread_id||null};}
+function rootOwner(context){return context.rootUserId||context.userId;}
 function validateContext(context){if(!context?.userId||!['arash','amir'].includes(context.profileId)||typeof context.rest!=='function')throw new SendError(403,'workspace_required');}
 async function access(env,userId,fetcher){const value=await getGoogleAccess(env,userId,fetcher);if(!mailbox(value.email)||!value.subject||!value.scopes?.includes('https://www.googleapis.com/auth/gmail.send'))throw new SendError(403,'gmail_send_consent_required');return value;}
 function encodedSubject(subject){
@@ -33,11 +63,13 @@ function mime({sender,recipient,subject,text,attachment,messageId,reply}){
   if(reply)headers.push(`In-Reply-To: ${reply.rfcMessageId}`,`References: ${reply.rfcMessageId}`);
   if(!attachment)return [...headers,'Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: base64','',lines(utf8b64(text)),''].join('\r\n');
   const boundary='immi_'+messageId.replaceAll('-','');
-  return [...headers,`Content-Type: multipart/mixed; boundary="${boundary}"`,'',`--${boundary}`,'Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: base64','',lines(utf8b64(text)),`--${boundary}`,'Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document',`Content-Disposition: attachment; filename="${attachment.name}"`,'Content-Transfer-Encoding: base64','',lines(b64(attachment.bytes)),`--${boundary}--`,''].join('\r\n');
+  return [...headers,`Content-Type: multipart/mixed; boundary="${boundary}"`,'',`--${boundary}`,'Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: base64','',lines(utf8b64(text)),`--${boundary}`,`Content-Type: ${attachment.mimeType||'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}`,`Content-Disposition: attachment; filename="${attachment.name}"`,'Content-Transfer-Encoding: base64','',lines(b64(attachment.bytes)),`--${boundary}--`,''].join('\r\n');
 }
 async function prepare(env,context,payload,fetcher){
-  const allowed=['clinicIds','presetId','subject','body','cvVersionId','replyContext'];
+  const allowed=['clinicIds','presetId','subject','body','cvVersionId','replyContext','driveFileId','driveAttachmentHash'];
   if(Object.keys(payload).some(key=>!allowed.includes(key)))throw new SendError(400,'unexpected_queue_field');
+  if(payload.cvVersionId&&payload.driveFileId)throw new SendError(400,'select_one_attachment');
+  if(payload.driveAttachmentHash!==undefined&&!payload.driveFileId)throw new SendError(400,'invalid_drive_selection');
   const replying=payload.replyContext!==undefined;
   if(replying){
     if(!payload.replyContext||typeof payload.replyContext!=='object'||Array.isArray(payload.replyContext)||Object.keys(payload.replyContext).some(key=>!['messageId','threadId','to'].includes(key))||payload.clinicIds!==undefined||payload.presetId!==undefined)throw new SendError(400,'invalid_reply_context');
@@ -70,6 +102,7 @@ async function prepare(env,context,payload,fetcher){
     if(!rows[0]||typeof rows[0].text!=='string'||rows[0].text.length>200000)throw new SendError(404,'cv_not_found');
     cvHash=await hash(rows[0].text);attachment={name:`cv-${context.profileId}-v${Number(rows[0].version)||1}.docx`,bytes:createDocx(rows[0].text)};
   }
+  if(payload.driveFileId){attachment=await driveAttachment(env,context,payload,account,fetcher);cvHash='drive:'+attachment.hash;}
   let clinics;
   if(reply)clinics=[{id:reply.messageId,data:{email:reply.to}}];
   else{
@@ -77,10 +110,13 @@ async function prepare(env,context,payload,fetcher){
     clinics=await context.rest('immi_clinics','?select=id,data&id=in.('+ids.join(',')+')');
     if(clinics.length!==ids.length)throw new SendError(400,'unknown_clinic');
   }
+  const candidates=[...new Set(clinics.map(clinic=>mailbox(clinic.data.email)).filter(Boolean))];
+  const rootSuppressed=new Set((await all(db,'SELECT email FROM mail_automation_suppressions WHERE owner_id=? AND email IN (SELECT value FROM json_each(?))',rootOwner(context),JSON.stringify(candidates))).map(row=>row.email));
   const recipients=new Map(),excluded=[];
   for(const clinic of clinics){
     const email=mailbox(clinic.data.email);
     if(!email){excluded.push({clinicId:clinic.id,reason:'missing_or_invalid_email'});continue;}
+    if(rootSuppressed.has(email)){excluded.push({clinicId:clinic.id,reason:'suppressed'});continue;}
     if(await stmt(db,'SELECT email FROM google_send_suppressions WHERE owner_id=? AND email=?',context.userId,email).first()){excluded.push({clinicId:clinic.id,reason:'suppressed'});continue;}
     if(recipients.has(email))continue;
     const fingerprint=await hash(JSON.stringify({subject,body:text,recipient:email,cvHash,googleSubject:account.subject,googleEmail:account.email.toLowerCase(),...(reply?{reply:{messageId:reply.messageId,threadId:reply.threadId,rfcMessageId:reply.rfcMessageId}}:{})}));
@@ -92,17 +128,19 @@ async function prepare(env,context,payload,fetcher){
   }
   const createdDay=now().slice(0,10);
   const reserved=Number((await stmt(db,'SELECT count(*) AS n FROM google_send_queue WHERE owner_id=? AND created_day=?',context.userId,createdDay).first()).n);
-  return {account,recipients:[...recipients.values()],excluded,createdDay,reserved};
+  return {account,recipients:[...recipients.values()],excluded,createdDay,reserved,attachment:attachment?.source==='google_drive'?{name:attachment.name,mimeType:attachment.mimeType,size:attachment.size,hash:attachment.hash,source:attachment.source}:null};
 }
-function preview(data){return {sender:data.account.email,recipients:data.recipients.map(item=>({recipient:item.email,subject:item.subject,existingId:item.existing?.id||null,status:item.existing?.status||'preview',cvVersionId:item.cvVersionId,attachmentName:item.attachmentName,replyThreadId:item.replyThreadId})),excluded:data.excluded,dailyLimit:LIMIT,reservedToday:data.reserved,newCount:data.recipients.filter(item=>!item.existing).length,quotaTimezone:'UTC',sendingAutomatic:false};}
+function preview(data){return {attachment:data.attachment,sender:data.account.email,recipients:data.recipients.map(item=>({recipient:item.email,subject:item.subject,existingId:item.existing?.id||null,status:item.existing?.status||'preview',cvVersionId:item.cvVersionId,attachmentName:item.attachmentName,replyThreadId:item.replyThreadId})),excluded:data.excluded,dailyLimit:LIMIT,reservedToday:data.reserved,newCount:data.recipients.filter(item=>!item.existing).length,quotaTimezone:'UTC',sendingAutomatic:false};}
 async function enqueue(env,context,payload,fetcher){
+  if(payload.driveFileId&&(typeof payload.driveAttachmentHash!=='string'||!/^([a-f0-9]{64})$/.test(payload.driveAttachmentHash)))throw new SendError(400,'drive_attachment_review_required');
   const db=dbFor(env),data=await prepare(env,context,payload,fetcher),items=[],excluded=[...data.excluded];
   for(const item of data.recipients){
     if(item.existing){items.push({...publicItem(item.existing),reused:true});continue;}
     // Each conditional insert reserves one daily slot atomically, including concurrent requests.
+    const storedMime=data.attachment?await protectDriveMime(env,context.userId,item.raw):item.raw;
     const inserted=await stmt(db,`INSERT INTO google_send_queue(id,owner_id,profile_id,google_subject,google_email,fingerprint,recipient,subject,raw_mime,cv_version_id,attachment_name,reply_thread_id,status,created_at,created_day)
       SELECT ?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,? WHERE (SELECT count(*) FROM google_send_queue WHERE owner_id=? AND created_day=?)<?
-      ON CONFLICT(owner_id,fingerprint) DO NOTHING RETURNING *`,item.id,context.userId,context.profileId,data.account.subject,data.account.email.toLowerCase(),item.fingerprint,item.email,item.subject,item.raw,item.cvVersionId,item.attachmentName,item.replyThreadId,now(),data.createdDay,context.userId,data.createdDay,LIMIT).first();
+      ON CONFLICT(owner_id,fingerprint) DO NOTHING RETURNING *`,item.id,context.userId,context.profileId,data.account.subject,data.account.email.toLowerCase(),item.fingerprint,item.email,item.subject,storedMime,item.cvVersionId,item.attachmentName,item.replyThreadId,now(),data.createdDay,context.userId,data.createdDay,LIMIT).first();
     const row=inserted||await stmt(db,'SELECT * FROM google_send_queue WHERE owner_id=? AND fingerprint=?',context.userId,item.fingerprint).first();
     if(row)items.push({...publicItem(row),reused:!inserted});else excluded.push({recipient:item.email,reason:'daily_quota_reached'});
   }
@@ -118,14 +156,16 @@ async function dispatch(env,context,payload,fetcher){
     try{account=await access(env,context.userId,fetcher);}catch{results.push({id:row.id,status:'blocked_google_connection'});continue;}
     if(row.google_subject!==account.subject||row.google_email!==account.email.toLowerCase()){results.push({id:row.id,status:'blocked_account_changed'});continue;}
     if(row.status!=='queued'){results.push(publicItem(row));continue;}
+    let rawMime;try{rawMime=await readQueuedMime(env,context.userId,row.raw_mime);}catch{await stmt(db,"UPDATE google_send_queue SET status='failed' WHERE owner_id=? AND id=? AND status='queued'",context.userId,row.id).run();results.push({id:row.id,status:'failed',reason:'attachment_integrity_failed'});continue;}
     const day=now().slice(0,10),attempted=now();
     const claim=await stmt(db,`UPDATE google_send_queue SET status='sending',attempted_at=?,attempt_day=? WHERE id=? AND owner_id=? AND status='queued' AND google_subject=?
       AND NOT EXISTS(SELECT 1 FROM google_send_suppressions WHERE owner_id=? AND email=google_send_queue.recipient)
-      AND (SELECT count(*) FROM google_send_queue WHERE owner_id=? AND attempt_day=?)<? RETURNING *`,attempted,day,row.id,context.userId,account.subject,context.userId,context.userId,day,LIMIT).first();
+      AND NOT EXISTS(SELECT 1 FROM mail_automation_suppressions WHERE owner_id=? AND email=google_send_queue.recipient)
+      AND (SELECT count(*) FROM google_send_queue WHERE owner_id=? AND attempt_day=?)<? RETURNING *`,attempted,day,row.id,context.userId,account.subject,context.userId,rootOwner(context),context.userId,day,LIMIT).first();
     if(!claim){results.push({id:row.id,status:'not_claimed',reason:'suppressed_quota_or_concurrent_claim'});continue;}
     let final='delivery_unknown',messageId=null;
     try{
-      const response=await fetcher('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{method:'POST',headers:{Authorization:'Bearer '+account.accessToken,'Content-Type':'application/json'},body:JSON.stringify({raw:utf8b64(claim.raw_mime).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,''),...(claim.reply_thread_id?{threadId:claim.reply_thread_id}:{})}),signal:AbortSignal.timeout(20000)});
+      const response=await fetcher('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{method:'POST',headers:{Authorization:'Bearer '+account.accessToken,'Content-Type':'application/json'},body:JSON.stringify({raw:utf8b64(rawMime).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,''),...(claim.reply_thread_id?{threadId:claim.reply_thread_id}:{})}),signal:AbortSignal.timeout(20000),redirect:'manual'});
       if(response.ok){let result;try{result=await response.json();}catch{}if(typeof result?.id==='string'&&result.id.length<200){final='sent';messageId=result.id;}}
       // Explicit 4xx rejections are terminal failures. 5xx/timeouts remain ambiguous.
       else if(response.status>=400&&response.status<500)final='failed';
@@ -150,7 +190,7 @@ export async function handleGoogleSendRequest(request,env,context,fetcher=fetch)
     if(path==='/api/google/mail/dispatch')return json(await dispatch(env,context,payload,fetcher));
     if(Object.keys(payload).some(key=>key!=='email')||!mailbox(payload.email))throw new SendError(400,'valid_suppression_email_required');
     const email=mailbox(payload.email);
-    await db.batch([stmt(db,'INSERT INTO google_send_suppressions(owner_id,email,created_at) VALUES(?,?,?) ON CONFLICT DO NOTHING',context.userId,email,now()),stmt(db,"UPDATE google_send_queue SET status='suppressed' WHERE owner_id=? AND recipient=? AND status='queued'",context.userId,email)]);
+    await db.batch([stmt(db,'INSERT INTO google_send_suppressions(owner_id,email,created_at) VALUES(?,?,?) ON CONFLICT DO NOTHING',context.userId,email,now()),stmt(db,"INSERT INTO mail_automation_suppressions(owner_id,email,reason,created_at) VALUES(?,?,?,?) ON CONFLICT(owner_id,email) DO NOTHING",rootOwner(context),email,'owner_suppressed',now()),stmt(db,"UPDATE google_send_queue SET status='suppressed' WHERE owner_id IN (?,?) AND recipient=? AND status='queued'",rootOwner(context),rootOwner(context)+':secondary',email)]);
     return json({email,suppressed:true});
   }catch(error){const known=error instanceof SendError;return json({error:known?error.code:'google_mail_unavailable'},known?error.status:(Number.isInteger(error.status)&&error.status>=400&&error.status<600?error.status:503));}
 }

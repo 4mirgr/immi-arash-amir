@@ -38,12 +38,12 @@ function pageup(source,body){
   let relevant;
   if(source.adapter==='pageup_medical'){
    const categories=Array.isArray(row.CategoryList)?row.CategoryList:String(row.Categories||'').split(',');
-   relevant=categories.some(c=>String(c).trim().toLowerCase()==='medical')&&/\b(general practitioner|medical officer|medical practitioner|registrar|staff specialist|visiting medical specialist|physician|psychiatrist|surgeon|surgical fellow)\b/i.test(title)&&!/\b(veterinar|nurs(?:e|ing)|radiograph|therapist|roster support)\b/i.test(title);
-  }else relevant=HEALTH.test(title+' '+plainJobText(row.Brand))&&/research|lecturer|professor|PhD|scholarship/i.test(title)&&!/\b(nurs(?:e|ing)|midwifery|physiotherap|technical|engagement officer|program manager|project officer|executive assistant|administrative)\b/i.test(title);
+   relevant=categories.some(c=>/(?:^|\|)medical$/i.test(String(c).trim()))&&/\b(general practitioner|medical officers?|medical practitioner|registrars?|consultant|junior doctors?|staff specialist|visiting medical specialist|physician|psychiatrist|surgeon|surgical fellow)\b/i.test(title)&&!/\b(veterinar|nurs(?:e|ing)|midwif|radiograph|physiotherap|sonograph|therapist|human resources|medical officer unit|team leader|roster support)\b/i.test(title);
+  }else relevant=HEALTH.test(title+' '+plainJobText(row.Brand))&&/research|lecturer|professor|PhD|scholarship|academic/i.test(title)&&!/\b(nurs(?:e|ing)|midwifery|physiotherap|technical|engagement officer|program manager|project officer|executive assistant|administrative)\b/i.test(title);
   if(!relevant)continue;
   const publishedAt=pageUpDate(row.OpeningDateUtc),closingAt=pageUpDate(row.ClosingDateUtc);
   if((row.OpeningDateUtc&&!publishedAt)||(row.ClosingDateUtc&&!closingAt))fail('invalid_source_date');
-  records.push({externalId:row.Id,title,url:`https://careers.pageuppeople.com/${source.tenant}/cw/en/job/${row.Id}`,organization:source.adapter==='pageup_medical'?plainJobText(row.Brand,300)||source.organizationName:source.organizationName,organizationDomain:source.organizationDomain||(source.adapter==='pageup_medical'?'tas.gov.au':'monash.edu'),publishedAt,closingAt,summary:plainJobText(row.Summary,2500),fullText:plainJobText(row.Overview,16000),location:plainJobText(row.Locations,500),city:plainJobText(row.SiteSuburb,200),opportunityType:source.adapter==='pageup_medical'?'job':opportunityType(title),kind:/employment register|expression(?:s)? of interest|talent (?:pool|register)/i.test(title)?'employment_register':'vacancy'});
+  records.push({externalId:row.Id,title,url:`https://careers.pageuppeople.com/${source.tenant}/${source.channel||'cw'}/en/job/${row.Id}`,organization:source.adapter==='pageup_medical'?plainJobText(row.Brand,300)||source.organizationName:source.organizationName,organizationDomain:source.organizationDomain||(source.adapter==='pageup_medical'?'tas.gov.au':'monash.edu'),publishedAt,closingAt,summary:plainJobText(row.Summary,2500),fullText:plainJobText(row.Overview,16000),location:plainJobText(row.Locations,500),city:plainJobText(row.SiteSuburb,200),opportunityType:source.adapter==='pageup_medical'?'job':opportunityType(title),kind:/employment register|expression(?:s)? of interest|talent (?:pool|register)|\(pool\)/i.test(title)?'employment_register':'vacancy'});
  }
  return records;
 }
@@ -63,6 +63,37 @@ function smartrecruiters(source,body){
  }
  return records;
 }
+function ntPublicSearch(source,body){
+ let data;try{data=JSON.parse(body);}catch{fail('invalid_source_json');}
+ if(!data||data.success!==true||!Array.isArray(data.data)||data.data.length>500)fail('invalid_source_schema');
+ const result=[];
+ for(const row of data.data){
+  if(!row||!Number.isSafeInteger(row.rtfId)||row.rtfId<=0||typeof row.jobTitle!=='string')fail('invalid_source_identity');
+  if(row.agency!=='Department of Health'||row.isCanceled===true||/cancelled|canceled/i.test(String(row.closingDate||'')))continue;
+  const title=plainJobText(row.jobTitle,500);
+  if(!/medical officer|registrar|consultant|general practitioner|staff specialist|medicine specialist|care specialist|geriatrician|paediatric.*ologist|advanced trainee|clinical director|head of department/i.test(title)||/nurs(?:e|ing)|midwif|technolog|coordinator|poisons officer|dental|dentist/i.test(title))continue;
+  const publishedAt=pageUpDate(row.dateAdded),sourceClosing=pageUpDate(row.closingDateAsDateTime);if((row.dateAdded&&!publishedAt)||(row.closingDateAsDateTime&&!sourceClosing))fail('invalid_source_date');
+  // NT publishes a display date plus a midnight date-value, not a verified exact cutoff.
+  const closingAt=null,advertisedClose=plainJobText(row.closingDate,100);
+  result.push({externalId:String(row.rtfId),title,url:'https://jobs.nt.gov.au/Home/JobDetails?rtfId='+row.rtfId,organization:source.organizationName,organizationDomain:source.organizationDomain,state:source.state,publishedAt,closingAt,summary:plainJobText(row.primaryObjective,2500),fullText:plainJobText([row.primaryObjective,row.specialInstructions,row.contactPerson,advertisedClose?'Advertised closing date: '+advertisedClose+' (publisher display; exact cutoff/time zone not verified).':''].filter(Boolean).join('\n'),16000),location:plainJobText(row.locations,500),opportunityType:'job',kind:!row.closingDateAsDateTime&&row.RecruitmentProgramId>1?'employment_register':'vacancy'});
+ }
+ return result;
+}
+async function careerpages(source,body){
+ if(!/<html\b/i.test(body)||!/<\/html\s*>/i.test(body)||!/job-search-results-card-col/.test(body))fail('invalid_source_html');
+ const cards=[...body.matchAll(/<article\b[^>]*class=["'][^"']*\bjob-search-results-card-col\b[^"']*["'][^>]*>([\s\S]*?)<\/article>/gi)];if(!cards.length||cards.length>100)fail('invalid_source_html');
+ const result=[];
+ for(const [,card] of cards){
+  const anchor=card.match(/<a\b(?=[^>]*\bid=["']link_job_title_)[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);if(!anchor)fail('invalid_source_identity');
+  const url=anchor[1].replaceAll('&amp;','&');validateSourceUrl(url,source);const parsed=new URL(url);if(!/^\/jobs\/[a-z0-9-]+$/.test(parsed.pathname)||parsed.pathname==='/jobs/search'||parsed.search)fail('invalid_source_identity');
+  const title=plainJobText(anchor[2],500),category=plainJobText(card.match(/<span\b[^>]*id=["']category_icon_text_[^"']*["'][^>]*>([\s\S]*?)<\/span>/i)?.[1],500);
+  if(!title)fail('invalid_source_identity');
+  if(!HEALTH.test(title+' '+category)||!/research|lecturer|professor|academic|PhD|scholarship/i.test(title)||/nurs(?:e|ing)|midwif|optometr|physiotherap|coordinator|administrative|assistant director|science communication/i.test(title))continue;
+  const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(url)))].map(v=>v.toString(16).padStart(2,'0')).join('');
+  result.push({externalId:'html_'+hash,title,url,organization:source.organizationName,organizationDomain:source.organizationDomain,state:source.state,publishedAt:null,closingAt:null,summary:plainJobText(card.match(/<p\b[^>]*class=["'][^"']*job-search-results-summary[^"']*["'][^>]*>([\s\S]*?)<\/p>/i)?.[1],2500),location:plainJobText(card.match(/<span\b[^>]*id=["']location_icon_text_[^"']*["'][^>]*>([\s\S]*?)<\/span>/i)?.[1],500),opportunityType:opportunityType(title)});
+ }
+ return result;
+}
 function xmlField(item,name){const match=item.match(new RegExp('<'+name+'(?:\\s[^>]*)?>([\\s\\S]*?)<\\/'+name+'\\s*>','i'));return match?plainJobText(match[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1'),30000):'';}
 async function rss(source,body){
  if(/<!DOCTYPE|<!ENTITY/i.test(body)||!/<rss\b/i.test(body)||!/<channel\b/i.test(body)||!/<\/rss\s*>/i.test(body))fail('invalid_source_rss');
@@ -81,7 +112,7 @@ async function rss(source,body){
 }
 export async function normalizeSourceRecords(input,body){
  const source=canonicalSource(input);if(typeof body!=='string'||new TextEncoder().encode(body).length>MAX_BYTES)fail('source_response_too_large');
- const records=source.adapter==='bologna_rss'?await rss(source,body):source.adapter==='smartrecruiters_university'?smartrecruiters(source,body):pageup(source,body);
+ const records=source.adapter==='bologna_rss'?await rss(source,body):source.adapter==='nt_public_search'?ntPublicSearch(source,body):source.adapter==='careerpages_public_html'?await careerpages(source,body):source.adapter==='smartrecruiters_university'?smartrecruiters(source,body):pageup(source,body);
  for(const row of records)validateSourceUrl(row.url,source);
  return records;
 }
@@ -97,10 +128,10 @@ async function collectOne(db,source,fetcher,remaining,now){
  if(!claim)return {sourceId:source.id,status:'cooldown_or_busy',imported:0};
  try{
   validateSourceUrl(source.feedUrl,source);
-  const headers={Accept:source.adapter==='bologna_rss'?'application/rss+xml, application/xml':'application/json','User-Agent':'MasirPublicSourceCollector/1.0'};
+  const headers={Accept:source.adapter==='bologna_rss'?'application/rss+xml, application/xml':source.adapter==='careerpages_public_html'?'text/html':'application/json','User-Agent':'MasirPublicSourceCollector/1.0'};
   // Partial snapshots must fetch their next segment even when publisher ETag is unchanged.
-  if(!claim.record_cursor&&claim.etag&&claim.etag.length<1000&&!/[\r\n]/.test(claim.etag))headers['If-None-Match']=claim.etag;
-  let response;try{response=await fetcher(source.feedUrl,{headers,redirect:'manual',signal:AbortSignal.timeout(15000)});}catch{fail('source_unavailable');}
+  if(source.requestMethod!=='POST'&&!claim.record_cursor&&claim.etag&&claim.etag.length<1000&&!/[\r\n]/.test(claim.etag))headers['If-None-Match']=claim.etag;
+  let response;try{response=await fetcher(source.feedUrl,{headers:{...headers,...(source.requestMethod==='POST'?{'Content-Type':'application/json'}:{})},...(source.requestMethod==='POST'?{method:'POST',body:JSON.stringify(source.requestBody)}:{}),redirect:'manual',signal:AbortSignal.timeout(15000)});}catch{fail('source_unavailable');}
   if(response.redirected||(response.status>=300&&response.status<400&&response.status!==304))fail('source_redirect_rejected');
   if(response.url&&response.url!==source.feedUrl)fail('source_redirect_rejected');
   if(response.status===304){await run(db,"UPDATE registered_source_checks SET status='not_modified',last_success_at=?,next_check_at=?,last_error_code=NULL,imported_records=0 WHERE source_id=? AND lock_token=?",now,now+SUCCESS_COOLDOWN,source.id,lock);return {sourceId:source.id,status:'not_modified',imported:0};}

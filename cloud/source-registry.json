@@ -66,7 +66,7 @@
     "executable": false,
     "configurationStatus": "feed_not_configured",
     "verifiedAt": "2026-11-03",
-    "reason": "Official portal verified. Legacy SA Health PageUp JSON endpoint returned an empty HTTP 200 body, not a validated feed.",
+    "reason": "Official portal remains a discovery entry; active SA Health Medical category feed is registered separately as sa-health-pageup-532.",
     "id": "sa-government",
     "name": "South Australian Government careers",
     "state": "SA",
@@ -117,7 +117,7 @@
     "executable": false,
     "configurationStatus": "feed_not_configured",
     "verifiedAt": "2026-11-03",
-    "reason": "Official public portal verified; no bounded public opportunity feed adapter verified yet.",
+    "reason": "Government portal is reference-only; University of Canberra academic health register is a separate active ACT source, not ACT Government hospital coverage.",
     "id": "act-government",
     "name": "ACT Government careers",
     "state": "ACT",
@@ -294,5 +294,104 @@
     "organizationName": "Griffith University",
     "organizationDomain": "griffith.edu.au",
     "opportunityType": "university"
+  },
+  {
+    "country": "AU",
+    "trust": "official",
+    "profileScope": "both",
+    "executable": true,
+    "configurationStatus": "executable",
+    "verifiedAt": "2026-11-03",
+    "id": "sa-health-pageup-532",
+    "name": "SA Health medical positions",
+    "state": "SA",
+    "reason": "Official SA Health careers portal embeds PageUp tenant 532/sourcePointer caw. Publisher category=Medical JSON filter verified:61 records, within bounded response budget; clinical title/category filter excludes administration and allied-health roles.",
+    "portalUrl": "https://careers.sahealth.sa.gov.au/en/listing/",
+    "evidenceUrl": "https://careers.sahealth.sa.gov.au/en/listing/",
+    "allowedHosts": [
+      "careers.pageuppeople.com"
+    ],
+    "feedUrl": "https://careers.pageuppeople.com/532/caw/en/jobs.json?category=Medical",
+    "adapter": "pageup_medical",
+    "tenant": "532",
+    "channel": "caw",
+    "organizationName": "SA Health",
+    "organizationDomain": "sahealth.sa.gov.au"
+  },
+  {
+    "country": "AU",
+    "trust": "official",
+    "profileScope": "both",
+    "executable": true,
+    "configurationStatus": "executable",
+    "verifiedAt": "2026-11-03",
+    "id": "canberra-pageup-737",
+    "name": "University of Canberra health academic register",
+    "state": "ACT",
+    "reason": "Official University of Canberra work-at-UC page links UCTalent; portal embeds PageUp tenant737. Public17-rowJSON verified. Health academic talent-pool title is an employment register, not a secured position; individual eligibility unverified.",
+    "portalUrl": "https://www.canberra.edu.au/about-uc/work-at-uc",
+    "evidenceUrl": "https://uctalent.canberra.edu.au/cw/en/listing",
+    "allowedHosts": [
+      "careers.pageuppeople.com"
+    ],
+    "feedUrl": "https://careers.pageuppeople.com/737/cw/en/jobs.json",
+    "adapter": "pageup_university",
+    "tenant": "737",
+    "organizationName": "University of Canberra",
+    "organizationDomain": "canberra.edu.au",
+    "opportunityType": "university"
+  },
+  {
+    "country": "AU",
+    "trust": "official",
+    "profileScope": "both",
+    "executable": true,
+    "configurationStatus": "executable",
+    "verifiedAt": "2026-11-03",
+    "id": "uwa-public-search",
+    "name": "University of Western Australia medical academic positions",
+    "state": "WA",
+    "reason": "Official UWA careers page links external.jobs.uwa.edu.au. Public search HTML first page parsed without JavaScript execution or hidden APIs; robots allow /jobs/search and request5-secondcrawl delay. Only first page is collected; listing cards omit deadlines and availability remains unknown.",
+    "portalUrl": "https://www.uwa.edu.au/about/working-at-uwa/careers",
+    "evidenceUrl": "https://external.jobs.uwa.edu.au/jobs/search",
+    "allowedHosts": [
+      "external.jobs.uwa.edu.au"
+    ],
+    "feedUrl": "https://external.jobs.uwa.edu.au/jobs/search",
+    "adapter": "careerpages_public_html",
+    "organizationName": "University of Western Australia",
+    "organizationDomain": "uwa.edu.au",
+    "opportunityType": "university",
+    "coverageLimit": "first_public_search_page_only"
+  },
+  {
+    "id": "nt-health-public-search",
+    "name": "Northern Territory Health medical positions",
+    "country": "AU",
+    "state": "NT",
+    "trust": "official",
+    "profileScope": "both",
+    "executable": true,
+    "configurationStatus": "executable",
+    "verifiedAt": "2026-11-03",
+    "reason": "Official NT jobs public search frontend anonymously POSTs JSON to /Home/Search. Fixed Department of Health22 and Medical Officer2085 filters verified from its visible form;30source records returned. Only public doctor titles parsed; cancelled and nursing/allied roles excluded. No login, cookies, application or attachment endpoint used.",
+    "portalUrl": "https://jobs.nt.gov.au/Home/Search",
+    "evidenceUrl": "https://jobs.nt.gov.au/Home/Search",
+    "allowedHosts": [
+      "jobs.nt.gov.au"
+    ],
+    "feedUrl": "https://jobs.nt.gov.au/Home/Search",
+    "requestMethod": "POST",
+    "requestBody": {
+      "SelectedAgencyList": [
+        "22"
+      ],
+      "SelectedCategoryList": [
+        "2085"
+      ]
+    },
+    "adapter": "nt_public_search",
+    "organizationName": "NT Department of Health",
+    "organizationDomain": "health.nt.gov.au"
   }
 ]

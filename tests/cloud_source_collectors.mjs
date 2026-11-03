@@ -12,12 +12,14 @@ function fixture(){
  const prepare=sql=>({bind(...args){const st=db.prepare(sql);return {async first(){return st.get(...args)||null;},async all(){return {results:st.all(...args)};},async run(){return {success:true,meta:st.run(...args)};},_run(){return st.run(...args);}};}});
  return {db,env:{OPPORTUNITY_DB:{prepare,async batch(items){db.exec('BEGIN');try{for(const item of items)item._run();db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}}}}};
 }
+const uwaHtml=(url='https://external.jobs.uwa.edu.au/jobs/synthetic-medical-educator',title='Senior Lecturer Medical Educator')=>`<html><body><article class="col-12 job-search-results-card-col"><a id="link_job_title_1" href="${url}">${title}</a><span id="category_icon_text_a">Health and Medical Sciences</span><span id="location_icon_text_a">Rural WA</span><p class="card-text job-search-results-summary">Synthetic teaching role, requirements need review.</p></article></body></html>`;
+const ntBody=(rows=[{rtfId:356340,jobTitle:'Medical Education Registrar',agency:'Department of Health',dateAdded:'/Date(1793491200000)/',closingDateAsDateTime:'/Date(4102444800000)/',primaryObjective:'Synthetic physician role'}])=>JSON.stringify({success:true,data:rows});
 const rss=(url='https://bandi.unibo.it/call/synthetic',extra='')=>`<?xml version="1.0"?><rss><channel><item><title>Borsa di studio in medicina</title><link>${url}</link><guid>${url}</guid><pubDate>Tue, 03 Nov 2026 10:00:00 +0100</pubDate><description>Fictional fixture only.</description>${extra}</item></channel></rss>`;
-function fetchFixture(log=[]){return async(url,options)=>{log.push({url,options});if(url.includes('api.smartrecruiters.com'))return new Response(smartbody(),{headers:{etag:'"smart"'}});if(url.includes('bandi.unibo'))return new Response(rss(),{headers:{etag:'"rss"'}});return new Response(JSON.stringify([(/\/(513|841)\//.test(url))?pageup('2',{Title:'Research Fellow (Inflammation and Immunology)',Brand:'Faculty of Medicine'}):pageup()]),{headers:{etag:'"json"'}});};}
+function fetchFixture(log=[]){return async(url,options)=>{log.push({url,options});if(url.includes('jobs.nt.gov.au'))return new Response(ntBody());if(url.includes('external.jobs.uwa.edu.au'))return new Response(uwaHtml(),{headers:{etag:'"uwa"'}});if(url.includes('api.smartrecruiters.com'))return new Response(smartbody(),{headers:{etag:'"smart"'}});if(url.includes('bandi.unibo'))return new Response(rss(),{headers:{etag:'"rss"'}});return new Response(JSON.stringify([(/\/(513|841|737)\//.test(url))?pageup('2',{Title:'Research Fellow (Inflammation and Immunology)',Brand:'Faculty of Medicine'}):pageup()]),{headers:{etag:'"json"'}});};}
 
 test('registry covers all Australian jurisdictions honestly and Italy only Amir',()=>{
  assert.deepEqual([...new Set(SOURCE_REGISTRY.filter(s=>s.country==='AU'&&s.state!=='UNKNOWN').map(s=>s.state))].sort(),['ACT','NSW','NT','QLD','SA','TAS','VIC','WA']);
- assert.equal(SOURCE_REGISTRY.filter(s=>s.executable).length,6);
+ assert.equal(SOURCE_REGISTRY.filter(s=>s.executable).length,10);
  assert(SOURCE_REGISTRY.filter(s=>s.country==='IT').every(s=>s.profileScope==='amir'));
  assert(SOURCE_REGISTRY.filter(s=>!s.executable).every(s=>s.reason&&s.configurationStatus!=='executable'));
 });
@@ -43,12 +45,15 @@ test('bounded three-source rotation, storage scope, and conditional ETags work',
  const {db,env}=fixture(),log=[];
  let receipt=await collectRegisteredSources(env,fetchFixture(log));assert.equal(log.length,3);assert.equal(receipt.sources.length,3);assert(receipt.imported<=100);
  assert(log.every(v=>v.options.redirect==='manual'&&v.options.signal));
- await collectRegisteredSources(env,fetchFixture(log));assert.equal(log.length,6,'next invocation visits remaining three sources');
+ await collectRegisteredSources(env,fetchFixture(log));assert.equal(log.length,6,'next invocation visits next three sources');
+ await collectRegisteredSources(env,fetchFixture(log));assert.equal(log.length,9,'third invocation visits remaining three sources');
+ await collectRegisteredSources(env,fetchFixture(log));assert.equal(log.length,10,'fourth invocation reaches the final source while visited ones remain in cooldown');
+ db.exec("UPDATE source_collector_state SET position=0");
  const it=JSON.parse(db.prepare("SELECT data FROM opportunity_editions WHERE country='IT' LIMIT 1").get().data);assert.equal(it.profileScope,'amir');assert.equal(it.status,'unknown');
  db.exec('UPDATE registered_source_checks SET next_check_at=0');
  const conditional=[];await collectRegisteredSources(env,async(url,options)=>{conditional.push(options);return new Response(null,{status:304});});
  assert(conditional.every(o=>o.headers['If-None-Match']));
- assert.equal(db.prepare('SELECT count(*) n FROM opportunity_editions').get().n,6);
+ assert.equal(db.prepare('SELECT count(*) n FROM opportunity_editions').get().n,10);
 });
 test('source errors preserve previous snapshot and use cooldown',async()=>{
  const {db,env}=fixture();await collectRegisteredSources(env,fetchFixture());const before=db.prepare('SELECT count(*) n FROM opportunity_editions').get().n;
@@ -101,3 +106,26 @@ test('Griffith rejects foreign company rows, malformed identities and incomplete
  for(const rows of [[smartrow('bad')],[smartrow('744000000000001',{company:{identifier:'ForeignUniversity'}})]])await assert.rejects(()=>normalizeSourceRecords(source('griffith-smartrecruiters'),smartbody(rows)));
  const incomplete=JSON.parse(smartbody());incomplete.totalFound=101;await assert.rejects(()=>normalizeSourceRecords(source('griffith-smartrecruiters'),JSON.stringify(incomplete)),/source_pagination_required/);
 });
+
+test('SA Health filtered public medical feed preserves source channel and excludes support jobs',async()=>{
+ const rows=[pageup('953123',{Title:'Clinical Pharmacology Registrar',CategoryList:['SA Health|Medical']}),pageup('953124',{Title:'Team Leader, Trainee Medical Officer Unit',CategoryList:['SA Health|Medical']}),pageup('953125',{Title:'Medical Practitioner (Pool)',CategoryList:['SA Health|Medical']})];
+ const data=await normalizeSourceRecords(source('sa-health-pageup-532'),JSON.stringify(rows));assert.equal(data.length,2);assert.equal(data[0].url,'https://careers.pageuppeople.com/532/caw/en/job/953123');assert.equal(data[0].organizationDomain,'sahealth.sa.gov.au');assert.equal(data[1].kind,'employment_register');assert(source('sa-health-pageup-532').feedUrl.includes('category=Medical'));
+});
+test('Canberra public academic health pool stays a register with unknown deadline',async()=>{
+ const rows=[pageup('500808',{Title:'Casual Academic Staff Talent Pool - Faculty of Health',Brand:'',CategoryList:['Academic|Health'],ClosingDateUtc:null}),pageup('504882',{Title:'Postdoctoral Fellow',Brand:'Faculty of Business, Government & Law'})];const data=await normalizeSourceRecords(source('canberra-pageup-737'),JSON.stringify(rows));assert.equal(data.length,1);assert.equal(data[0].kind,'employment_register');assert.equal(data[0].closingAt,null);assert.equal(data[0].organizationDomain,'canberra.edu.au');
+});
+test('UWA bounded public HTML cards keep unknown dates and stable URL-derived identities',async()=>{
+ const one=await normalizeSourceRecords(source('uwa-public-search'),uwaHtml()),two=await normalizeSourceRecords(source('uwa-public-search'),uwaHtml());assert.equal(one.length,1);assert.equal(one[0].externalId,two[0].externalId);assert.equal(one[0].publishedAt,null);assert.equal(one[0].closingAt,null);assert.equal(one[0].organizationDomain,'uwa.edu.au');assert.equal(one[0].state,'WA');assert.equal(source('uwa-public-search').coverageLimit,'first_public_search_page_only');assert.equal((await normalizeSourceRecords(source('uwa-public-search'),uwaHtml(undefined,'Senior Lecturer Optometry'))).length,0);
+});
+test('UWA HTML adapter rejects foreign/hidden URL destinations, incomplete schema and untrusted source overrides',async()=>{
+ for(const url of ['https://untrusted.invalid/jobs/medical','https://external.jobs.uwa.edu.au/api/medical','https://external.jobs.uwa.edu.au/jobs/search?query=medical'])await assert.rejects(()=>normalizeSourceRecords(source('uwa-public-search'),uwaHtml(url)));await assert.rejects(()=>normalizeSourceRecords(source('uwa-public-search'),'<html>Not a listing</html>'));await assert.rejects(()=>normalizeSourceRecords(source('uwa-public-search'),uwaHtml().replace('</html>','')));
+});
+
+test('NT public search preserves medical criteria and excludes cancelled/allied records',async()=>{
+ const rows=[{rtfId:1,jobTitle:'Resident Medical Officer',agency:'Department of Health',dateAdded:'/Date(1793491200000)/',closingDateAsDateTime:null,RecruitmentProgramId:16,primaryObjective:'Clinical duties',specialInstructions:'Competent Authority only; standard pathway applicants excluded.'},{rtfId:2,jobTitle:'Consultant Psychiatrist',agency:'Department of Health',isCanceled:true},{rtfId:3,jobTitle:'Nurse Clinical Specialist',agency:'Department of Health'},{rtfId:4,jobTitle:'Medical Registrar',agency:'Other department'}];const result=await normalizeSourceRecords(source('nt-health-public-search'),ntBody(rows));assert.equal(result.length,1);assert.equal(result[0].kind,'employment_register');assert.equal(result[0].closingAt,null);assert(result[0].fullText.includes('standard pathway applicants excluded'));assert.equal(result[0].url,'https://jobs.nt.gov.au/Home/JobDetails?rtfId=1');await assert.rejects(()=>normalizeSourceRecords(source('nt-health-public-search'),ntBody([{rtfId:'forged',jobTitle:'Medical Registrar'}])));
+});
+test('NT search uses only fixed public POST filters with no browser credentials',async()=>{
+ const {db,env}=fixture();db.exec("UPDATE source_collector_state SET position=9");const log=[];await collectRegisteredSources(env,fetchFixture(log));const request=log.find(x=>x.url==='https://jobs.nt.gov.au/Home/Search');assert(request);assert.equal(request.options.method,'POST');assert.deepEqual(JSON.parse(request.options.body),{SelectedAgencyList:['22'],SelectedCategoryList:['2085']});assert.equal(request.options.headers['Content-Type'],'application/json');assert.equal(request.options.headers.Cookie,undefined);assert.equal(request.options.headers.Authorization,undefined);assert.equal(request.options.redirect,'manual');
+});
+
+test('NT date-only closing display is preserved without inventing an exact cutoff',async()=>{const rows=[{rtfId:55,jobTitle:'Medical Registrar',agency:'Department of Health',dateAdded:'/Date(1793491200000)/',closingDate:'08/11/2026',closingDateAsDateTime:'/Date(1794061800000)/',RecruitmentProgramId:1}];const [row]=await normalizeSourceRecords(source('nt-health-public-search'),ntBody(rows));assert.equal(row.closingAt,null);assert(row.fullText.includes('08/11/2026'));assert(row.fullText.includes('exact cutoff/time zone not verified'));assert.equal(row.kind,'vacancy');});

@@ -14,7 +14,7 @@ function sqlDb(db){
 }
 async function fixture(count=3){
  const db=new DatabaseSync(':memory:');
- for(const file of ['google-schema.sql','google-send-schema.sql','google-mail-schema.sql'])db.exec(readFileSync(new URL('../cloud/'+file,import.meta.url),'utf8'));
+ for(const file of ['google-schema.sql','google-send-schema.sql','mail-automation-schema.sql','google-mail-schema.sql'])db.exec(readFileSync(new URL('../cloud/'+file,import.meta.url),'utf8'));
  const env={GOOGLE_DB:sqlDb(db),GOOGLE_CLIENT_ID:'synthetic-client',GOOGLE_CLIENT_SECRET:'synthetic-secret',GOOGLE_TOKEN_KEY:Buffer.alloc(32,23).toString('base64'),GOOGLE_REDIRECT_URI:origin+'/api/google/callback'};
  const data=Array.from({length:count},(_,i)=>({id:clinic(i+1),data:{email:'clinic'+i+'@example.invalid'}}));
  const calls=[];let sequence=0;

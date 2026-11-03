@@ -35,3 +35,7 @@ test('scheduled public collection never accesses Google grants or sends mail', a
     assert(queries.every(sql => !sql.includes('google_')));
   } finally { globalThis.fetch = original; }
 });
+
+test('Telegram schedule is isolated from public crawling while secrets are absent',async()=>{let reads=0;const env={};Object.defineProperty(env,'GOOGLE_DB',{get(){reads++;throw Error('No configured bot must read private storage');}});Object.defineProperty(env,'OPPORTUNITY_DB',{get(){reads++;throw Error('Notification cron must not collect feeds');}});await worker.scheduled({cron:'*/15 * * * *'},env);assert.equal(reads,0);});
+
+test('disabled approved-mail and LinkedIn schedules do not touch grants or transport',async()=>{for(const cron of ['*/5 * * * *','2-57/5 * * * *']){let reads=0;const env={};Object.defineProperty(env,'GOOGLE_DB',{get(){reads++;throw Error('Unconfigured schedule must not read grants');}});Object.defineProperty(env,'OPPORTUNITY_DB',{get(){reads++;throw Error('Private schedule must not run collectors');}});await worker.scheduled({cron},env);assert.equal(reads,0);}});

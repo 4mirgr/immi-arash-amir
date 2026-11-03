@@ -44,15 +44,17 @@ import { useGoogleConnection, GoogleConnection, GoogleInbox } from "./google-too
 import { GoogleSendPanel } from "./google-send-panel";
 import { CalendarDriveTools } from "./calendar-drive-tools";
 import { ProfilePlanning } from "./profile-planning";
-import { LinkedInWorkspace } from "./linkedin-workspace";
-import { PesciPractice } from "./pesci-practice";
-import { JobOpportunitiesPanel } from "./job-opportunities-panel";
 import { ThemeControl } from "./theme-control";
 import { downloadCVPDF } from "./cv-pdf.mjs";
 import { MixedText } from "./mixed-text";
 import { TextSizeControl } from "./text-size-control";
-import { RoadmapPanel } from "./roadmap-panel";
 import sourceRegistry from "../library/sources.json";
+function deferredPanel(load,name){const Component=React.lazy(()=>load().then(module=>({default:module[name]})));return function DeferredPanel(props){return <React.Suspense fallback={<section className="panel" role="status">در حال آماده‌سازی این بخش…</section>}><Component {...props}/></React.Suspense>;};}
+const AutomationHub=deferredPanel(()=>import("./automation-hub"),"AutomationHub");
+const LinkedInWorkspace=deferredPanel(()=>import("./linkedin-workspace"),"LinkedInWorkspace");
+const PesciPractice=deferredPanel(()=>import("./pesci-practice"),"PesciPractice");
+const JobOpportunitiesPanel=deferredPanel(()=>import("./job-opportunities-panel"),"JobOpportunitiesPanel");
+const RoadmapPanel=deferredPanel(()=>import("./roadmap-panel"),"RoadmapPanel");
 const nav = [
   ["overview", "نمای کلی", LayoutDashboard],
   ["opportunities", "رصد فرصت‌ها", Search],
@@ -64,6 +66,7 @@ const nav = [
   ["study", "تحصیل و فاند", GraduationCap],
   ["development", "مهارت‌ها و رویدادها", Calendar],
   ["sources", "منابع و مسیرها", BookOpen],
+  ["automation", "اتوماسیون و AI", Command],
   ["settings", "اتصال‌ها و تنظیمات", Settings],
 ];
 
@@ -597,9 +600,9 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                       "واردسازی بانک مراکز",
                       online ? "دادهٔ سرور در دسترس" : "منتظر سرور",
                     ],
-                    ["پایش منابع و فرصت‌ها", "نیازمند اتصال منبع"],
+                    ["پایش منابع و فرصت‌ها", data.integrations?.crawler?.connected ? "رصد دوره‌ای منابع عمومی فعال" : "نیازمند آماده‌سازی منبع"],
                     ["دستیار مکاتبات", googleConnection.state.connected ? "دریافت محدود پیام‌ها آماده" : "نیازمند اتصال Gmail"],
-                    ["هماهنگی تقویم", googleConnection.state.connected ? "حساب متصل؛ همگام‌سازی در مرحلهٔ بعد" : "نیازمند اتصال Google"],
+                    ["هماهنگی تقویم", googleConnection.state.connected ? "دریافت و ویرایش تقویم با واکشی آماده" : "نیازمند اتصال Google"],
                   ].map(([a, b], i) => (
                     <div className="agent-row" key={a}>
                       <span
@@ -612,8 +615,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                     </div>
                   ))}
                   <div className="agent-note">
-                    <ShieldCheck size={16} /> هیچ ارسال یا جمع‌آوری خارجی بدون
-                    اتصال فعال انجام نمی‌شود.
+                    <ShieldCheck size={16} /> ارسال پیام تابع مجوز و انتخاب‌های همان مالک است؛ منابع عمومی جداگانه پایش می‌شوند.
                   </div>
                 </section>
               </div>
@@ -1084,6 +1086,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
               </div>
             </>
           )}
+          {tab === "automation" && <AutomationHub person={person} notify={notify}/>}
           {tab === "settings" && (
             <div className="two-col">
               <section className="panel">
@@ -1092,10 +1095,10 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                 {person === "amir" && <GoogleConnection person={person} mailbox="secondary" connection={secondaryGoogleConnection} notify={notify}/>}
                 <CalendarDriveTools key={person+":"+Boolean(googleConnection.state.connected)+":"+(googleConnection.state.email||"")} person={person} notify={notify}/>
                 {[
-                  ["Telegram", "اعلان موقعیت‌ها و پیگیری‌ها"],
-                  ["پایش منابع", "دریافت آگهی و تشخیص تغییر"],
-                  ["هوش مصنوعی", "تولید و تحلیل با ارائه‌دهندهٔ انتخابی"],
-                ].map(([a, b]) => (
+                  ["Telegram", "اعلان موقعیت‌ها و پیگیری‌ها", "telegram"],
+                  ["پایش منابع", "دریافت آگهی و تشخیص تغییر", "crawler"],
+                  ["هوش مصنوعی", "تحلیل درخواست‌محور با سقف مصرف", "ai"],
+                ].map(([a, b, key]) => (
                   <div className="integration" key={a}>
                     <span className="clinic-icon">
                       <Globe size={20} />
@@ -1104,9 +1107,10 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                       <strong>{a}</strong>
                       <small>{b}</small>
                     </div>
-                    <span className="status amber">متصل نیست</span>
+                    <span className={"status "+(data.integrations?.[key]?.connected?"":"amber")}>{data.integrations?.[key]?.connected?(key==="telegram"&&!data.integrations.telegram.enabled?"متصل؛ اعلان خاموش":"آماده"):"نیازمند راه‌اندازی"}</span>
                   </div>
                 ))}
+                <button className="secondary" onClick={()=>setTab("automation")}>بازکردن ابزارهای AI، تلگرام و پشتیبان</button>
                 <div className="notice">
                   کلیدها و توکن‌ها فقط سمت سرور نگهداری می‌شوند. برای اتصال
                   Google، تنظیم OAuth و تأیید دسترسی هر حساب لازم است.

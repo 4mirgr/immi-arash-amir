@@ -13,6 +13,12 @@ import {googleAccountContext} from './google-account-scope.mjs';
 import {handleLinkedInInsightsRequest} from './linkedin-insights.mjs';
 import {handleNetworkTargetsRequest} from './network-targets.mjs';
 import {handlePesciPracticeRequest} from './pesci-practice.mjs';
+import {handleAiAssistantRequest} from './ai-assistant.mjs';
+import {handleMailAutomationRequest} from './mail-automation.mjs';
+import {handleTelegramWebhook,handleTelegramRequest,dispatchTelegramNotifications} from './telegram-notifications.mjs';
+import {handleOwnerBackupRequest} from './owner-backup.mjs';
+import {handleLinkedInSchedulerRequest,dispatchScheduledLinkedIn} from './linkedin-scheduler.mjs';
+import {handleMailSchedulerRequest,dispatchScheduledMail} from './mail-automation-scheduler.mjs';
 import educationalCase from '../library/pesci/PESCI-PRACTICE-COMM-001.json' with { type: 'json' };
 
 const DEFAULT_SETTINGS = { emailPolicy: 'auto_after_connection', defaultTemplate: '', notifications: false };
@@ -44,6 +50,7 @@ export function createHandler(fetcher = fetch) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) return env.ASSETS ? env.ASSETS.fetch(request) : new Response('Not found', {status:404});
     try {
+      if(url.pathname==='/api/telegram/webhook')return await handleTelegramWebhook(request,env,fetcher);
       if(url.pathname==='/api/google/callback')return await handleGoogleCallback(request,env,fetcher);
       if(url.pathname==='/api/linkedin/callback')return await handleLinkedInOAuthCallback(request,env,fetcher);
       if (request.method === 'GET' && url.pathname === '/api/health') return json({ok:true, mode:'cloud_auth', authenticationRequired:true, integrationsStatus:'per_account_status_required'});
@@ -69,6 +76,11 @@ export function createHandler(fetcher = fetch) {
       if (!['arash','amir'].includes(profileId)) throw new ApiError(403, 'Account has not been provisioned for this workspace');
       const requestedProfile = url.searchParams.get('profile');
       if (requestedProfile && requestedProfile !== profileId) throw new ApiError(403, 'Profile access denied');
+      if(url.pathname.startsWith('/api/ai/'))return await handleAiAssistantRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
+      if(url.pathname==='/api/mail-automation/scheduler'||url.pathname.startsWith('/api/mail-automation/scheduler/'))return await handleMailSchedulerRequest(request,env,{userId:user.id,profileId,rest},fetcher)||json({error:'Not found'},404);
+      if(url.pathname==='/api/mail-automation'||url.pathname.startsWith('/api/mail-automation/'))return await handleMailAutomationRequest(request,env,{userId:user.id,profileId,rest},fetcher)||json({error:'Not found'},404);
+      if(url.pathname.startsWith('/api/telegram/'))return await handleTelegramRequest(request,env,{userId:user.id,profileId,rest},fetcher)||json({error:'Not found'},404);
+      if(url.pathname==='/api/backup/export')return await handleOwnerBackupRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
       if(url.pathname==='/api/pesci/practice'||url.pathname.startsWith('/api/pesci/practice/'))return await handlePesciPracticeRequest(request,env,{userId:user.id,profileId});
       if(url.pathname==='/api/roadmap'||url.pathname==='/api/roadmap/actions'){
         return await handleRoadmapRequest(request,env,{userId:user.id,profileId,rest});
@@ -81,7 +93,7 @@ export function createHandler(fetcher = fetch) {
         throw new ApiError(404,'Not found');
       }
       if(url.pathname.startsWith('/api/linkedin/')){
-        for(const handler of [handleNetworkTargetsRequest,handleLinkedInInsightsRequest,handleLinkedInOAuthRequest,handleLinkedInRequest]){
+        for(const handler of [handleLinkedInSchedulerRequest,handleNetworkTargetsRequest,handleLinkedInInsightsRequest,handleLinkedInOAuthRequest,handleLinkedInRequest]){
           const response=await handler(request,env,{userId:user.id,profileId,rest},fetcher);
           if(response)return response;
         }
@@ -121,9 +133,11 @@ export function createHandler(fetcher = fetch) {
         return records;
       }
       const integrations = Object.fromEntries(['gmail','drive','calendar','telegram','ai','crawler'].map(k=>[k,{connected:false,status:'setup_required'}]));
+      integrations.ai={connected:env.AI_ENABLED==='true'&&typeof env.AI?.run==='function',status:env.AI_ENABLED==='true'&&typeof env.AI?.run==='function'?'bounded_requests_enabled':'setup_required'};
+      integrations.crawler={connected:Boolean(env.OPPORTUNITY_DB),status:'bounded_registered_sources_only'};
       if (request.method === 'GET') {
         switch (url.pathname) {
-          case '/api/bootstrap': { const [c,p,s,revision,g] = await Promise.all([clinics(),profiles(),settings(),rest('rpc/immi_dataset_revision'),googleStatus(env,user.id)]); for(const [key,capability] of [['gmail','gmailRead'],['drive','drive'],['calendar','calendar']])integrations[key]={connected:g.connected&&Boolean(g.capabilities?.[capability]),status:g.status,email:g.email}; return json({clinics:c,profiles:p,stations:[station],settings:s,integrations,mode:'cloud',currentProfileId:profileId,profileId,revision}); }
+          case '/api/bootstrap': { if(env.TELEGRAM_BOT_TOKEN&&env.TELEGRAM_WEBHOOK_SECRET&&env.GOOGLE_DB){try{const tr=await handleTelegramRequest(new Request(url.origin+'/api/telegram/status?profile='+profileId),env,{userId:user.id,profileId},fetcher);if(tr?.ok){const t=await tr.json();integrations.telegram={connected:Boolean(t.configured&&t.connected),enabled:Boolean(t.enabled),status:t.connected?'linked':'setup_required'};}}catch{}} const [c,p,s,revision,g] = await Promise.all([clinics(),profiles(),settings(),rest('rpc/immi_dataset_revision'),googleStatus(env,user.id)]); for(const [key,capability] of [['gmail','gmailRead'],['drive','drive'],['calendar','calendar']])integrations[key]={connected:g.connected&&Boolean(g.capabilities?.[capability]),status:g.status,email:g.email}; return json({clinics:c,profiles:p,stations:[station],settings:s,integrations,mode:'cloud',currentProfileId:profileId,profileId,revision}); }
           case '/api/updates': return json({revision:await rest('rpc/immi_dataset_revision')});
           case '/api/cv/versions': return json(await versions('immi_cv_versions','immi_cv_defaults','version_id'));
           case '/api/presets': return json(await versions('immi_presets','immi_preset_defaults','preset_id'));
@@ -187,4 +201,4 @@ export function createHandler(fetcher = fetch) {
     } catch (error) { const expected=error instanceof ApiError||error instanceof GoogleError;return json({error:expected ? error.message : 'Request failed',...(error instanceof GoogleError?{code:error.code}:{})},expected ? error.status : 500); }
   };
 }
-export default {fetch:createHandler(),async scheduled(event,env){await Promise.allSettled([collectRegisteredSources(env),watchEvidenceSources(env)]);}};
+export default {fetch:createHandler(),async scheduled(event,env){const cron=event.cron||'0 * * * *';if(cron==='*/15 * * * *')return await dispatchTelegramNotifications(env);if(cron==='*/5 * * * *')return await dispatchScheduledLinkedIn(env);if(cron==='2-57/5 * * * *')return await dispatchScheduledMail(env);if(cron==='15 */6 * * *')return await watchEvidenceSources(env);return await collectRegisteredSources(env);}};

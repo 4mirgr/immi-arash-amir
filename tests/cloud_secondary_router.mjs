@@ -6,7 +6,7 @@ import {createHandler} from '../cloud/worker.mjs';
 import {encryptGoogleSecret,GOOGLE_SCOPES} from '../cloud/google-oauth.mjs';
 const origin='https://workspace.example';
 async function fixture(){
- const db=new DatabaseSync(':memory:');for(const file of ['google-schema.sql','google-mail-schema.sql','google-send-schema.sql','google-mail-project-schema.sql'])db.exec(readFileSync(new URL('../cloud/'+file,import.meta.url),'utf8'));
+ const db=new DatabaseSync(':memory:');for(const file of ['google-schema.sql','google-mail-schema.sql','google-send-schema.sql','mail-automation-schema.sql','google-mail-project-schema.sql'])db.exec(readFileSync(new URL('../cloud/'+file,import.meta.url),'utf8'));
  const binding={prepare(sql){return {bind(...values){const p=db.prepare(sql);return {async first(){return p.get(...values)||null;},async all(){return {results:p.all(...values)};},async run(){return {meta:p.run(...values)};},_run(){return p.run(...values);}};}};},async batch(items){db.exec('BEGIN');try{for(const item of items)item._run();db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}}};
  const env={GOOGLE_DB:binding,SUPABASE_URL:'https://auth.example',SUPABASE_PUBLISHABLE_KEY:'sb_publishable_test',GOOGLE_CLIENT_ID:'synthetic-client',GOOGLE_CLIENT_SECRET:'synthetic-secret',GOOGLE_TOKEN_KEY:Buffer.alloc(32,21).toString('base64'),GOOGLE_REDIRECT_URI:origin+'/api/google/callback',GOOGLE_SECONDARY_EMAIL:'second@example.invalid'};
  for(const [id,profile,subject,email]of [['owner-amir','amir','first-sub','first@example.invalid'],['owner-amir:secondary','amir','second-sub','second@example.invalid'],['owner-arash','arash','arash-sub','arash@example.invalid']]){
