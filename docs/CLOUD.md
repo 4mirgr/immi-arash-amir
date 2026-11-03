@@ -22,7 +22,7 @@ Cloud endpoints also support immutable CV snapshots and mail presets:
 - `POST /api/cv/default {id}`; `GET /api/cv/export?id=UUID&format=txt`. TXT and minimal DOCX exports are supported in cloud and local backends; neither invents CV content.
 - `GET/POST /api/presets` with `{name,subject,body}`; `POST /api/presets/default {id}`. Each save creates an immutable revision; multiline mail subjects are rejected.
 
-The mail queue module is **not yet implemented by this cloud adapter**. Gmail, Drive, Calendar, Telegram, AI and external collectors are explicitly disconnected. Cloud integration requires separate credentials/implementation.
+Google OAuth, mailbox sync/ranking, explicit send queue/replies and Calendar/Drive adapters now use a server-only D1 binding with independently encrypted owner grants. They require Google client credentials and each owner's consent before live operations; see docs/GOOGLE.md. Telegram, AI and external collectors remain disconnected.
 
 ## Database setup
 
@@ -95,5 +95,5 @@ The revision is the maximum clinic `updated_at`, or `empty`. Every clinic upsert
 
 The revision migration also adds covering indexes for private owner/profile and default-version composite foreign keys. A security-advisor informational notice that `immi_private.approved_accounts` has RLS with no policies is intentional: application roles must have no access to this administrative roster; its schema/table grants are also revoked. Do not add a permissive policy to silence that informational notice.
 
-## Google account separation (required, pending implementation)
-Arash and Amir require distinct verified Google identities, separate consent and encrypted token records, mailboxes, sender identities, synchronization state, attachments, extraction/ranking, defaults and queues. The OAuth client infrastructure may be shared; private mailbox systems may not. Authenticated application ownership must be enforced server-side and in database policies, with no fallback to another user's account. A revoked connection stops only its owner's jobs. This specification does not indicate that Google OAuth has been implemented or connected.
+## Google account separation (implemented contract; live setup pending)
+Arash and Amir require distinct verified Google identities, separate consent and encrypted token records, mailboxes, sender identities, synchronization state, attachments, extraction/ranking, defaults and queues. The OAuth client infrastructure may be shared; private mailbox systems may not. Authenticated application ownership must be enforced server-side and in database policies, with no fallback to another user's account. A revoked connection stops only its owner's jobs. Implementation is in cloud/google-*.mjs. Live connection is reported only by the authenticated owner status endpoint after consent; code/tests alone do not establish a connection.

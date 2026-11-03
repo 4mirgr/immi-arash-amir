@@ -1,4 +1,8 @@
 import {createDocx} from './docx.mjs';
+import {GoogleError,handleGoogleCallback,handleGoogleRequest,googleStatus} from './google-oauth.mjs';
+import {handleGoogleMailRequest,getOwnedMailReplyContext} from './google-mail.mjs';
+import {handleGoogleSendRequest} from './google-send.mjs';
+import {handleGoogleServicesRequest} from './google-services.mjs';
 import educationalCase from '../library/pesci/PESCI-PRACTICE-COMM-001.json' with { type: 'json' };
 
 const DEFAULT_SETTINGS = { emailPolicy: 'auto_after_connection', defaultTemplate: '', notifications: false };
@@ -30,7 +34,8 @@ export function createHandler(fetcher = fetch) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) return env.ASSETS ? env.ASSETS.fetch(request) : new Response('Not found', {status:404});
     try {
-      if (request.method === 'GET' && url.pathname === '/api/health') return json({ok:true, mode:'cloud_auth', authenticationRequired:true, integrationsConnected:false});
+      if(url.pathname==='/api/google/callback')return await handleGoogleCallback(request,env,fetcher);
+      if (request.method === 'GET' && url.pathname === '/api/health') return json({ok:true, mode:'cloud_auth', authenticationRequired:true, integrationsStatus:'per_account_status_required'});
       const cfg = config(env);
       if (request.method === 'GET' && url.pathname === '/api/public-config') return json({mode:'cloud',authRequired:true,supabaseUrl:cfg.url,publishableKey:cfg.key});
       if (!['GET', 'POST', 'PUT'].includes(request.method)) throw new ApiError(405, 'Method not allowed');
@@ -53,6 +58,14 @@ export function createHandler(fetcher = fetch) {
       if (!['arash','amir'].includes(profileId)) throw new ApiError(403, 'Account has not been provisioned for this workspace');
       const requestedProfile = url.searchParams.get('profile');
       if (requestedProfile && requestedProfile !== profileId) throw new ApiError(403, 'Profile access denied');
+      if(url.pathname.startsWith('/api/google/')){
+        const context={userId:user.id,profileId,rest};
+        for(const handler of [handleGoogleRequest,handleGoogleMailRequest,handleGoogleSendRequest,handleGoogleServicesRequest]){
+          const response=await handler(request,env,context,fetcher);
+          if(response)return response;
+        }
+        throw new ApiError(404,'Not found');
+      }
       const ownQuery = '?select=data&profile_id=eq.'+profileId;
       const validId = id => typeof id === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(id);
       async function versions(table, defaultsTable, defaultColumn) {
@@ -81,7 +94,7 @@ export function createHandler(fetcher = fetch) {
       const integrations = Object.fromEntries(['gmail','drive','calendar','telegram','ai','crawler'].map(k=>[k,{connected:false,status:'setup_required'}]));
       if (request.method === 'GET') {
         switch (url.pathname) {
-          case '/api/bootstrap': { const [c,p,s,revision] = await Promise.all([clinics(),profiles(),settings(),rest('rpc/immi_dataset_revision')]); return json({clinics:c,profiles:p,stations:[station],settings:s,integrations,mode:'cloud',currentProfileId:profileId,profileId,revision}); }
+          case '/api/bootstrap': { const [c,p,s,revision,g] = await Promise.all([clinics(),profiles(),settings(),rest('rpc/immi_dataset_revision'),googleStatus(env,user.id)]); for(const [key,capability] of [['gmail','gmailRead'],['drive','drive'],['calendar','calendar']])integrations[key]={connected:g.connected&&Boolean(g.capabilities?.[capability]),status:g.status,email:g.email}; return json({clinics:c,profiles:p,stations:[station],settings:s,integrations,mode:'cloud',currentProfileId:profileId,profileId,revision}); }
           case '/api/updates': return json({revision:await rest('rpc/immi_dataset_revision')});
           case '/api/cv/versions': return json(await versions('immi_cv_versions','immi_cv_defaults','version_id'));
           case '/api/presets': return json(await versions('immi_presets','immi_preset_defaults','preset_id'));
@@ -124,6 +137,10 @@ export function createHandler(fetcher = fetch) {
           if (known.length !== clinicIds.length) throw new ApiError(400, 'Unknown clinic');
         }
         const data = {id:crypto.randomUUID(),profileId,clinicIds,subject:body.subject,body:body.body,status:'draft'};
+        if(body.replyContext!==undefined){
+          if(!body.replyContext||typeof body.replyContext!=='object'||Array.isArray(body.replyContext)||Object.keys(body.replyContext).some(k=>!['messageId','threadId','to'].includes(k)))throw new ApiError(400,'Invalid reply context');
+          try{data.replyContext=await getOwnedMailReplyContext(env,user.id,body.replyContext,fetcher);}catch(error){if(/^[a-z_]{3,80}$/.test(error.code||'')&&Number.isInteger(error.status)&&error.status>=400&&error.status<600)throw new ApiError(error.status,error.code);throw error;}
+        }
         await rest('immi_drafts','',{method:'POST',body:JSON.stringify({id:data.id,user_id:user.id,profile_id:profileId,data}),headers:{Prefer:'return=minimal'}});
         return json(data,201);
       }
@@ -136,7 +153,7 @@ export function createHandler(fetcher = fetch) {
         return json(data);
       }
       throw new ApiError(404,'Not found');
-    } catch (error) { return json({error:error instanceof ApiError ? error.message : 'Request failed'},error instanceof ApiError ? error.status : 500); }
+    } catch (error) { const expected=error instanceof ApiError||error instanceof GoogleError;return json({error:expected ? error.message : 'Request failed',...(error instanceof GoogleError?{code:error.code}:{})},expected ? error.status : 500); }
   };
 }
 export default {fetch:createHandler()};

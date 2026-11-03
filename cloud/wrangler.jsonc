@@ -3,6 +3,14 @@
   "main": "worker.mjs",
   "compatibility_date": "2026-11-03",
   "workers_dev": true,
+  "vars": {
+    "GOOGLE_REDIRECT_URI": "https://immi-arash-amir.dr-gerami-md.workers.dev/api/google/callback"
+  },
+  "d1_databases": [{
+    "binding": "GOOGLE_DB",
+    "database_name": "immi-google-private",
+    "database_id": "faf37526-9c8c-4a86-9f91-3ab41ee8ddff"
+  }],
   "assets": {
     "directory": "../dist",
     "binding": "ASSETS",

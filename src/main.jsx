@@ -39,6 +39,9 @@ import "./style.css";
 import { api } from "./api";
 import { AccessGate } from "./auth";
 import { CVVersions, Presets } from "./workspace-tools";
+import { useGoogleConnection, GoogleConnection, GoogleInbox } from "./google-tools";
+import { GoogleSendPanel } from "./google-send-panel";
+import { CalendarDriveTools } from "./calendar-drive-tools";
 import sourceRegistry from "../library/sources.json";
 const nav = [
   ["overview", "نمای کلی", LayoutDashboard],
@@ -81,6 +84,8 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
     [policy, setPolicy] = useState("auto_after_connection"),
     [loading, setLoading] = useState(false),
     [page, setPage] = useState(1);
+  const googleConnection = useGoogleConnection(person, cloud);
+  const [replyContext, setReplyContext] = useState(null);
   const notify = (t) => {
     setToast(t);
     setTimeout(() => setToast(""), 4500);
@@ -149,6 +154,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
     setData({ clinics: [], profiles: [], stations: [] });
     refresh();
     setBody("");
+    setReplyContext(null);
     setSubject("Expression of interest — Medical Practitioner");
     setDrafts([]);
     let active = true;
@@ -226,6 +232,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
           body,
           clinicIds: selected,
           clinic_ids: selected,
+          ...(replyContext ? {replyContext} : {}),
           to: clinics
             .filter((c) => selected.includes(c.id))
             .map((c) => c.email)
@@ -476,7 +483,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                   icon={Mail}
                   value={drafts.length.toLocaleString("fa")}
                   title="پیش‌نویس این پروفایل"
-                  sub="ارسال فقط پس از اتصال Gmail"
+                  sub="پیش‌نویس‌های این حساب؛ ارسال نشده"
                 />
                 <Stat
                   icon={FileText}
@@ -570,8 +577,8 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                       online ? "دادهٔ سرور در دسترس" : "منتظر سرور",
                     ],
                     ["پایش منابع و فرصت‌ها", "نیازمند اتصال منبع"],
-                    ["دستیار مکاتبات", "نیازمند اتصال Gmail"],
-                    ["هماهنگی تقویم", "نیازمند اتصال Google"],
+                    ["دستیار مکاتبات", googleConnection.state.connected ? "دریافت محدود پیام‌ها آماده" : "نیازمند اتصال Gmail"],
+                    ["هماهنگی تقویم", googleConnection.state.connected ? "حساب متصل؛ همگام‌سازی در مرحلهٔ بعد" : "نیازمند اتصال Google"],
                   ].map(([a, b], i) => (
                     <div className="agent-row" key={a}>
                       <span
@@ -809,8 +816,9 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
               <section className="panel">
                 <div className="section-head">
                   <h3>پیش‌نویس مکاتبه</h3>
-                  <span className="tag">Gmail متصل نیست</span>
+                  <span className="tag">{googleConnection.state.connected ? "Gmail همین حساب متصل است" : "Gmail متصل نیست"}</span>
                 </div>
+                {replyContext && <div className="notice">پاسخ به پیام همین صندوق: <span dir="ltr">{replyContext.to}</span><button className="text-button" onClick={()=>setReplyContext(null)}>حذف زمینهٔ پاسخ</button><small>این مرحله فقط متن پیش‌نویس را آماده می‌کند؛ ارسال هنوز انجام نمی‌شود.</small></div>}
                 <label>مخاطبان انتخاب‌شده</label>
                 <div className="recipient-list">
                   {selected.length
@@ -876,6 +884,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                   پیوست و ارسال واقعی، پس از راه‌اندازی OAuth و انتخاب CV
                   تأییدشده فعال می‌شود.
                 </p>
+                <GoogleSendPanel person={person} selected={selected} subject={subject} body={body} connection={googleConnection} replyContext={replyContext} notify={notify}/>
                 <Presets
                   person={person}
                   subject={subject}
@@ -888,21 +897,12 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                 />
               </section>
               <section className="panel">
-                <h3>صندوق هوشمند</h3>
-                <div className="empty">
-                  <Mail size={34} />
-                  <h3>ابتدا حساب Google را متصل کنید</h3>
-                  <p>
-                    خواندن پاسخ‌ها، تشخیص قوت مکاتبه و پیگیری رشتهٔ ایمیل به
-                    مجوز حساب خودتان نیاز دارد.
-                  </p>
-                  <button
-                    className="secondary"
-                    onClick={() => setTab("settings")}
-                  >
-                    بررسی اتصال‌ها <ArrowLeft size={15} />
-                  </button>
-                </div>
+                <GoogleInbox person={person} connection={googleConnection} onSettings={()=>setTab("settings")} notify={notify} onReply={message=>{
+                  setSelected([]);
+                  setReplyContext({messageId:message.id,threadId:message.threadId,to:message.from||""});
+                  setSubject(/^re:/i.test(message.subject||"")?message.subject:"Re: "+(message.subject||""));
+                  setBody("\n\n"+(message.plainBody||message.body||message.snippet||"").split("\n").map(line=>"> "+line).join("\n"));
+                }}/>
                 <h3>پیش‌نویس‌های این پروفایل</h3>
                 {drafts.map((d, i) => (
                   <div className="agent-row" key={i}>
@@ -1181,8 +1181,9 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
             <div className="two-col">
               <section className="panel">
                 <h3>اتصال سرویس‌ها</h3>
+                <GoogleConnection person={person} connection={googleConnection} notify={notify}/>
+                <CalendarDriveTools key={person+":"+Boolean(googleConnection.state.connected)+":"+(googleConnection.state.email||"")} person={person} notify={notify}/>
                 {[
-                  ["Google Workspace", "Gmail، Drive و Calendar"],
                   ["Telegram", "اعلان موقعیت‌ها و پیگیری‌ها"],
                   ["پایش منابع", "دریافت آگهی و تشخیص تغییر"],
                   ["هوش مصنوعی", "تولید و تحلیل با ارائه‌دهندهٔ انتخابی"],
