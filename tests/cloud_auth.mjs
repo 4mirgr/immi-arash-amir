@@ -85,3 +85,14 @@ test('public-source opportunities still require the authenticated workspace owne
  assert.equal((await m.handle(request('/api/opportunities?profile=amir'),env)).status,403);
  assert.equal(m.calls.length,2);
 });
+
+test('LinkedIn routes keep member authorization and separate setup from connection',async()=>{
+ const m=mock();
+ assert.equal((await m.handle(new Request('https://immi.example/api/linkedin/workspace'),env)).status,401);
+ assert.equal(m.calls.length,0);
+ assert.equal((await m.handle(request('/api/linkedin/workspace?profile=amir'),env)).status,403);
+ const r=await m.handle(request('/api/linkedin/connection'),env);
+ assert.equal(r.status,200);const data=await r.json();
+ assert.equal(data.connected,false);assert.equal(data.canPublish,false);assert.equal(data.capabilities.liveAnalytics,false);
+ assert.equal((await m.handle(request('/api/linkedin/connect',{method:'POST',headers:{Origin:'https://evil.example'},body:'{}'}),env)).status,403);
+});

@@ -1,108 +1,76 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { BriefcaseBusiness, ExternalLink, RefreshCw, Search, ChevronLeft, ChevronRight } from "lucide-react";
-import { api } from "./api";
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {BriefcaseBusiness, ExternalLink, RefreshCw, Search, ChevronLeft, ChevronRight} from 'lucide-react';
+import {api} from './api';
 
-const text = (value) => typeof value === "string" ? value : "";
-const list = (value) => Array.isArray(value) ? value : [];
-const link = (value) => { try { const url = new URL(value); return url.protocol === "https:" ? url.href : null; } catch { return null; } };
-const date = (value) => { const d = value ? new Date(value) : null; return d && !Number.isNaN(d.getTime()) ? d.toLocaleString("fa-IR", { dateStyle: "medium", timeStyle: "short" }) : "اعلام نشده"; };
-const statusLabels = { open: "مهلت درخواست باز", future: "شروع انتشار در آینده", closed: "مهلت پایان یافته", source_removed: "دیگر در منبع دیده نشده" };
-const checkLabels = { updated: "منبع بررسی و داده‌ها به‌روز شدند.", not_modified: "منبع تغییری نداشته است.", cooldown: "برای رعایت فاصلهٔ دریافت منبع، فعلاً از دادهٔ ذخیره‌شده استفاده می‌شود.", busy: "بررسی منبع از قبل در حال اجراست.", failed: "دریافت منبع موفق نبود؛ دادهٔ ذخیره‌شده ممکن است قدیمی باشد." };
-const reasonLabels = {
-  title_matches_interest: "عنوان با کلیدواژه‌های مسیر شما هم‌خوانی دارد",
-  registrar_employment_grade_not_training_credit: "عنوان Registrar به‌تنهایی به معنی پذیرش آموزش تخصصی یا احتساب سابقه نیست",
-  specialist_qualification_and_registration_require_verification: "مدرک تخصص و شرایط ثبت باید مستقل بررسی شوند",
-  register_not_current_specific_vacancy: "این مورد بانک متقاضی است؛ وجود موقعیت مشخص فعلی تأیید نشده",
-  registration_supervision_sponsorship_not_assessed: "ثبت پزشکی، supervision و sponsorship هنوز ارزیابی نشده‌اند",
-  general_practice: "عنوان یا متن مرتبط با پزشکی عمومی",
-  internal_medicine: "عنوان یا متن مرتبط با داخلی",
-  medical_registrar: "عنوان یا متن مرتبط با Medical Registrar",
-  supervision_mentioned: "اشاره به supervision؛ نیازمند بررسی جزئیات",
-  sponsorship_mentioned: "اشاره به sponsorship؛ نیازمند بررسی جزئیات",
-  gp_keyword: "وجود واژه‌های مرتبط با پزشکی عمومی",
-  physician_keyword: "وجود واژه‌های مرتبط با پزشک داخلی",
-  registrar_keyword: "وجود واژهٔ Registrar",
-};
+const text=value=>typeof value==='string'?value:'';
+const list=value=>Array.isArray(value)?value:[];
+const safeLink=value=>{try{const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password?url.href:null;}catch{return null;}};
+const date=value=>{const parsed=value?new Date(value):null;return parsed&&!Number.isNaN(parsed.getTime())?parsed.toLocaleString('fa-IR',{dateStyle:'medium',timeStyle:'short'}):'اعلام نشده';};
+const STATES=[['NSW','نیو ساوت ولز'],['QLD','کوئینزلند'],['VIC','ویکتوریا'],['WA','استرالیای غربی'],['SA','استرالیای جنوبی'],['TAS','تاسمانی'],['NT','قلمرو شمالی'],['ACT','قلمرو پایتخت']];
+const TYPES=[['job','شغل'],['university','فرصت دانشگاهی'],['grant','گرنت'],['funding','فاند'],['scholarship','بورسیه']];
+const statusLabels={open:'مهلت درخواست باز',future:'شروع انتشار در آینده',closed:'مهلت پایان یافته',source_removed:'دیگر در منبع دیده نشده',unknown:'وضعیت نیازمند بررسی'};
+const reasonLabels={title_matches_interest:'عنوان با کلیدواژه‌های مسیر شما هم‌خوانی دارد',registrar_employment_grade_not_training_credit:'عنوان Registrar به‌تنهایی پذیرش آموزش تخصصی یا احتساب سابقه نیست',specialist_qualification_and_registration_require_verification:'مدرک تخصص و ثبت پزشکی باید مستقل بررسی شوند',register_not_current_specific_vacancy:'بانک متقاضی است؛ موقعیت مشخص فعلی تأیید نشده',registration_supervision_sponsorship_not_assessed:'ثبت پزشکی، supervision و sponsorship هنوز ارزیابی نشده‌اند',general_practice:'متن مرتبط با پزشکی عمومی',internal_medicine:'متن مرتبط با داخلی',medical_registrar:'متن مرتبط با Medical Registrar',supervision_mentioned:'اشاره به supervision؛ نیازمند بررسی جزئیات',sponsorship_mentioned:'اشاره به sponsorship؛ نیازمند بررسی جزئیات'};
+const sourceStatusLabels={updated:'دریافت موفق',not_modified:'بررسی شد؛ بدون تغییر',active:'کلکتور فعال',executable:'کلکتور قابل اجرا',ready:'کلکتور آماده',failed:'آخرین دریافت ناموفق',blocked:'دسترسی منبع محدود شده',link_only:'فقط پیوند؛ جمع‌آوری خودکار فعال نیست',linkonly:'فقط پیوند؛ جمع‌آوری خودکار فعال نیست',feed_not_configured:'کلکتور این منبع هنوز تنظیم نشده',not_checked:'هنوز بررسی نشده',unsupported:'روش دریافت قابل اجرا تأیید نشده',cooldown:'منتظر نوبت بعدی دریافت',busy:'بررسی در حال اجرا'};
+const trustLabel=item=>(item.trust||item.sourceTrust)==='unofficial'?'غیررسمی؛ نیازمند راستی‌آزمایی':(item.trust||item.sourceTrust)==='official'?'منبع رسمی':'نوع منبع تأیید نشده';
+const organizationId=item=>text(item.organizationId||item.organization_id||(typeof item.organization==='object'?item.organization?.id:''));
+const organizationName=item=>text(typeof item.organization==='string'?item.organization:item.organization?.name)||text(item.organizationName)||'سازمان نامشخص';
+const availableTo=(item,person)=>person==='amir'||item.country!=='IT';
 
-export function JobOpportunitiesPanel({ person, notify }) {
-  const [items, setItems] = useState([]), [sources, setSources] = useState([]);
-  const [query, setQuery] = useState(""), [submittedQuery, setSubmittedQuery] = useState("");
-  const [kind, setKind] = useState("all"), [state, setState] = useState("all"), [includeClosed, setIncludeClosed] = useState(false);
-  const [page, setPage] = useState(0), [total, setTotal] = useState(0), [busy, setBusy] = useState(false), [checking, setChecking] = useState(false);
-  const [error, setError] = useState(""), [checkNote, setCheckNote] = useState(""), [expanded, setExpanded] = useState(null);
-  const generation = useRef(0), owner = useRef(person); owner.current = person;
-  const limit = 25;
-
-  const load = useCallback(async () => {
-    const epoch = ++generation.current, requestedOwner = person;
-    setBusy(true); setError("");
-    const params = new URLSearchParams({ profile: person, q: submittedQuery, state, kind, includeClosed: String(includeClosed), limit: String(limit), offset: String(page * limit) });
-    const results = await Promise.allSettled([api("opportunities?" + params), api("opportunities/sources?profile=" + encodeURIComponent(person))]);
-    if (epoch !== generation.current || owner.current !== requestedOwner) return;
-    if (results[0].status === "fulfilled") {
-      const data = results[0].value;
-      setItems(list(data?.opportunities || (Array.isArray(data) ? data : [])));
-      setTotal(Number.isFinite(data?.total) ? data.total : list(data?.opportunities || data).length);
-    } else { setItems([]); setTotal(0); setError(results[0].reason?.message || "دریافت فهرست فرصت‌ها انجام نشد."); }
-    if (results[1].status === "fulfilled") setSources(list(results[1].value?.sources));
-    else { setSources([]); if (results[0].status === "fulfilled") setError("وضعیت بررسی منبع در دسترس نیست؛ تازگی داده را نمی‌توان تأیید کرد."); }
-    setBusy(false);
-  }, [person, submittedQuery, state, kind, includeClosed, page]);
-
-  const loadCurrent = useRef(load); loadCurrent.current = load;
-
-  useEffect(() => { load(); return () => { generation.current++; }; }, [load]);
-  useEffect(() => { setItems([]); setSources([]); setQuery(""); setSubmittedQuery(""); setPage(0); setExpanded(null); setCheckNote(""); setChecking(false); }, [person]);
-
-  async function refreshSource() {
-    const requestedOwner = person;
-    setChecking(true); setCheckNote("");
-    try {
-      const result = await api("opportunities/refresh?profile=" + encodeURIComponent(person), { method: "POST", body: "{}" });
-      if (owner.current !== requestedOwner) return;
-      const message = checkLabels[result.status] || "وضعیت دریافت منبع به‌روز شد.";
-      setCheckNote(message); notify?.(message); await loadCurrent.current();
-    } catch (e) { if (owner.current === requestedOwner) setCheckNote(e.message || "بررسی منبع انجام نشد."); }
-    finally { if (owner.current === requestedOwner) setChecking(false); }
-  }
-
-  return <section className="panel" aria-label="فرصت‌های منتشرشده در منابع رسمی">
-    <div className="section-head" style={{ flexWrap: "wrap", gap: 12 }}>
-      <div><span className="eyebrow">OFFICIAL SOURCE • TASMANIA PILOT</span><h3><BriefcaseBusiness size={19} aria-hidden="true" /> فرصت‌های منتشرشده در منبع رسمی</h3></div>
-      <button className="secondary" disabled={checking || busy} onClick={refreshSource}><RefreshCw size={15} className={checking ? "spin" : ""} /> {checking ? "در حال بررسی منبع…" : "بررسی تازهٔ منبع"}</button>
-    </div>
-    <div className="notice">پوشش فعلی این بخش فقط پایلوت تاسمانی است؛ پوشش سراسر استرالیا هنوز کامل نیست. این موارد از منبع استخدامی آمده‌اند؛ پیشنهاد کار قطعی، تأیید اسپانسر یا احراز شرایط ثبت پزشکی محسوب نمی‌شوند.</div>
-    {sources.map(source => <div className="agent-row" key={text(source.id)} style={{ flexWrap: "wrap", gap: 8, alignItems: "start" }}>
-      <div style={{ flex: 1, minWidth: 180 }}><strong>{text(source.name) || "منبع استخدامی"}</strong><small style={{ display: "block", marginTop: 7 }}>آخرین بررسی: {date(source.lastCheckAt)} · آخرین دریافت موفق: {date(source.lastSuccessAt)}</small></div>
-      <span className="status amber">TAS · پایلوت</span>
-      {link(source.portalUrl) && <a className="text-button" href={link(source.portalUrl)} target="_blank" rel="noreferrer">مرجع رسمی <ExternalLink size={13} /></a>}
-      {(source.lastErrorCode || source.status === "failed") && <span className="notice" role="status">آخرین دریافت موفق نبوده؛ تازگی اطلاعات نیازمند بررسی است.</span>}
-    </div>)}
-    {checkNote && <div className="notice" role="status">{checkNote}</div>}
-    {error && <div className="notice" role="alert">{error} <button className="text-button" onClick={load} disabled={busy}>دریافت دوباره</button></div>}
-    <form className="inbox-filters" onSubmit={event => { event.preventDefault(); setPage(0); setSubmittedQuery(query.trim()); }} style={{ marginTop: 20 }}>
-      <label className="inbox-search"><Search size={17} /><input aria-label="جست‌وجو در آگهی‌های منبع رسمی" value={query} onChange={e => setQuery(e.target.value)} placeholder="عنوان یا متن فرصت…" maxLength={200} /></label>
-      <select aria-label="ایالت فرصت" value={state} onChange={e => { setPage(0); setState(e.target.value); }}><option value="all">ایالت‌های تحت پوشش</option><option value="TAS">تاسمانی · TAS</option></select>
-      <select aria-label="نوع فرصت" value={kind} onChange={e => { setPage(0); setKind(e.target.value); }}><option value="all">همهٔ انواع</option><option value="vacancy">آگهی موقعیت</option><option value="employment_register">ثبت علاقه‌مندی / بانک متقاضی</option></select>
-      <button type="submit" className="secondary" disabled={busy}>جست‌وجو</button>
-    </form>
-    <label className="checkline" style={{ marginTop: 12 }}><input type="checkbox" checked={includeClosed} onChange={e => { setPage(0); setIncludeClosed(e.target.checked); }} /> نمایش موارد بسته‌شده نیز</label>
-    <p className="muted">{busy ? "در حال دریافت دادهٔ ذخیره‌شده…" : `${total.toLocaleString("fa-IR")} نتیجه با فیلتر فعلی`} · رتبه‌بندی، نشانه‌های موجود در متن را مقایسه می‌کند و احتمال پذیرش نیست.</p>
-    {!busy && !items.length && !error && <div className="empty"><BriefcaseBusiness size={28} /><h3>فعلاً موردی با این فیلتر ثبت نشده است</h3><p>ممکن است دریافت اولیه هنوز انجام نشده باشد یا منبع مورد مناسبی نداشته باشد. بانک تماس‌های پایین صفحه مستقل از این فهرست است.</p></div>}
-    {items.map(item => <article className="inbox-message" key={text(item.id)}>
-      <div className="section-head" style={{ gap: 10, flexWrap: "wrap", alignItems: "start" }}><div style={{ minWidth: 0, flex: 1 }}><h4 dir="auto" style={{ margin: "0 0 8px", overflowWrap: "anywhere" }}>{text(item.title) || "عنوان اعلام نشده"}</h4><small>{text(item.organization) || "نام سازمان نیازمند بررسی"} · {text(item.state) || "ایالت نامعلوم"}</small></div><span className="status amber">{item.kind === "employment_register" ? "بانک متقاضی؛ آگهی قطعی نیست" : "آگهی موقعیت"}</span><span className="status">{statusLabels[item.status] || "وضعیت نیازمند بررسی"}</span></div>
-      <p className="muted">مهلت اعلام‌شده: {date(item.closingAt)} · مشاهدهٔ اخیر در منبع: {date(item.lastSeenAt)}</p>
-      <p className="message-snippet" dir="auto">{text(item.summary)}</p>
-      <p className="muted">اسپانسرشیپ: {item.sponsorship === true ? "ذکرشده در متن؛ نیازمند تأیید" : "تأیید نشده"} · supervision: {item.supervision === true ? "ذکرشده در متن؛ نیازمند تأیید" : "تأیید نشده"} · شرایط ثبت و MMM/DPA: نیازمند بررسی مستقل</p>
-      <div className="form-actions" style={{ flexWrap: "wrap" }}>
-        {link(item.url) && <a className="secondary link" href={link(item.url)} target="_blank" rel="noreferrer">اصل آگهی <ExternalLink size={14} /></a>}
-        <button className="text-button" onClick={() => setExpanded(expanded === item.id ? null : item.id)}>{expanded === item.id ? "بستن جزئیات منبع" : "جزئیات و مبنای تطابق"}</button>
-      </div>
-      {expanded === item.id && <div className="message-details"><div className="cv-details"><span>شناسهٔ منبع</span><b>{text(item.sourceId) || "نامعلوم"}</b><span>انتشار اعلام‌شده</span><b>{date(item.publishedAt)}</b><span>نخستین مشاهده</span><b>{date(item.firstSeenAt)}</b><span>شاخص تطابق واژه‌ها</span><b>{Number.isFinite(item.match?.score) ? item.match.score.toLocaleString("fa-IR") : "ارزیابی نشده"} — احتمال پذیرش نیست</b></div>
-        <ul>{list(item.match?.reasons).map((reason, index) => <li key={index}>{reasonLabels[reason] || "نشانهٔ متنی برای بررسی تناسب؛ شرایط نهایی باید از اصل آگهی تأیید شود."}</li>)}</ul>
-        {link(item.sourceUrl) && <a className="text-button" href={link(item.sourceUrl)} target="_blank" rel="noreferrer">دادهٔ منبع ناشر <ExternalLink size={13} /></a>}
-      </div>}
-    </article>)}
-    {total > limit && <div className="form-actions" style={{ marginTop: 18 }}><button className="secondary" disabled={busy || page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}><ChevronRight size={15} /> قبلی</button><span className="muted">صفحهٔ {(page + 1).toLocaleString("fa-IR")} از {Math.ceil(total / limit).toLocaleString("fa-IR")}</span><button className="secondary" disabled={busy || (page + 1) * limit >= total} onClick={() => setPage(p => p + 1)}>بعدی <ChevronLeft size={15} /></button></div>}
-  </section>;
+export function JobOpportunitiesPanel({person,notify}){
+ const [items,setItems]=useState([]),[sources,setSources]=useState([]);
+ const [query,setQuery]=useState(''),[submittedQuery,setSubmittedQuery]=useState('');
+ const [country,setCountry]=useState('AU'),[state,setState]=useState('all'),[kind,setKind]=useState('all');
+ const [official,setOfficial]=useState(true),[unofficial,setUnofficial]=useState(false),[types,setTypes]=useState(TYPES.map(([id])=>id)),[includeClosed,setIncludeClosed]=useState(false);
+ const [page,setPage]=useState(0),[total,setTotal]=useState(0),[busy,setBusy]=useState(false),[checking,setChecking]=useState(false),[error,setError]=useState(''),[checkNote,setCheckNote]=useState(''),[expanded,setExpanded]=useState(null);
+ const [history,setHistory]=useState({}),[historyOpen,setHistoryOpen]=useState(null),[historyBusy,setHistoryBusy]=useState(null),[historyError,setHistoryError]=useState('');
+ const generation=useRef(0),owner=useRef(person);owner.current=person;
+ const limit=25,effectiveCountry=person==='amir'?country:'AU';
+ const effectiveState=effectiveCountry==='AU'&&(state==='all'||STATES.some(([id])=>id===state))?state:'all';
+ const trust=official&&unofficial?'all':official?'official':unofficial?'unofficial':null;
+ const noSelection=!trust||!types.length;
+ const load=useCallback(async()=>{
+  const epoch=++generation.current,requestedOwner=person;setBusy(true);setError('');
+  const params=new URLSearchParams({profile:person,country:effectiveCountry,state:effectiveState,kind,q:submittedQuery,includeClosed:String(includeClosed),limit:String(limit),offset:String(page*limit)});
+  if(trust)params.set('trust',trust);
+  params.set('types',types.join(','));
+  const results=await Promise.allSettled([noSelection?Promise.resolve({opportunities:[],total:0}):api('opportunities?'+params),api('opportunities/sources?'+new URLSearchParams({profile:person,country:effectiveCountry}))]);
+  if(epoch!==generation.current||owner.current!==requestedOwner)return;
+  if(results[0].status==='fulfilled'){
+   const data=results[0].value,records=list(data?.opportunities||(Array.isArray(data)?data:[])).filter(item=>availableTo(item,person));setItems(records);setTotal(Number.isFinite(data?.total)?data.total:records.length);
+  }else{setItems([]);setTotal(0);setError(results[0].reason?.message||'دریافت فهرست فرصت‌ها انجام نشد.');}
+  if(results[1].status==='fulfilled')setSources(list(results[1].value?.sources).filter(source=>availableTo(source,person)));
+  else{setSources([]);if(results[0].status==='fulfilled')setError('وضعیت دریافت منابع در دسترس نیست؛ تازگی داده‌ها تأیید نشده است.');}
+  setBusy(false);
+ },[person,effectiveCountry,effectiveState,kind,submittedQuery,includeClosed,page,trust,types,noSelection]);
+ const loadCurrent=useRef(load);loadCurrent.current=load;
+ useEffect(()=>{load();return()=>{generation.current++;};},[load]);
+ useEffect(()=>{setItems([]);setSources([]);setQuery('');setSubmittedQuery('');setPage(0);setCountry('AU');setState('all');setKind('all');setExpanded(null);setHistory({});setHistoryOpen(null);setHistoryBusy(null);setHistoryError('');setCheckNote('');setChecking(false);},[person]);
+ const groups=useMemo(()=>{const result=new Map();for(const item of items){const id=organizationId(item),key=id||'ungrouped';if(!result.has(key))result.set(key,{id,name:id?organizationName(item):'فرصت‌های بدون ارتباط تأییدشده با یک مجموعه',items:[]});result.get(key).items.push(item);}return [...result.values()];},[items]);
+ function changeFilter(setter,value){setPage(0);setHistoryOpen(null);setter(value);}
+ function toggleType(id){setPage(0);setTypes(current=>current.includes(id)?current.filter(value=>value!==id):[...current,id]);}
+ async function refreshSources(){const requestedOwner=person;setChecking(true);setCheckNote('');try{const result=await api('opportunities/refresh?'+new URLSearchParams({profile:person,country:effectiveCountry}),{method:'POST',body:'{}'});if(owner.current!==requestedOwner)return;const message=result.status==='failed'?'دریافت تازه ناموفق بود؛ وضعیت هر منبع را بررسی کنید.':result.status==='cooldown'?'منبع هنوز در فاصلهٔ مجاز دریافت است؛ دادهٔ ذخیره‌شده نمایش داده می‌شود.':'درخواست بررسی منابع ثبت شد؛ نتیجه و زمان هر منبع جداگانه نمایش داده می‌شود.';setCheckNote(message);notify?.(message);await loadCurrent.current();}catch(e){if(owner.current===requestedOwner)setCheckNote(e.message||'بررسی منابع انجام نشد.');}finally{if(owner.current===requestedOwner)setChecking(false);}}
+ async function toggleHistory(id){if(historyOpen===id){setHistoryOpen(null);return;}setHistoryOpen(id);setHistoryError('');if(history[id])return;const requestedOwner=person;setHistoryBusy(id);try{const data=await api('opportunities/organizations/'+encodeURIComponent(id)+'?'+new URLSearchParams({profile:person,country:effectiveCountry}));if(owner.current!==requestedOwner)return;setHistory(current=>({...current,[id]:list(data?.opportunities||data?.editions||data?.history||(Array.isArray(data)?data:[])).filter(item=>availableTo(item,person))}));}catch(e){if(owner.current===requestedOwner)setHistoryError(e.message||'تاریخچهٔ این مجموعه در دسترس نیست.');}finally{if(owner.current===requestedOwner)setHistoryBusy(null);}}
+ function renderItem(item,isHistory=false){const id=text(item.id)||text(item.editionId),detailKey=(isHistory?'history:':'')+id,type=item.opportunityType||item.opportunity_type||item.type||'job';return <article className="inbox-message" key={detailKey}>
+  <div className="section-head" style={{gap:10,flexWrap:'wrap',alignItems:'start'}}><div style={{minWidth:0,flex:1}}><h4 dir="auto" style={{margin:'0 0 8px',overflowWrap:'anywhere'}}>{text(item.title)||'عنوان اعلام نشده'}</h4><small>{organizationName(item)} · {item.country==='IT'?'ایتالیا':text(item.state)||'استرالیا'}</small></div><span className="status">{TYPES.find(([key])=>key===type)?.[1]||'نوع نیازمند بررسی'}</span><span className="status amber">{trustLabel(item)}</span><span className="status">{statusLabels[item.status]||'وضعیت نیازمند بررسی'}</span></div>
+  {item.kind==='employment_register'&&<p className="notice">این مورد بانک متقاضی / اعلام علاقه‌مندی است؛ جای خالی مشخص تأیید نشده است.</p>}
+  <p className="muted">انتشار: {date(item.publishedAt||item.published_at)} · مهلت: {date(item.closingAt||item.closing_at)} · آخرین مشاهده: {date(item.lastSeenAt||item.last_seen_at)}</p>
+  <p className="message-snippet" dir="auto">{text(item.summary)}</p>
+  <p className="muted">اسپانسرشیپ: {item.sponsorship===true?'ذکرشده؛ نیازمند تأیید':'تأیید نشده'} · supervision: {item.supervision===true?'ذکرشده؛ نیازمند تأیید':'تأیید نشده'} · ثبت پزشکی، شرایط تحصیلی و MMM/DPA نیازمند بررسی مستقل‌اند.</p>
+  <div className="form-actions" style={{flexWrap:'wrap'}}>{safeLink(item.url)&&<a className="secondary link" href={safeLink(item.url)} target="_blank" rel="noreferrer">اصل فرصت <ExternalLink size={14}/></a>}<button className="text-button" onClick={()=>setExpanded(expanded===detailKey?null:detailKey)}>{expanded===detailKey?'بستن جزئیات':'جزئیات و منشأ انتشار'}</button></div>
+  {expanded===detailKey&&<div className="message-details"><div className="cv-details"><span>منبع</span><b>{text(item.sourceId||item.source_id)||'نامعلوم'}</b><span>نسخه / نوبت انتشار</span><b>{text(item.editionKey||item.edition_key)||'اعلام نشده'}</b><span>نخستین مشاهده</span><b>{date(item.firstSeenAt||item.first_seen_at)}</b><span>نشانهٔ تطابق متن</span><b>{Number.isFinite(item.match?.score)?item.match.score.toLocaleString('fa-IR'):'ارزیابی نشده'}؛ احتمال پذیرش نیست</b></div><ul>{list(item.match?.reasons).map((reason,index)=><li key={index}>{reasonLabels[reason]||'نشانهٔ متنی برای بررسی؛ شرایط نهایی از اصل منبع تأیید شود.'}</li>)}</ul>{text(item.fullText)&&<p dir="auto" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{text(item.fullText)}</p>}{safeLink(item.sourceUrl)&&<a className="text-button" href={safeLink(item.sourceUrl)} target="_blank" rel="noreferrer">دادهٔ ناشر <ExternalLink size={13}/></a>}</div>}
+ </article>;}
+ return <section className="panel" aria-label="فرصت‌های منتشرشده در منابع رسمی و غیررسمی">
+  <div className="section-head" style={{flexWrap:'wrap',gap:12}}><div><span className="eyebrow">SOURCE EVIDENCE • OPPORTUNITY HISTORY</span><h3><BriefcaseBusiness size={19}/> فرصت‌ها و نوبت‌های انتشار هر مجموعه</h3></div><button className="secondary" disabled={checking||busy} onClick={refreshSources}><RefreshCw size={15} className={checking?'spin':''}/>{checking?'در حال بررسی…':'بررسی تازهٔ منابع'}</button></div>
+  <div className="notice">دادهٔ منبع، پیشنهاد کار قطعی یا تأیید شرایط شما نیست. پوشش فعال هر منبع در فهرست زیر مشخص است؛ وجود نام یک ایالت یا دانشگاه به معنی فعال‌بودن جمع‌آوری خودکار آن نیست.{person==='amir'?' فرصت‌های دانشگاهی ایتالیا فقط در این پنل در دسترس‌اند.':''}</div>
+  <details style={{marginTop:14}}><summary>پوشش و سلامت منابع ({sources.length.toLocaleString('fa-IR')})</summary>{sources.length?sources.map((source,index)=>{const status=text(source.collectorStatus||source.configurationStatus||source.status)||'not_checked',reason=text(source.reason||source.configurationReason||source.lastErrorCode||source.last_error_code||source.note);return <div className="agent-row" key={text(source.id)||index} style={{flexWrap:'wrap',gap:8,alignItems:'start'}}><div style={{flex:1,minWidth:180}}><strong>{text(source.name)||'منبع'}</strong><small style={{display:'block',marginTop:6}}>{text(source.country)||'AU'} · {text(source.state)||list(source.states).join('،')||'پوشش نیازمند بررسی'} · {trustLabel(source)}</small><small style={{display:'block',marginTop:6}}>بررسی: {date(source.lastCheckAt||source.lastAttemptAt||source.last_attempt_at||source.verifiedAt)} · دریافت موفق: {date(source.lastSuccessAt||source.last_success_at)}</small>{reason&&<p className="muted" style={{overflowWrap:'anywhere'}}>{reason}</p>}</div><span className="status amber">{sourceStatusLabels[status]||status}</span>{safeLink(source.portalUrl||source.evidenceUrl||source.url)&&<a className="text-button" href={safeLink(source.portalUrl||source.evidenceUrl||source.url)} target="_blank" rel="noreferrer">مشاهدهٔ منبع <ExternalLink size={13}/></a>}</div>;}):<p className="muted">وضعیت منبعی دریافت نشده است؛ پوشش خودکار تأیید نشده.</p>}</details>
+  {checkNote&&<div className="notice" role="status">{checkNote}</div>}{error&&<div className="notice" role="alert">{error}<button className="text-button" disabled={busy} onClick={load}>دریافت دوباره</button></div>}
+  <form className="inbox-filters" style={{marginTop:20}} onSubmit={event=>{event.preventDefault();setPage(0);setSubmittedQuery(query.trim());}}><label className="inbox-search"><Search size={17}/><input aria-label="جست‌وجو در فرصت‌ها" value={query} onChange={event=>setQuery(event.target.value)} placeholder="عنوان، مجموعه، دانشگاه یا متن فرصت…" maxLength={200}/></label><select aria-label="کشور فرصت" value={effectiveCountry} onChange={event=>{changeFilter(setCountry,event.target.value);setState('all');}}><option value="AU">استرالیا</option>{person==='amir'&&<option value="IT">ایتالیا · دانشگاه‌ها</option>}</select>{effectiveCountry==='AU'&&<select aria-label="ایالت فرصت" value={effectiveState} onChange={event=>changeFilter(setState,event.target.value)}><option value="all">همهٔ ایالت‌ها و قلمروها</option>{STATES.map(([id,name])=><option value={id} key={id}>{name} · {id}</option>)}</select>}<select aria-label="قالب آگهی" value={kind} onChange={event=>changeFilter(setKind,event.target.value)}><option value="all">آگهی و بانک متقاضی</option><option value="vacancy">آگهی موقعیت مشخص</option><option value="employment_register">بانک متقاضی / علاقه‌مندی</option></select><button className="secondary" type="submit" disabled={busy}>جست‌وجو</button></form>
+  <div style={{display:'flex',flexWrap:'wrap',gap:16,marginTop:14}}><label className="checkline"><input type="checkbox" checked={official} onChange={event=>changeFilter(setOfficial,event.target.checked)}/>منابع رسمی</label><label className="checkline"><input type="checkbox" checked={unofficial} onChange={event=>changeFilter(setUnofficial,event.target.checked)}/>منابع غیررسمی</label><label className="checkline"><input type="checkbox" checked={includeClosed} onChange={event=>changeFilter(setIncludeClosed,event.target.checked)}/>موارد بسته‌شده نیز</label></div>
+  <fieldset style={{border:'1px solid #26374a',borderRadius:10,padding:12,marginTop:14}}><legend>هدف فرصت</legend><div style={{display:'flex',flexWrap:'wrap',gap:16}}>{TYPES.map(([id,label])=><label className="checkline" key={id}><input type="checkbox" checked={types.includes(id)} onChange={()=>toggleType(id)}/>{label}</label>)}</div></fieldset>
+  <p className="muted">{busy?'در حال دریافت دادهٔ ذخیره‌شده…':`${total.toLocaleString('fa-IR')} نتیجه با فیلتر فعلی`} · رتبه‌بندی احتمال پذیرش نیست.</p>
+  {noSelection&&<div className="notice">برای نمایش نتایج، دست‌کم یک نوع منبع و یک هدف فرصت را انتخاب کنید.</div>}
+  {!busy&&!items.length&&!error&&!noSelection&&<div className="empty"><BriefcaseBusiness size={28}/><h3>موردی با این فیلتر ثبت نشده است</h3><p>منابعِ فقط پیوند یا تنظیم‌نشده، آگهی فعال محسوب نمی‌شوند. بانک تماس‌ها مستقل از این فهرست است.</p></div>}
+  {groups.map(group=><div key={group.id||'ungrouped'} style={{marginTop:18}}><div className="section-head" style={{flexWrap:'wrap',gap:8}}><h4>{group.name}</h4>{group.id&&<button className="secondary" onClick={()=>toggleHistory(group.id)}>{historyOpen===group.id?'بستن تاریخچهٔ مجموعه':'نوبت‌های انتشار این مجموعه'}</button>}</div>{group.items.map(item=>renderItem(item))}{group.id&&historyOpen===group.id&&<div className="panel" aria-label="تاریخچهٔ انتشار مجموعه"><h4>فرصت‌های جداگانه و نسخه‌های انتشار این مجموعه</h4>{historyBusy===group.id?<p>در حال دریافت تاریخچه…</p>:historyError?<p role="alert">{historyError}</p>:history[group.id]?.length?history[group.id].map(item=>renderItem(item,true)):<p className="muted">تاریخچهٔ قابل‌نمایشی دریافت نشد.</p>}</div>}</div>)}
+  {total>limit&&<div className="form-actions" style={{marginTop:18}}><button className="secondary" disabled={busy||page===0} onClick={()=>setPage(value=>Math.max(0,value-1))}><ChevronRight size={15}/>قبلی</button><span className="muted">صفحهٔ {(page+1).toLocaleString('fa-IR')} از {Math.ceil(total/limit).toLocaleString('fa-IR')}</span><button className="secondary" disabled={busy||(page+1)*limit>=total} onClick={()=>setPage(value=>value+1)}>بعدی<ChevronLeft size={15}/></button></div>}
+ </section>;
 }

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   LayoutDashboard,
+  Linkedin,
   Search,
   Mail,
   FileText,
@@ -43,6 +44,7 @@ import { useGoogleConnection, GoogleConnection, GoogleInbox } from "./google-too
 import { GoogleSendPanel } from "./google-send-panel";
 import { CalendarDriveTools } from "./calendar-drive-tools";
 import { ProfilePlanning } from "./profile-planning";
+import { LinkedInPanel } from "./linkedin-panel";
 import { JobOpportunitiesPanel } from "./job-opportunities-panel";
 import sourceRegistry from "../library/sources.json";
 const nav = [
@@ -51,6 +53,7 @@ const nav = [
   ["mail", "مرکز مکاتبات", Mail],
   ["cv", "توسعه رزومه", FileText],
   ["pesci", "آکادمی PESCI", GraduationCap],
+  ["linkedin", "لینکدین و شبکه‌سازی", Linkedin],
   ["sources", "منابع و مسیرها", BookOpen],
   ["settings", "اتصال‌ها و تنظیمات", Settings],
 ];
@@ -296,9 +299,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
     <div className={"app " + (!arash ? "amir" : "")}>
       <aside className="sidebar">
         <a className="brand" href="#" onClick={(e) => e.preventDefault()}>
-          <span className="brand-icon">
-            <Activity />
-          </span>
+          <span className="brand-icon"><img src="/brand-aa-64.png" alt="AA" width="42" height="42" style={{borderRadius:10}}/></span>
           <div>
             مسیــر<span>MEDICAL CAREER OS</span>
           </div>
@@ -1122,6 +1123,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                 </p>
               </section>
             ))}
+          {tab === "linkedin" && <LinkedInPanel person={person} notify={notify} />}
           {tab === "sources" && (
             <>
               <div className="notice">

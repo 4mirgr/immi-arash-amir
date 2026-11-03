@@ -182,7 +182,7 @@ export function AccessGate({ children }) {
     <div className="access-screen" dir="rtl">
       <section className="panel access-card">
         <div className="access-brand">
-          <Activity size={30} />
+          <img src="/brand-aa-180.png" alt="AA" width="64" height="64" style={{borderRadius:14}}/>
           <h1>مسیر</h1>
         </div>
         <h2>ورود به فضای کاری پزشکی</h2>

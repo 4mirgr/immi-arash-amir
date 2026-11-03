@@ -3,7 +3,10 @@ import {GoogleError,handleGoogleCallback,handleGoogleRequest,googleStatus} from 
 import {handleGoogleMailRequest,getOwnedMailReplyContext} from './google-mail.mjs';
 import {handleGoogleSendRequest} from './google-send.mjs';
 import {handleGoogleServicesRequest} from './google-services.mjs';
-import {handleOpportunityRequest,collectOpportunities} from './job-opportunities.mjs';
+import {handleOpportunityV2Request} from './opportunity-store.mjs';
+import {handleRegisteredSourcesRequest,collectRegisteredSources} from './source-collectors.mjs';
+import {handleLinkedInRequest} from './linkedin-workspace.mjs';
+import {handleLinkedInOAuthCallback,handleLinkedInOAuthRequest} from './linkedin-oauth.mjs';
 import educationalCase from '../library/pesci/PESCI-PRACTICE-COMM-001.json' with { type: 'json' };
 
 const DEFAULT_SETTINGS = { emailPolicy: 'auto_after_connection', defaultTemplate: '', notifications: false };
@@ -36,6 +39,7 @@ export function createHandler(fetcher = fetch) {
     if (!url.pathname.startsWith('/api/')) return env.ASSETS ? env.ASSETS.fetch(request) : new Response('Not found', {status:404});
     try {
       if(url.pathname==='/api/google/callback')return await handleGoogleCallback(request,env,fetcher);
+      if(url.pathname==='/api/linkedin/callback')return await handleLinkedInOAuthCallback(request,env,fetcher);
       if (request.method === 'GET' && url.pathname === '/api/health') return json({ok:true, mode:'cloud_auth', authenticationRequired:true, integrationsStatus:'per_account_status_required'});
       const cfg = config(env);
       if (request.method === 'GET' && url.pathname === '/api/public-config') return json({mode:'cloud',authRequired:true,supabaseUrl:cfg.url,publishableKey:cfg.key});
@@ -60,8 +64,18 @@ export function createHandler(fetcher = fetch) {
       const requestedProfile = url.searchParams.get('profile');
       if (requestedProfile && requestedProfile !== profileId) throw new ApiError(403, 'Profile access denied');
       if(url.pathname==='/api/opportunities'||url.pathname.startsWith('/api/opportunities/')){
-        const response=await handleOpportunityRequest(request,env,{userId:user.id,profileId},fetcher);
-        if(response)return response;
+        for(const handler of [handleRegisteredSourcesRequest,handleOpportunityV2Request]){
+          const response=await handler(request,env,{userId:user.id,profileId},fetcher);
+          if(response)return response;
+        }
+        throw new ApiError(404,'Not found');
+      }
+      if(url.pathname.startsWith('/api/linkedin/')){
+        for(const handler of [handleLinkedInOAuthRequest,handleLinkedInRequest]){
+          const response=await handler(request,env,{userId:user.id,profileId,rest},fetcher);
+          if(response)return response;
+        }
+        throw new ApiError(404,'Not found');
       }
       if(url.pathname.startsWith('/api/google/')){
         const context={userId:user.id,profileId,rest};
@@ -161,4 +175,4 @@ export function createHandler(fetcher = fetch) {
     } catch (error) { const expected=error instanceof ApiError||error instanceof GoogleError;return json({error:expected ? error.message : 'Request failed',...(error instanceof GoogleError?{code:error.code}:{})},expected ? error.status : 500); }
   };
 }
-export default {fetch:createHandler(),async scheduled(event,env){await collectOpportunities(env);}};
+export default {fetch:createHandler(),async scheduled(event,env){await collectRegisteredSources(env);}};
