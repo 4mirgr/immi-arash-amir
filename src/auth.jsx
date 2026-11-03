@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Activity, LogIn, RefreshCw } from "lucide-react";
 import { api, setAccessToken } from "./api";
 
@@ -10,6 +10,11 @@ export function AccessGate({ children }) {
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // A completed request from a previous login/refresh must never restore a
+  // signed-out identity or overwrite the next doctor's session.
+  const authEpoch = useRef(0);
+  const mounted = useRef(true);
+  const isCurrentAuth = (epoch) => mounted.current && authEpoch.current === epoch;
   async function loadConfig() {
     setBusy(true);
     setError("");
@@ -37,8 +42,13 @@ export function AccessGate({ children }) {
     }
   }
   useEffect(() => {
+    mounted.current = true;
     loadConfig();
-    return () => setAccessToken("");
+    return () => {
+      mounted.current = false;
+      authEpoch.current++;
+      setAccessToken("");
+    };
   }, []);
   async function tokenRequest(grant, payload) {
     const response = await fetch(
@@ -58,38 +68,48 @@ export function AccessGate({ children }) {
       );
     return response.json();
   }
-  async function openSession(tokens) {
-    setAccessToken(tokens.access_token);
+  async function openSession(tokens, epoch) {
+    if (!isCurrentAuth(epoch)) return false;
     try {
-      const bootstrap = await api("me");
+      // Use this response's token explicitly, rather than a mutable global
+      // bearer that may already belong to a newer session.
+      const bootstrap = await api("me", {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      if (!isCurrentAuth(epoch)) return false;
       const profileId =
         bootstrap.currentProfileId ||
         bootstrap.profileId ||
         bootstrap.profiles?.[0]?.id;
       if (!["arash", "amir"].includes(profileId))
         throw Error("حساب به هیچ فضای کاری مجاز متصل نشده است.");
+      setAccessToken(tokens.access_token);
       setSession({
         ...tokens,
         profileId,
         expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000,
       });
+      return true;
     } catch (e) {
-      setAccessToken("");
-      setSession(null);
+      if (isCurrentAuth(epoch)) {
+        setAccessToken("");
+        setSession(null);
+      }
       throw e;
     }
   }
   async function login(event) {
     event.preventDefault();
+    const epoch = ++authEpoch.current;
     setBusy(true);
     setError("");
     try {
-      await openSession(await tokenRequest("password", { email, password }));
-      setPassword("");
+      await openSession(await tokenRequest("password", { email, password }), epoch);
+      if (isCurrentAuth(epoch)) setPassword("");
     } catch (e) {
-      setError(e.message);
+      if (isCurrentAuth(epoch)) setError(e.message);
     } finally {
-      setBusy(false);
+      if (isCurrentAuth(epoch)) setBusy(false);
     }
   }
   async function signup() {
@@ -131,6 +151,7 @@ export function AccessGate({ children }) {
   }
   async function logout() {
     const current = session;
+    authEpoch.current++;
     setSession(null);
     setAccessToken("");
     setPassword("");
@@ -148,6 +169,7 @@ export function AccessGate({ children }) {
   }
   useEffect(() => {
     if (!session) return;
+    const epoch = authEpoch.current;
     const timer = setTimeout(
       async () => {
         try {
@@ -155,11 +177,14 @@ export function AccessGate({ children }) {
             await tokenRequest("refresh_token", {
               refresh_token: session.refresh_token,
             }),
+            epoch,
           );
         } catch {
-          setSession(null);
-          setAccessToken("");
-          setError("نشست پایان یافت؛ دوباره وارد شوید.");
+          if (isCurrentAuth(epoch)) {
+            setSession(null);
+            setAccessToken("");
+            setError("نشست پایان یافت؛ دوباره وارد شوید.");
+          }
         }
       },
       Math.max(1000, session.expiresAt - Date.now() - 60000),

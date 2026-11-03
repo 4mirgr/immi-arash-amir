@@ -46,6 +46,8 @@ import { CalendarDriveTools } from "./calendar-drive-tools";
 import { ProfilePlanning } from "./profile-planning";
 import { LinkedInPanel } from "./linkedin-panel";
 import { JobOpportunitiesPanel } from "./job-opportunities-panel";
+import { TextSizeControl } from "./text-size-control";
+import { RoadmapPanel } from "./roadmap-panel";
 import sourceRegistry from "../library/sources.json";
 const nav = [
   ["overview", "نمای کلی", LayoutDashboard],
@@ -54,6 +56,9 @@ const nav = [
   ["cv", "توسعه رزومه", FileText],
   ["pesci", "آکادمی PESCI", GraduationCap],
   ["linkedin", "لینکدین و شبکه‌سازی", Linkedin],
+  ["roadmap", "تحلیل مسیر و برنامه", ShieldCheck],
+  ["study", "تحصیل و فاند", GraduationCap],
+  ["development", "مهارت‌ها و رویدادها", Calendar],
   ["sources", "منابع و مسیرها", BookOpen],
   ["settings", "اتصال‌ها و تنظیمات", Settings],
 ];
@@ -331,7 +336,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
             : "تعویض نمای آزمایشی · ورود امن هنوز متصل نیست"}
         </div>
         <nav>
-          {nav.map(([id, title, Icon]) => (
+          {nav.filter(([id])=>id!=="study"||person==="amir").map(([id, title, Icon]) => (
             <button
               key={id}
               onClick={() => setTab(id)}
@@ -367,6 +372,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
             <span>{nav.find((n) => n[0] === tab)?.[1]}</span>
           </div>
           <div className="header-actions">
+            <TextSizeControl personId={person} />
             {cloud && (
               <button className="secondary" onClick={onSignOut}>
                 خروج امن
@@ -1124,11 +1130,15 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
               </section>
             ))}
           {tab === "linkedin" && <LinkedInPanel person={person} notify={notify} />}
+          {tab === "roadmap" && <RoadmapPanel key={person+":pathways"} person={person} category="pathways" notify={notify} cloud={cloud} />}
+          {tab === "study" && person === "amir" && <RoadmapPanel key={person+":study"} person={person} category="study" notify={notify} cloud={cloud} />}
+          {tab === "development" && <RoadmapPanel key={person+":development"} person={person} category="development" notify={notify} cloud={cloud} />}
           {tab === "sources" && (
             <>
               <div className="notice">
                 اطلاعات مسیر مهاجرت و ثبت پزشکی باید در زمان اقدام از مرجع رسمی
                 بررسی شود. این فهرست نقطهٔ شروع است.
+                <button className="text-button" onClick={()=>setTab("roadmap")}>مطالعهٔ تحلیل منابع و برنامهٔ شخصی</button>
               </div>
               <div className="source-grid">
                 {sourceLinks.map(([a, b, url]) => (
@@ -1304,5 +1314,5 @@ function Stat({ icon: Icon, value, title, sub }) {
   );
 }
 createRoot(document.getElementById("root")).render(
-  <AccessGate>{(props) => <App {...props} />}</AccessGate>,
+  <AccessGate>{(props) => <App key={props.initialPerson || "local"} {...props} />}</AccessGate>,
 );

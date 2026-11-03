@@ -10,3 +10,5 @@ Read this file, then ONLY your role file in docs/agents/. Do not reread the full
 - Never label imported contacts as live vacancies. Do not invent eligibility or acceptance percentages.
 - Never claim services are connected, tests pass, messages sent, or jobs live without evidence.
 - Finish with targeted checks and a short handoff. No paid resource creation without explicit budget.
+
+- Recovery index: docs/RESUME.md; requirements/status map: docs/GOALS.md. Read these selectively when resuming or changing scope, not on every small edit.

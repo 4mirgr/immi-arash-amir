@@ -1,0 +1,14 @@
+# Resume this project with minimal context
+
+1. Read `AGENTS.md`, then only your role file under `docs/agents/`.
+2. Read `docs/GOALS.md` for requirements/status and `docs/STATUS.fa.md` for delivery notes. Consult `docs/POLICY.md` before privacy, source, external-action or deployment changes.
+3. Confirm `git status`, current commit and recent CI. Do not restart completed work or assume old deployment notes describe today's runtime.
+4. Runtime: React/Vite UI; authenticated Cloudflare Worker `cloud/worker.mjs`; dedicated Supabase Auth/Postgres with RLS; two D1 bindings. `server/` is local legacy development and is NOT the cloud API.
+5. Person identity comes only from verified Supabase membership. No browser profile selector grants access. Google and LinkedIn each have independent owner identity/tokens/mail/tasks; NEVER borrow a grant across users. Read `docs/GOOGLE.md`, `docs/LINKEDIN-CONNECT.md` only when changing those integrations.
+6. Public evidence: `cloud/{eligibility,study,development}-evidence.json` + `docs/research/`. Public opportunities: registry/collectors/store. Read `docs/SOURCE-COVERAGE.md` and `docs/OPPORTUNITIES-V2.md` for those changes. Availability checks are not automatic new research.
+7. Private planning/CVs/mail live in authenticated storage, not this repository. `private/`, attachments and scratch paths are disposable, ignored evidence/backup material. Retrieve current facts only through authorized owner-scoped access. Never turn historical CV wording or an action checkbox into a verified achievement.
+8. Current cloud IDs and site URL are in `docs/DEPLOYMENT.fa.md`; Google D1 `faf37526-9c8c-4a86-9f91-3ab41ee8ddff`, public opportunity D1 `a9605bec-79b7-430d-8d15-cfacb4cb1a58`. Dedicated Supabase `waxpjylnvwqdlktayyww`; NEVER modify unrelated intMed project `upwbktvnybsjugdegjji`.
+9. Schema locations: `cloud/*schema.sql`; private roadmap schema goes in GOOGLE_DB, evidence-watch schema in OPPORTUNITY_DB. Additive `CREATE IF NOT EXISTS` migrations; no resetting tables. Existing secret bindings must survive deployment, especially GOOGLE_TOKEN_KEY (rotating it makes stored grants unreadable).
+10. Verify `npm run build`, `node --test tests/cloud*.mjs`, `python -m unittest discover -s tests -q`, `node scripts/build_worker.mjs`. Deploy public bundled assets only; preserve secret_text bindings. Confirm health/public assets/401 barriers and report what was actually tested. Never expose OAuth callbacks, auth codes, CV text or secret values in output.
+
+The repository preserves architecture, public research and decisions; it does not recreate private accounts or credentials. Restoring private state requires the owner's authorized database/backups. No claim of uninterrupted background AI agents: real cron collectors/watchers are bounded scheduled jobs.

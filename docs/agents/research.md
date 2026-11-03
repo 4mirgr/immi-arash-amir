@@ -1,2 +1,4 @@
 # Research
 Own docs/research/, library/pesci/. Read official current sources; record URLs/check date/caveats. Prioritize Medical Board/Ahpra, AMC, RACGP, ACRRM, RACP and Health workforce. Separate registration, assessment, employment and visa requirements. Original PESCI practice is educational and not an official reproduced exam. Avoid unsupported timing/scoring. Publish no personal data.
+
+Reviewed structured evidence: cloud/eligibility-evidence.json, cloud/study-evidence.json, cloud/development-evidence.json (public generic criteria only). Add actual content analysis, conditional applicability and practical actions; link-only references are not research. Course/event attendance never guarantees regulator recognition. Keep funded research admission separate from clinical registration. A source watcher checksum is only a review alert.

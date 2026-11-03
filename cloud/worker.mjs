@@ -7,6 +7,8 @@ import {handleOpportunityV2Request} from './opportunity-store.mjs';
 import {handleRegisteredSourcesRequest,collectRegisteredSources} from './source-collectors.mjs';
 import {handleLinkedInRequest} from './linkedin-workspace.mjs';
 import {handleLinkedInOAuthCallback,handleLinkedInOAuthRequest} from './linkedin-oauth.mjs';
+import {handleRoadmapRequest} from './roadmap.mjs';
+import {watchEvidenceSources} from './evidence-watch.mjs';
 import educationalCase from '../library/pesci/PESCI-PRACTICE-COMM-001.json' with { type: 'json' };
 
 const DEFAULT_SETTINGS = { emailPolicy: 'auto_after_connection', defaultTemplate: '', notifications: false };
@@ -63,6 +65,9 @@ export function createHandler(fetcher = fetch) {
       if (!['arash','amir'].includes(profileId)) throw new ApiError(403, 'Account has not been provisioned for this workspace');
       const requestedProfile = url.searchParams.get('profile');
       if (requestedProfile && requestedProfile !== profileId) throw new ApiError(403, 'Profile access denied');
+      if(url.pathname==='/api/roadmap'||url.pathname==='/api/roadmap/actions'){
+        return await handleRoadmapRequest(request,env,{userId:user.id,profileId,rest});
+      }
       if(url.pathname==='/api/opportunities'||url.pathname.startsWith('/api/opportunities/')){
         for(const handler of [handleRegisteredSourcesRequest,handleOpportunityV2Request]){
           const response=await handler(request,env,{userId:user.id,profileId},fetcher);
@@ -175,4 +180,4 @@ export function createHandler(fetcher = fetch) {
     } catch (error) { const expected=error instanceof ApiError||error instanceof GoogleError;return json({error:expected ? error.message : 'Request failed',...(error instanceof GoogleError?{code:error.code}:{})},expected ? error.status : 500); }
   };
 }
-export default {fetch:createHandler(),async scheduled(event,env){await collectRegisteredSources(env);}};
+export default {fetch:createHandler(),async scheduled(event,env){await Promise.allSettled([collectRegisteredSources(env),watchEvidenceSources(env)]);}};
