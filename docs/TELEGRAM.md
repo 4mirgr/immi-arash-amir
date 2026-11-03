@@ -49,3 +49,10 @@ The schedule follows collector availability and cooldowns; this is not a guarant
 Public provider references: https://core.telegram.org/bots/api#setwebhook · https://core.telegram.org/bots/features#deep-linking · https://core.telegram.org/bots/api#sendmessage
 
 Official Bot API content was read on 2026-11-03 to verify secret-token character rules, allowed updates, fixed webhook setup and current `link_preview_options` send parameters. No bot credentials or real chat were used.
+
+
+## Unattended membership authorization
+
+Scheduled notifications check the owner’s active application membership through `checkAutomationMembership` before reading opportunity candidates, and again inside the claimed send immediately before Telegram transport. A stored chat binding cannot keep an account active after its application membership is removed. Missing configuration, service unavailability, invalid responses and inactive membership all fail closed without a Telegram send. Such owners are skipped for that invocation; a temporary RPC outage does not silently revoke their chat or change their opt-in settings. A claim cancelled by the second check is terminal and is not automatically resent.
+
+The two-owner/three-send run adds at most five bounded Supabase RPC checks and keeps the existing D1 query budget. Authenticated manual test messages retain their existing router membership authorization and do not invoke the unattended RPC. No bot token, destination or private message content is sent to the membership RPC.

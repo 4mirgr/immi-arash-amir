@@ -10,6 +10,8 @@ import {handleLinkedInRequest} from './linkedin-workspace.mjs';
 import {handleLinkedInOAuthCallback,handleLinkedInOAuthRequest} from './linkedin-oauth.mjs';
 import {handleRoadmapRequest} from './roadmap.mjs';
 import {watchEvidenceSources} from './evidence-watch.mjs';
+import {runMaintenance} from './maintenance.mjs';
+import {handleOperationsRequest} from './operations.mjs';
 import {googleAccountContext} from './google-account-scope.mjs';
 import {handleLinkedInInsightsRequest} from './linkedin-insights.mjs';
 import {handleNetworkTargetsRequest} from './network-targets.mjs';
@@ -77,6 +79,7 @@ export function createHandler(fetcher = fetch) {
       if (!['arash','amir'].includes(profileId)) throw new ApiError(403, 'Account has not been provisioned for this workspace');
       const requestedProfile = url.searchParams.get('profile');
       if (requestedProfile && requestedProfile !== profileId) throw new ApiError(403, 'Profile access denied');
+      if(url.pathname.startsWith('/api/operations/'))return await handleOperationsRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
       if(url.pathname.startsWith('/api/ai/'))return await handleAiAssistantRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
       if(url.pathname==='/api/mail-automation/scheduler'||url.pathname.startsWith('/api/mail-automation/scheduler/'))return await handleMailSchedulerRequest(request,env,{userId:user.id,profileId,rest},fetcher)||json({error:'Not found'},404);
       if(url.pathname==='/api/mail-automation'||url.pathname.startsWith('/api/mail-automation/'))return await handleMailAutomationRequest(request,env,{userId:user.id,profileId,rest},fetcher)||json({error:'Not found'},404);
@@ -202,4 +205,4 @@ export function createHandler(fetcher = fetch) {
     } catch (error) { const expected=error instanceof ApiError||error instanceof GoogleError;return json({error:expected ? error.message : 'Request failed',...(error instanceof GoogleError?{code:error.code}:{})},expected ? error.status : 500); }
   };
 }
-export default {fetch:createHandler(),async scheduled(event,env){const cron=event.cron||'0 * * * *';if(cron==='*/15 * * * *')return await dispatchTelegramNotifications(env);if(cron==='*/5 * * * *')return await dispatchScheduledLinkedIn(env);if(cron==='2-57/5 * * * *')return await dispatchScheduledMail(env);if(cron==='15 */6 * * *')return await watchEvidenceSources(env);return await runScheduledCollection(event,env,collectRegisteredSources);}};
+export default {fetch:createHandler(),async scheduled(event,env){const cron=event.cron||'0 * * * *';if(cron==='*/15 * * * *')return await dispatchTelegramNotifications(env);if(cron==='*/5 * * * *')return await dispatchScheduledLinkedIn(env);if(cron==='2-57/5 * * * *')return await dispatchScheduledMail(env);if(cron==='15 */6 * * *'){const maintenance=await runMaintenance(env);const evidence=await watchEvidenceSources(env);return {maintenance,evidence};}return await runScheduledCollection(event,env,collectRegisteredSources);}};

@@ -1,5 +1,6 @@
 // Only an explicit, immutable per-post approval can reach the existing publisher.
 import {handleLinkedInOAuthRequest} from './linkedin-oauth.mjs';
+import {checkAutomationMembership} from './automation-membership.mjs';
 const BASE='/api/linkedin/scheduler',GRACE=86400000;
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args);
@@ -52,10 +53,13 @@ export async function dispatchScheduledLinkedIn(env,fetcher=fetch,now=Date.now()
   const post=await first(db,'SELECT * FROM linkedin_posts WHERE owner_id=? AND id=?',row.owner_id,row.post_id),account=await first(db,'SELECT * FROM linkedin_accounts WHERE owner_id=?',row.owner_id);
   if(!post||post.status!=='scheduled_for_manual_publication'||Date.parse(post.scheduled_for)!==row.scheduled_at||await hash(post.text)!==row.content_hash)return {processed:1,result:await finish(db,row,'blocked','post_changed',now)};
   if(!eligibleAccount(account,row.profile_id,row.scheduled_at,now)||account.linkedin_sub!==row.author_sub||await hash(account.token_cipher)!==row.grant_fingerprint)return {processed:1,result:await finish(db,row,'blocked','connection_changed_or_expired',now)};
+  const membership=await checkAutomationMembership(env,row.owner_id,row.profile_id,fetcher);
+  if(!membership.active)return {processed:1,result:await finish(db,row,'blocked',membership.reason,now)};
   let prevented=false;
   const guardedFetch=async(url,options)=>{
    const payload=JSON.parse(options.body||'{}');const latest=await first(db,'SELECT status FROM linkedin_scheduled_approvals WHERE id=? AND owner_id=?',row.id,row.owner_id),latestPost=await first(db,'SELECT text,scheduled_for,status FROM linkedin_posts WHERE owner_id=? AND id=?',row.owner_id,row.post_id),latestAccount=await first(db,'SELECT * FROM linkedin_accounts WHERE owner_id=?',row.owner_id);
    if(url!=='https://api.linkedin.com/rest/posts'||options.redirect!=='manual'||latest?.status!=='dispatching'||!latestPost||latestPost.status!=='scheduled_for_manual_publication'||Date.parse(latestPost.scheduled_for)!==row.scheduled_at||await hash(latestPost.text)!==row.content_hash||await hash(payload.commentary||'')!==row.content_hash||payload.author!=='urn:li:person:'+row.author_sub||!eligibleAccount(latestAccount,row.profile_id,row.scheduled_at,now)||latestAccount.linkedin_sub!==row.author_sub||await hash(latestAccount.token_cipher)!==row.grant_fingerprint){prevented=true;throw Error('scheduled_snapshot_changed');}
+   const active=await checkAutomationMembership(env,row.owner_id,row.profile_id,fetcher);if(!active.active){prevented=true;throw Error('owner_membership_changed');}
    return fetcher(url,options);
   };
   const request=new Request('https://scheduler.internal/api/linkedin/publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({postId:row.post_id})});

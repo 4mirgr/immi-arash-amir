@@ -18,8 +18,7 @@ CREATE TABLE IF NOT EXISTS mail_automation_jobs (
  created_at TEXT NOT NULL,
  created_day TEXT NOT NULL,
  updated_at TEXT NOT NULL,
- UNIQUE(owner_id,opportunity_id),
- UNIQUE(owner_id,recipient)
+ UNIQUE(owner_id,opportunity_id,recipient)
 );
 CREATE INDEX IF NOT EXISTS mail_automation_jobs_owner_day ON mail_automation_jobs(owner_id,created_day);
 CREATE TABLE IF NOT EXISTS mail_automation_suppressions (
