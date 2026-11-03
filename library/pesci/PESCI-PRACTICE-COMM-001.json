@@ -1,0 +1,32 @@
+{
+  "id": "PESCI-PRACTICE-COMM-001",
+  "version": 1,
+  "title": "Communicating and escalating an urgent presentation",
+  "topic": "communication-and-safety",
+  "language": "en-AU",
+  "kind": "original-educational-practice",
+  "official_exam_item": false,
+  "review_status": "requires-qualified-clinician-review",
+  "created_at": "2026-11-03",
+  "timing": {
+    "practice_seconds": 600,
+    "official_timing": false
+  },
+  "setting": "A fictional supervised general practice. Confirm the site's escalation protocol and your approved scope of practice.",
+  "case": "An adult patient arrives describing new chest discomfort and feeling unwell. You are the supervised doctor. Describe how you would prioritise assessment, obtain help and communicate with the patient while arranging appropriate urgent care.",
+  "prompts": [
+    "What immediate safety concerns would you identify?",
+    "How would you request supervisor and emergency assistance without delaying care?",
+    "What focused history and observations would you prioritise while help is arranged?",
+    "How would you explain your plan, confirm understanding and document the handover?"
+  ],
+  "reflection_rubric": [
+    "Recognises a potentially time-critical presentation and seeks appropriate urgent assistance.",
+    "Works within competence and approved supervision arrangements.",
+    "Explains the situation clearly and respectfully and checks understanding.",
+    "Provides a structured, documented handover and considers continuity of care."
+  ],
+  "disclaimer": "Original unvalidated discussion exercise; no official marking or universal treatment protocol. Not for patient care.",
+  "format_source": "https://www.medicalboard.gov.au/Registration/International-Medical-Graduates/pesci",
+  "source_retrieved_at": "2026-11-03"
+}

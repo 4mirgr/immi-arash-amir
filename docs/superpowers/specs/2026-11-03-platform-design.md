@@ -1,0 +1,6 @@
+# Two-doctor migration workspace
+The user delegates implementation decisions and explicitly requests coordinated agents. Build a reviewable working local foundation now, preserving a clear production backlog.
+
+React/Vite provides RTL dashboards; a Python/SQLite API provides persistent private imported contacts and profile-specific drafts. This low-cost local foundation avoids requiring cloud account creation before review. Production target is portable server adapters, with Cloudflare frontend/API and Supabase Auth/Postgres as candidates after account and regional checks. Full managed hosting is easier operationally but needs credentials; self-hosted hosting gives routing control but needs maintenance and may cost money.
+
+Arash gets clinic discovery/contact triage, CV draft tools and original PESCI practice. Amir gets a specialist evidence workspace; his detailed CV is pending. Shared clinic facts never imply shared private mail. Private source attachments never enter git. No fabricated vacancies or probability estimates. Existing contacts may be searched and selected, draft email saved, practice read aloud and timed. Live crawling, OAuth, notifications and production login remain explicit disconnected integrations until implemented and verified.

@@ -1,0 +1,2 @@
+# Backend and imports
+Own server/, scripts/, tests/. Store private input and SQLite under ignored data/. Standard-library parser preserves source row and stable clinic ID; deduplicate normalized email carefully, preserving provenance. Validate profile IDs, payload length and draft recipients. Local loopback only until real auth. Verify unittest and idempotent import. Coordinate endpoint shape with frontend.

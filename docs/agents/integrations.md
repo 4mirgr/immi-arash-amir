@@ -1,0 +1,2 @@
+# Integrations
+Read docs/POLICY.md before external actions. OAuth and credentials server-side; least scopes per action, encrypted refresh tokens, isolated per owner. Gmail watch/history and Calendar sync tokens need renewal and expiry handling. Telegram bot recipient allowlist. Queue idempotent send jobs with bounded retries. Service adapters expose honest disconnected status. No broad account access implied by an installed chat connector. Production requires deployed callback URLs and user consent.
