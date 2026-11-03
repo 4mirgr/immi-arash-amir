@@ -40,7 +40,8 @@ export async function collectOpportunities(env,fetcher=fetch){
  if(!claim){const state=await first(db,'SELECT lock_until,next_check_at FROM job_source_checks WHERE source_id=?',JOB_SOURCE.id);return {sourceId:JOB_SOURCE.id,status:state.lock_until>now?'busy':'cooldown',checkedAt:at,nextCheckAt:iso(state.next_check_at),sourceCoverage:JOB_SOURCE.coverage};}
  try{
   const headers={Accept:'application/json'};if(typeof claim.etag==='string'&&claim.etag.length<1000&&!/[\r\n]/.test(claim.etag))headers['If-None-Match']=claim.etag;
-  let response;try{response=await fetcher(JOB_SOURCE.feedUrl,{headers,redirect:'error',signal:AbortSignal.timeout(20000)});}catch{throw new JobError(502,'source_unavailable');}
+  let response;try{response=await fetcher(JOB_SOURCE.feedUrl,{headers,redirect:'manual',signal:AbortSignal.timeout(20000)});}catch{throw new JobError(502,'source_unavailable');}
+  if(response.redirected||(response.status>=300&&response.status<400&&response.status!==304))throw new JobError(502,'source_redirect_rejected');
   if(response.status===304){
    await run(db,"UPDATE job_opportunities SET status='closed' WHERE source_id=? AND status IN ('open','future') AND closing_at<=?",JOB_SOURCE.id,at);
    await run(db,"UPDATE job_source_checks SET status='not_modified',last_success_at=?,next_check_at=?,last_error_code=NULL WHERE source_id=? AND lock_token=?",now,now+COOLDOWN,JOB_SOURCE.id,lock);

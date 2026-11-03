@@ -26,7 +26,7 @@ async function providerFollowers(env,owner,row,fetcher){
  if(!lease)return {status:'cooldown',point:cached?{asOf:new Date(cached.measured_at).toISOString(),followers:cached.followers,source:'linkedin_api'}:null};
  try{
   const tokens=await decryptGoogleSecret(env,'linkedin:'+owner,row.token_cipher);if(typeof tokens.access_token!=='string'||!tokens.access_token)throw Error('reconnect_required');
-  const response=await fetcher(FOLLOWER_URL,{headers:{Authorization:'Bearer '+tokens.access_token,'LinkedIn-Version':'202610','X-Restli-Protocol-Version':'2.0.0'},redirect:'error',signal:AbortSignal.timeout(12000)});
+  const response=await fetcher(FOLLOWER_URL,{headers:{Authorization:'Bearer '+tokens.access_token,'LinkedIn-Version':'202610','X-Restli-Protocol-Version':'2.0.0'},redirect:'manual',signal:AbortSignal.timeout(12000)});
   if(!response.ok)return {status:response.status===401?'reconnect_required':response.status===403?'provider_access_denied':'provider_unavailable',point:null};
   const followers=await followerJson(response);
   const current=await stmt(env.GOOGLE_DB,'SELECT linkedin_sub,status,token_cipher FROM linkedin_accounts WHERE owner_id=?',owner).first();if(!current||current.status!=='connected'||current.linkedin_sub!==row.linkedin_sub||current.token_cipher!==row.token_cipher)return {status:'connection_changed',point:null};

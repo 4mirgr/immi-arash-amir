@@ -46,3 +46,8 @@ Official references retrieved 2026-11-03:
 - https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api?view=li-lms-2026-10
 
 The Share guide explicitly points to OIDC for the member identifier used to construct a person URN. Product approval and API-version support must be checked again at live setup.
+
+## Cloudflare transport compatibility — 2026-11-03
+Workers supports `redirect: manual` and `follow`, not `error`. The unsupported option previously caused `linkedin_unavailable` before network I/O. OAuth now uses manual redirects and rejects all 3xx responses; it never forwards credentials to a redirected host. Token/identity transport and invalid-client failures have separate safe callback codes. A temporary credential-free production-runtime probe reproduced TypeError for error mode and HTTP401 from both LinkedIn endpoints for manual mode. No real authorization code or user token was used by the probe.
+
+Official runtime reference: https://developers.cloudflare.com/workers/runtime-apis/request/

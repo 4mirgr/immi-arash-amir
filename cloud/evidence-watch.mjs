@@ -15,7 +15,8 @@ export async function watchEvidenceSources(env,fetcher=fetch,now=Date.now()){
   if(!claim)continue;
   try{
    const headers={Accept:'text/html,application/pdf,text/plain','User-Agent':'Masir-SourceReview/1.0'};if(etag)headers['If-None-Match']=etag;if(modified)headers['If-Modified-Since']=modified;
-   const response=await fetcher(url,{headers,redirect:'error',signal:AbortSignal.timeout(12000)});
+   const response=await fetcher(url,{headers,redirect:'manual',signal:AbortSignal.timeout(12000)});
+   if(response.redirected||(response.status>=300&&response.status<400&&response.status!==304))throw Error('redirect_rejected');
    if(response.status===304){status=changed?'changed_review_required':'available';success=now;}
    else{
     if(!response.ok)throw Error('http_'+response.status);
@@ -27,7 +28,7 @@ export async function watchEvidenceSources(env,fetcher=fetch,now=Date.now()){
     if(hash&&hash!==next)changed=now;
     hash=next;success=now;etag=response.headers.get('ETag')?.slice(0,300)||null;modified=response.headers.get('Last-Modified')?.slice(0,100)||null;status=changed?'changed_review_required':'available';
    }
-  }catch(e){error=/^(http_\d{3}|body_too_large|empty_response)$/.test(e.message)?e.message:'fetch_failed';}
+  }catch(e){error=/^(http_\d{3}|body_too_large|empty_response|redirect_rejected)$/.test(e.message)?e.message:'fetch_failed';}
   await stmt(db,'UPDATE evidence_source_checks SET status=?,content_hash=?,etag=?,last_modified=?,last_success_at=?,change_detected_at=?,error_code=? WHERE source_url=? AND last_attempt_at=?',status,hash,etag,modified,success,changed,error,url,now).run();
   receipts.push({url,status});
  }

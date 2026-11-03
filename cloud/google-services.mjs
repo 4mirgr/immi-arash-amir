@@ -16,7 +16,8 @@ async function bounded(response,max){
  const raw=new Uint8Array(size);let offset=0;for(const chunk of chunks){raw.set(chunk,offset);offset+=chunk.length;}return raw;
 }
 async function google(fetcher,url,access,options={}){
- let response;try{response=await fetcher(url,{...options,headers:{Authorization:'Bearer '+access.accessToken,...options.headers},signal:AbortSignal.timeout(15000),redirect:'error'});}catch{fail(502,'provider_unavailable','Google service could not be reached');}
+ let response;try{response=await fetcher(url,{...options,headers:{Authorization:'Bearer '+access.accessToken,...options.headers},signal:AbortSignal.timeout(15000),redirect:'manual'});}catch{fail(502,'provider_unavailable','Google service could not be reached');}
+ if(response.redirected||(response.status>=300&&response.status<400))fail(502,'provider_redirect_rejected','Google service redirected unexpectedly');
  if(!response.ok){if(response.status===412)fail(409,'event_changed','Calendar event changed; refresh before editing');if(response.status===410)return response;if(response.status===403)fail(403,'google_permission_required','Google permission or API access is required');if(response.status===404)fail(404,'google_item_not_found','Google item was not found');if(response.status===401)fail(409,'reconnect_required','Reconnect this Google account');fail(502,'provider_unavailable','Google service request failed');}return response;
 }
 async function readJson(response,max=300000){try{return JSON.parse(new TextDecoder().decode(await bounded(response,max)));}catch(e){if(e instanceof GoogleError)throw e;fail(502,'provider_unavailable','Google returned an invalid response');}}

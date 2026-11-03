@@ -40,7 +40,7 @@ test('Bologna RSS imports unknown deadline and stable URL-hash identity',async()
 test('bounded three-source rotation, storage scope, and conditional ETags work',async()=>{
  const {db,env}=fixture(),log=[];
  let receipt=await collectRegisteredSources(env,fetchFixture(log));assert.equal(log.length,3);assert.equal(receipt.sources.length,3);assert(receipt.imported<=100);
- assert(log.every(v=>v.options.redirect==='error'&&v.options.signal));
+ assert(log.every(v=>v.options.redirect==='manual'&&v.options.signal));
  await collectRegisteredSources(env,fetchFixture(log));assert.equal(log.length,4,'remaining fourth source next invocation; earlier sources cool down');
  const it=JSON.parse(db.prepare("SELECT data FROM opportunity_editions WHERE country='IT' LIMIT 1").get().data);assert.equal(it.profileScope,'amir');assert.equal(it.status,'unknown');
  db.exec('UPDATE registered_source_checks SET next_check_at=0');
@@ -81,4 +81,9 @@ test('Arash refresh totals and errors cover visible sources only',async()=>{
  const {db,env}=fixture();db.exec('UPDATE source_collector_state SET position=1');
  const response=await handleRegisteredSourcesRequest(new Request('https://app.example/api/opportunities/refresh',{method:'POST',body:'{}'}),env,{userId:'arash-owner',profileId:'arash'},async(url)=>url.includes('bandi.unibo')?new Response('blocked',{status:403}):new Response(JSON.stringify([pageup('2',{Title:'Research Fellow in Clinical Medicine',Brand:'Faculty of Medicine'})])));
  const receipt=await response.json();assert.equal(receipt.status,'completed');assert.equal(receipt.imported,1);assert.equal(receipt.sources.length,1);assert.equal(receipt.sources[0].sourceId,'monash-pageup-513');
+});
+
+test('registered collectors use a Workers-supported redirect mode and never follow an unregistered target',async()=>{
+ const {env,db}=fixture(),log=[],base=fetchFixture(log);const result=await collectRegisteredSources(env,async(url,options)=>{if(options.redirect==='error')throw new TypeError('Unsupported Workers redirect mode');assert.equal(options.redirect,'manual');return base(url,options);});assert(result.imported>0);assert(log.length>0);
+ const before=db.prepare('SELECT count(*) n FROM opportunity_editions').get().n;db.prepare('UPDATE registered_source_checks SET next_check_at=0').run();let calls=0;const redirected=await collectRegisteredSources(env,async(url,options)=>{if(options.redirect==='error')throw new TypeError('Unsupported Workers redirect mode');assert.equal(options.redirect,'manual');calls++;return new Response(null,{status:302,headers:{Location:'https://unregistered.invalid/feed'}});});assert(calls>0&&calls<=3);assert(redirected.sources.every(s=>s.error==='source_redirect_rejected'));assert.equal(db.prepare('SELECT count(*) n FROM opportunity_editions').get().n,before);
 });

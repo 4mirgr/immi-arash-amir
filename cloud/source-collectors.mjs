@@ -84,7 +84,7 @@ async function collectOne(db,source,fetcher,remaining,now){
   const headers={Accept:source.adapter==='bologna_rss'?'application/rss+xml, application/xml':'application/json','User-Agent':'MasirPublicSourceCollector/1.0'};
   // Partial snapshots must fetch their next segment even when publisher ETag is unchanged.
   if(!claim.record_cursor&&claim.etag&&claim.etag.length<1000&&!/[\r\n]/.test(claim.etag))headers['If-None-Match']=claim.etag;
-  let response;try{response=await fetcher(source.feedUrl,{headers,redirect:'error',signal:AbortSignal.timeout(15000)});}catch{fail('source_unavailable');}
+  let response;try{response=await fetcher(source.feedUrl,{headers,redirect:'manual',signal:AbortSignal.timeout(15000)});}catch{fail('source_unavailable');}
   if(response.redirected||(response.status>=300&&response.status<400&&response.status!==304))fail('source_redirect_rejected');
   if(response.url&&response.url!==source.feedUrl)fail('source_redirect_rejected');
   if(response.status===304){await run(db,"UPDATE registered_source_checks SET status='not_modified',last_success_at=?,next_check_at=?,last_error_code=NULL,imported_records=0 WHERE source_id=? AND lock_token=?",now,now+SUCCESS_COOLDOWN,source.id,lock);return {sourceId:source.id,status:'not_modified',imported:0};}

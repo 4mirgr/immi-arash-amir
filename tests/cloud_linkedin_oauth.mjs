@@ -59,3 +59,20 @@ test('publication provenance remains bound to the original author after relinkin
  const replay=await(await handle(req('publish',{postId:id}),env,a,f)).json();assert.equal(replay.authorSubject,'original-member');assert.equal(replay.reused,true);assert.equal(calls,1);
  assert.deepEqual((await(await handle(req('publications'),env,b)).json()).publications,[]);
 });
+
+
+test('OAuth completes with Worker-compatible manual redirect fetch, never unsupported error mode',async()=>{
+ const {env}=fixture();const p=await begin(env);let calls=0;const base=provider();
+ const workerFetch=async(url,options)=>{if(options.redirect==='error')throw new TypeError('Invalid redirect value');assert.equal(options.redirect,'manual');calls++;return base(url,options);};
+ assert.equal((await finish(env,p,workerFetch)).status,200);assert.equal(calls,2);
+});
+test('OAuth rejects token and identity redirects without following credentials or exposing locations',async()=>{
+ for(const stage of ['token','identity']){const {env,db}=fixture(),p=await begin(env);let calls=0;const base=provider();const result=await finish(env,p,async(url,options)=>{calls++;assert.equal(options.redirect,'manual');if(stage==='token'||url.endsWith('/userinfo'))return new Response(null,{status:302,headers:{Location:'https://untrusted.example/private-location'}});return base(url,options);});const text=await result.text();assert.equal(result.status,400);assert(text.includes('linkedin_redirect_rejected'));assert(!text.includes('untrusted.example'));assert.equal(calls,stage==='token'?1:2);assert.equal(db.prepare('select count(*) n from linkedin_accounts').get().n,0);}
+});
+test('OAuth network stages and client rejection are reportable without secrets',async()=>{
+ for(const stage of ['token','identity']){const {env}=fixture(),p=await begin(env),base=provider();const result=await finish(env,p,async(url,options)=>{if(stage==='token'||url.endsWith('/userinfo'))throw Error('sensitive synthetic body');return base(url,options);});const text=await result.text();assert(text.includes('linkedin_'+stage+'_unavailable'));assert(!text.includes('sensitive synthetic body'));}
+ const {env}=fixture(),p=await begin(env);const result=await finish(env,p,async()=>Response.json({error:'invalid_client',error_description:'sensitive synthetic detail'},{status:401}));const text=await result.text();assert(text.includes('linkedin_client_rejected'));assert(!text.includes('sensitive synthetic detail'));
+});
+test('explicit publication uses manual redirects and a redirect remains terminal unknown',async()=>{
+ const {env,db}=fixture();await link(env);const id=post(db);let calls=0;const result=await handle(req('publish',{postId:id}),env,a,async(url,options)=>{calls++;assert.equal(options.redirect,'manual');return new Response(null,{status:307,headers:{Location:'https://untrusted.example'}});});assert.equal((await result.json()).status,'delivery_unknown');await handle(req('publish',{postId:id}),env,a,()=>{throw Error('Replay forbidden');});assert.equal(calls,1);
+});
