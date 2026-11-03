@@ -99,3 +99,10 @@ test('bulk import keeps SQL query count bounded for many records and rejects ove
  await assert.rejects(()=>upsertOpportunityBatch(env.OPPORTUNITY_DB,source,Array.from({length:200},(_,i)=>record({externalId:'large-'+i,fullText:'ا'.repeat(20000)})),time),error=>error.code==='opportunity_normalized_batch_limit');
  assert.equal(db.prepare('select count(*) n from opportunity_editions').get().n,before);
 });
+
+test('GP/medical and rural text filters apply before pagination and retain unknown eligibility',async()=>{
+ const {env}=fixture();await upsertOpportunityBatch(env.OPPORTUNITY_DB,source,[record({externalId:'gp',title:'General Practitioner',summary:'Regional practice. MMM 5. DPA status requires confirmation.'}),record({externalId:'nurse',title:'General Practice Nurse',summary:'Rural practice.'}),record({externalId:'mo',title:'Medical Officer'}),record({externalId:'reg',title:'Medical Registrar'})],time);
+ let data=await(await get(env,'/api/opportunities?clinicalFocus=gp&ruralOnly=true&sort=newest',{userId:'arash-owner',profileId:'arash'})).json();assert.equal(data.total,1);assert.equal(data.opportunities[0].externalId,'gp');assert.deepEqual(data.opportunities[0].gpSignals.monashMentioned,[5]);assert.equal(data.opportunities[0].gpSignals.eligibility,'not_assessed');
+ data=await(await get(env,'/api/opportunities?clinicalFocus=medical')).json();assert.equal(data.total,2);
+ assert.equal((await get(env,'/api/opportunities?clinicalFocus=arbitrary')).status,400);assert.equal((await get(env,'/api/opportunities?ruralOnly=yes')).status,400);assert.equal((await get(env,'/api/opportunities?sort=random')).status,400);
+});

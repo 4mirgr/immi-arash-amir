@@ -94,3 +94,12 @@ The NT response includes UI-only saved/applied flags and attachmentmetadata; the
 ## Scheduled execution receipts
 
 `source-automation-schema.sql` adds a single public operational receipt in OPPORTUNITY_DB. Only the Worker scheduled handler writes its actual start/end/status; manual source refreshes do not manufacture cron evidence. The authenticated sources endpoint includes this receipt, hourly cadence and a warning after 150 minutes without a fresh start. Missing receipts are displayed as not observed. This observes execution, not guaranteed future availability or full coverage. The open opportunities panel polls cached data every ten seconds only while visible. Per-source nextCheckAt is the earliest allowed retry, not a promised appointment.
+
+
+## GP/rural expansion — 2026-11-03
+
+Source registry now combines `source-registry.json` with three fixed `RURAL_SOURCE_DEFINITIONS` from `rural-source-adapters.mjs`: 13 configured executable adapters. Clinical/rural evidence is reviewed in `docs/research/rural-source-adapters.md`. The hourly three-source budget yields a normal full rotation of approximately4–5hours; failures have a six-hour backoff and larger snapshots continue in40-record slices.
+
+Actual Cloudflare bounded operator receipt at2026-11-03T19:28:06Z: RuralHealthWest40inserted of83matching (continuationcursor40), ThePeopleProjectTasmania6inserted, NTPHNHTTP403/source_access_denied and0imported. Local successful parsing of NTPHN7records is not production acquisition evidence. The temporary operator Worker was removed; no private grants were attached. These46new records have unknownclosingdates and are candidates for review, not guaranteed open vacancies or offers. Firstparty recruitmentpublisher is kept distinct from an independently verified clinic/employer.
+
+Arash discovery directory:19dated links spanning all8jurisdictions,4clinicnetworks and3publicpublisher sociallinks. Those links are manual discovery, not additional automated collectors. No private groups, private profiles or authenticated social pages are scraped. GP/MedicalOfficer and rural-wording filters apply before pagination; quoted MMM codes are unverified advertisement wording and never establish DPA or eligibility.

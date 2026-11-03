@@ -34,7 +34,7 @@ No endpoint accepts an arbitrary recipient, destination URL, owner ID or message
 
 ## Scheduled behavior
 
-`dispatchTelegramNotifications(env,fetcher,now)` is called by the application's real scheduler. With missing bot secrets it exits before touching private storage. It selects only linked+enabled owner records, excludes quiet hours, and looks for new PUBLIC opportunity editions after that owner's activation time. AU/both is available to each owner; Italy/Amir records remain Amir-only.
+`dispatchTelegramNotifications(env,fetcher,now)` is called by the application's real scheduler. With missing bot secrets it exits before touching private storage. It selects only linked+enabled owner records, excludes quiet hours, and looks for new PUBLIC opportunity editions after that owner's activation time. AU/both is available to each owner; Arash receives job records only (academic/funding records are excluded); Italy/Amir records remain Amir-only.
 
 Each run can attempt **at most three sends globally**. Each owner has an atomic **ten-attempt daily cap**, including explicit tests, on Tehran calendar days. Catch-up is bounded to the latest seven days. Candidate searches exclude receipts already claimed, preventing the oldest ten records from starving later pages. The payload contains only the public title, location, recorded deadline/unknown-deadline label and original HTTPS source link. No private mail, CV, notes, profile facts or contact extraction is sent.
 

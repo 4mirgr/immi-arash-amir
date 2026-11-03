@@ -1,3 +1,4 @@
+import {gpOpportunitySignals} from './gp-opportunity-signals.mjs';
 import {screenOpportunity} from './opportunity-screening.mjs';
 // Server-controlled source configurations enter here; public HTTP routes are read-only.
 const TYPES = new Set(['job', 'university', 'grant', 'funding', 'scholarship']);
@@ -136,12 +137,14 @@ function match(item,profile) {
 function owner(context) {if(typeof context?.userId!=='string'||!context.userId||!['arash','amir'].includes(context.profileId))fail(403,'workspace_required');return context.profileId;}
 function filters(url,profile) {
   const country=url.searchParams.get('country')||'all',state=url.searchParams.get('state')||'all',trust=url.searchParams.get('trust')||'all',kind=url.searchParams.get('kind')||'all',q=(url.searchParams.get('q')||'').trim().toLowerCase(),includeClosed=url.searchParams.get('includeClosed')||'false';
+  const clinicalFocus=url.searchParams.get('clinicalFocus')||'all',ruralOnly=url.searchParams.get('ruralOnly')||'false',sort=url.searchParams.get('sort')||'deadline';
+  if(!['all','gp','medical'].includes(clinicalFocus)||!['true','false'].includes(ruralOnly)||!['deadline','newest'].includes(sort))fail(400,'invalid_opportunity_filter');
   const typesRaw=url.searchParams.get('types')||url.searchParams.get('type')||'all';
   const types=typesRaw==='all'?[]:[...new Set(typesRaw.split(',').filter(Boolean))];
   const organizationId=url.searchParams.get('organizationId')||null,limit=Number(url.searchParams.get('limit')||25),offset=Number(url.searchParams.get('offset')||0);
   if(!['all','AU','IT'].includes(country)||!['all',...AU_STATES].includes(state)&&!/^IT-[A-Za-z0-9_-]{1,30}$/.test(state)||!['all','official','unofficial'].includes(trust)||!['all','vacancy','employment_register'].includes(kind)||types.some(type=>!TYPES.has(type))||q.length>200||!['true','false'].includes(includeClosed)||!Number.isInteger(limit)||limit<1||limit>100||!Number.isInteger(offset)||offset<0||offset>10000||organizationId&&!/^org_[a-f0-9]{24}$/.test(organizationId))fail(400,'invalid_opportunity_filter');
   if(profile==='arash'&&country==='IT')fail(403,'italy_scope_not_permitted');
-  return {country,state,trust,kind,q,includeClosed,types,organizationId,limit,offset};
+  return {country,state,trust,kind,q,includeClosed,types,organizationId,limit,offset,clinicalFocus,ruralOnly,sort};
 }
 function whereFor(f,profile,now) {
   const clauses=["(country<>'IT' OR ?='amir')","(profile_scope='both' OR ?='amir')"],args=[profile,profile];
@@ -151,12 +154,18 @@ function whereFor(f,profile,now) {
   if(f.kind!=='all'){clauses.push("json_extract(data,'$.kind')=?");args.push(f.kind);}
   if(f.organizationId){clauses.push('organization_id=?');args.push(f.organizationId);}
   if(f.types.length){clauses.push('opportunity_type IN ('+f.types.map(()=>'?').join(',')+')');args.push(...f.types);}
+  if(f.clinicalFocus!=='all'){
+    const gp="(instr(lower(title),'general practitioner')>0 OR instr(lower(title),'general practice')>0 OR instr(lower(title),'rural generalist')>0 OR instr(' '||lower(replace(title,'-',' '))||' ',' gp ')>0)";
+    const medical=f.clinicalFocus==='medical'?" OR instr(lower(title),'medical officer')>0 OR instr(lower(title),'medical practitioner')>0":"";
+    clauses.push("country='AU' AND opportunity_type='job' AND ("+gp+medical+") AND instr(lower(title),'nurs')=0 AND instr(lower(title),'manager')=0 AND instr(lower(title),'reception')=0");
+  }
+  if(f.ruralOnly==='true')clauses.push("(instr(lower(title||' '||coalesce(json_extract(data,'$.summary'),'')||' '||coalesce(json_extract(data,'$.fullText'),'')||' '||coalesce(json_extract(data,'$.location'),'')),'rural')>0 OR instr(lower(data),'regional')>0 OR instr(lower(data),'remote')>0)");
   if(f.q){clauses.push("instr(lower(title||' '||data),?)>0");args.push(f.q);}
   if(f.includeClosed!=='true'){clauses.push("status NOT IN ('closed','source_removed') AND (closing_at IS NULL OR closing_at>?) AND (published_at IS NULL OR published_at<=?)");args.push(now,now);}
   return {sql:'WHERE '+clauses.join(' AND '),args};
 }
 function publicItem(row,profile,ms) {
-  const item=JSON.parse(row.data);return {...item,status:statusAt({...item,status:row.status},ms),firstSeenAt:row.first_seen_at,lastSeenAt:row.last_seen_at,match:match(item,profile),screening:screenOpportunity(item,profile)};
+  const item=JSON.parse(row.data);return {...item,status:statusAt({...item,status:row.status},ms),firstSeenAt:row.first_seen_at,lastSeenAt:row.last_seen_at,match:match(item,profile),screening:screenOpportunity(item,profile),gpSignals:gpOpportunitySignals(item)};
 }
 export async function handleOpportunityV2Request(request,env,context) {
   const url=new URL(request.url),path=url.pathname;
@@ -182,7 +191,7 @@ export async function handleOpportunityV2Request(request,env,context) {
       const rows=await all(db,'SELECT o.id,o.data,count(e.id) AS editions FROM opportunity_organizations o JOIN opportunity_editions e ON e.organization_id=o.id '+where.sql.replaceAll('country','e.country').replaceAll('profile_scope','e.profile_scope').replaceAll('state','e.state').replaceAll('trust','e.trust').replaceAll('opportunity_type','e.opportunity_type').replaceAll('title','e.title').replaceAll('data','e.data').replaceAll('organization_id','e.organization_id').replaceAll('status','e.status').replaceAll('closing_at','e.closing_at').replaceAll('published_at','e.published_at')+' GROUP BY o.id ORDER BY o.id LIMIT ? OFFSET ?',...where.args,f.limit,f.offset);
       return json({organizations:rows.map(row=>({...JSON.parse(row.data),editionCount:row.editions})),limit:f.limit,offset:f.offset});
     }
-    const rows=await all(db,'SELECT * FROM opportunity_editions '+where.sql+' ORDER BY closing_at IS NULL,closing_at,published_at DESC,id LIMIT ? OFFSET ?',...where.args,f.limit,f.offset);
+    const rows=await all(db,'SELECT * FROM opportunity_editions '+where.sql+(f.sort==='newest'?' ORDER BY first_seen_at DESC,published_at DESC,id':' ORDER BY closing_at IS NULL,closing_at,published_at DESC,id')+' LIMIT ? OFFSET ?',...where.args,f.limit,f.offset);
     const count=await stmt(db,'SELECT count(*) AS n FROM opportunity_editions '+where.sql,...where.args).first();
     return json({opportunities:rows.map(row=>publicItem(row,profile,now.ms)),total:count.n,limit:f.limit,offset:f.offset,sourceCoverage:'configured_sources_only',scope:{country:f.country,trust:f.trust,types:f.types,italyAllowed:profile==='amir'}});
   } catch(error) {return json({error:error instanceof OpportunityStoreError?error.code:'opportunity_request_failed'},error instanceof OpportunityStoreError?error.status:500);}
