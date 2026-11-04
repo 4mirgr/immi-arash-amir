@@ -75,6 +75,8 @@ async function prepare(env,context,payload,fetcher){
     if(!payload.replyContext||typeof payload.replyContext!=='object'||Array.isArray(payload.replyContext)||Object.keys(payload.replyContext).some(key=>!['messageId','threadId','to'].includes(key))||payload.clinicIds!==undefined||payload.presetId!==undefined)throw new SendError(400,'invalid_reply_context');
   }else if(!Array.isArray(payload.clinicIds)||payload.clinicIds.length<1||payload.clinicIds.length>200||payload.clinicIds.some(id=>typeof id!=='string'||!CLINIC.test(id)))throw new SendError(400,'invalid_clinic_selection');
   const account=await access(env,context.userId,fetcher), db=dbFor(env);
+  // Trusted application adapters may pin the identity reviewed before queueing.
+  if(context.expectedGoogleIdentity&&(account.subject!==context.expectedGoogleIdentity.subject||account.email.toLowerCase()!==context.expectedGoogleIdentity.email.toLowerCase()))throw new SendError(409,'google_account_changed');
   let reply=null;
   if(replying){
     reply=await getOwnedMailReplyContext(env,context.userId,payload.replyContext,fetcher);

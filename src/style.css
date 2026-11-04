@@ -1,8 +1,12 @@
-@import url("https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap");
+@font-face { font-family: "Vazirmatn"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/Vazirmatn-Regular.woff2") format("woff2"); }
+@font-face { font-family: "Vazirmatn"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/Vazirmatn-Medium.woff2") format("woff2"); }
+@font-face { font-family: "Vazirmatn"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/Vazirmatn-SemiBold.woff2") format("woff2"); }
+@font-face { font-family: "Vazirmatn"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/Vazirmatn-Bold.woff2") format("woff2"); }
+@font-face { font-family: "Vazirmatn"; font-style: normal; font-weight: 800; font-display: swap; src: url("/fonts/Vazirmatn-ExtraBold.woff2") format("woff2"); }
 :root {
   --workspace-text-scale: 1;
   font-size: calc(100% * var(--workspace-text-scale));
-  font-family: Vazirmatn, Tahoma, sans-serif;
+  font-family: "Vazirmatn", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Tahoma, sans-serif;
   color: #dfe6f1;
   background: #090f1b;
   font-synthesis: none;
@@ -1770,3 +1774,57 @@ bdi[dir="ltr"] { direction: ltr; unicode-bidi: isolate; }
 .arash-job-tools .inbox-search { display: flex; align-items: center; gap: 10px; min-height: 44px; margin: 0; }
 .arash-job-tools .inbox-search svg { flex-shrink: 0; }
 .arash-job-tools .inbox-search input { min-width: 0; width: 100%; margin: 0; }
+
+/* Wide settings workspace with an independent named-template library. */
+.settings-workspace { display: grid; gap: 22px; min-width: 0; }
+.settings-workspace>div,.settings-workspace section { min-width: 0; }
+.settings-shortcuts { display: flex; flex-flow: row wrap; gap: 9px; margin: 0; }
+.settings-shortcuts a { padding: 9px 14px; border: 1px solid var(--line); border-radius: 9px; color: var(--accent); font-size: .82rem; background: var(--panel); }
+.settings-shortcuts a:hover { border-color: var(--accent); }
+.settings-secondary-grid { display: grid; grid-template-columns: minmax(0,1.3fr) minmax(0,1fr); gap: 22px; align-items: start; }
+.settings-secondary-grid .panel { margin: 0; }
+.settings-connection-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,280px),1fr)); gap: 20px; align-items: start; }
+.settings-connection-grid .google-connection { margin: 0; height: 100%; }
+.settings-system-services { border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.settings-system-services .integration { padding: 12px 0; flex-wrap: wrap; gap: 10px; }
+.settings-calendar-fold { border: 1px solid var(--line); border-radius: 13px; background: var(--panel); }
+.settings-calendar-fold>summary { display: flex; align-items: center; justify-content: space-between; padding: 20px; cursor: pointer; color: var(--accent); font-weight: 600; }
+.settings-calendar-fold>.panel { margin: 0; border: 0; }
+.settings-workspace [id] { scroll-margin-top: 90px; }
+.settings-workspace .version-row { flex-wrap: wrap; }
+.settings-workspace .form-actions { flex-wrap: wrap; }
+.settings-workspace .form-actions input { min-width: 150px; flex: 1; }
+@media(max-width:1000px) { .settings-secondary-grid { grid-template-columns: 1fr; } }
+.email-template-layout { display: grid; grid-template-columns: minmax(0,1.5fr) minmax(260px,1fr); gap: 24px; align-items: start; }
+.email-template-editor,.email-template-library { min-width: 0; }
+.email-template-editor label { display: grid; gap: 7px; margin-top: 12px; font-size: .85rem; }
+.email-template-editor input,.email-template-editor textarea { width: 100%; min-width: 0; }
+.email-template-editor textarea { min-height: 210px; line-height: 1.9; resize: vertical; }
+.email-template-list { max-height: 460px; overflow-y: auto; display: grid; gap: 10px; padding-inline-end: 5px; }
+.email-template-row { border: 1px solid var(--line); border-radius: 11px; padding: 15px; background: rgba(120,150,190,.035); overflow-wrap: anywhere; }
+.email-template-row .form-actions { margin-top: 10px; gap: 8px; }
+.email-template-title { font-weight: 700; line-height: 1.8; }
+.email-template-subject,.email-template-preview { font-size: .8rem; color: var(--muted); line-height: 1.9; }
+.email-template-default { color: var(--accent); }
+.opportunity-mail { border: 1px solid var(--accent); margin-block: 22px; box-shadow: 0 0 24px #71dbe90a; scroll-margin-top: 90px; }
+.opportunity-mail-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; margin-block: 20px; }
+.opportunity-mail-fields label { min-width: 0; display: grid; gap: 8px; font-size: .86rem; }
+.opportunity-mail-fields select { width: 100%; min-width: 0; }
+.opportunity-mail-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-block: 16px; }
+.opportunity-mail-review { line-height: 1.9; padding: 20px; margin-top: 20px; }
+.opportunity-mail-review .checkline { margin-block: 20px; align-items: flex-start; }
+.opportunity-mail-queued { margin-top: 20px; }
+#opportunity-mail-workspace { scroll-margin-top: 85px; }
+:root[data-theme="light"] .email-template-row { background: #f7faff; }
+@media(max-width:900px) { .email-template-layout { grid-template-columns: 1fr; }.email-template-list { max-height: 340px; } }
+@media(max-width:600px) { .opportunity-mail-fields { grid-template-columns: 1fr; }.opportunity-mail-review { padding: 12px; }.settings-shortcuts a { flex: 1; text-align: center; white-space: nowrap; } }
+.email-template-editor label { min-width: 0; }
+.email-template-editor select,.email-template-editor input,.email-template-editor textarea { min-width: 0; max-width: 100%; width: 100%; }
+.email-template-title,.email-template-default { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.email-template-title strong { min-width: 0; }
+.email-template-title small { color: var(--muted); font-size: .73rem; }
+.email-template-editor { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 16px; }
+.email-template-editor>.section-head,.email-template-editor>label:first-of-type,.email-template-editor>label:has(textarea),.email-template-editor>p,.email-template-editor>.form-actions { grid-column: 1/-1; }
+.email-template-editor textarea { height: 220px; }
+.settings-workspace label:not(.policy):not(.checkline),.opportunity-mail .opportunity-mail-fields label { font-size: .84rem; line-height: 1.8; }
+@media(max-width:600px) { .email-template-editor { grid-template-columns: 1fr; }.email-template-editor>label { grid-column: 1/-1; }.inbox-message>.section-head>div:first-child { flex-basis: 100% !important; }.inbox-message>.section-head h4 { word-break: normal; overflow-wrap: anywhere; } }

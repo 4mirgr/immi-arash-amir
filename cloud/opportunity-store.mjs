@@ -167,7 +167,7 @@ function whereFor(f,profile,now) {
 function publicItem(row,profile,ms) {
   const item=JSON.parse(row.data);return {...item,status:statusAt({...item,status:row.status},ms),firstSeenAt:row.first_seen_at,lastSeenAt:row.last_seen_at,match:match(item,profile),screening:screenOpportunity(item,profile),gpSignals:gpOpportunitySignals(item)};
 }
-async function enrichReadPages(db,rows,profile,ms,enabled){
+export async function enrichReadPages(db,rows,profile,ms,enabled){
  const items=rows.map(row=>publicItem(row,profile,ms));if(!enabled||!items.length)return items;
  const readings=await all(db,"SELECT q.url,q.country,q.status,q.read_at,c.read_at AS content_read_at,c.status AS content_status,c.text,e.analysis,e.read_at AS evidence_read_at FROM public_page_queue q JOIN public_page_content c ON c.page_id=q.id LEFT JOIN public_page_evidence e ON e.page_id=q.id AND e.profile_id=? WHERE q.url IN (SELECT value FROM json_each(?)) AND q.status IN ('read','read_partial') AND (q.profile_scope='both' OR ?='amir')",profile,JSON.stringify(items.map(item=>item.url)),profile);
  if(!readings.length)return items;

@@ -49,6 +49,7 @@ import { downloadCVPDF } from "./cv-pdf.mjs";
 import { MixedText } from "./mixed-text";
 import { TextSizeControl } from "./text-size-control";
 import {ArashHome,ArashNavigation,WorkspaceFold,ARASH_TONES} from "./arash-workspace";
+import {EmailTemplateSettings} from "./email-template-settings";
 import sourceRegistry from "../library/sources.json";
 function deferredPanel(load,name){const Component=React.lazy(()=>load().then(module=>({default:module[name]})));return function DeferredPanel(props){return <React.Suspense fallback={<section className="panel" role="status">در حال آماده‌سازی این بخش…</section>}><Component {...props}/></React.Suspense>;};}
 const AutomationHub=deferredPanel(()=>import("./automation-hub"),"AutomationHub");
@@ -624,7 +625,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
               </div>
             </>
           )}
-          {tab === "opportunities" && <JobOpportunitiesPanel person={person} notify={notify} />}
+          {tab === "opportunities" && <JobOpportunitiesPanel key={person} person={person} notify={notify} onOpenSettings={()=>setTab("settings")} />}
           {(tab === "opportunities" || (tab === "overview" && !arash)) && (
             <WorkspaceFold enabled={arash} title="بانک مراکز و انتخاب مخاطب" hint="سرنخ‌های تماس واردشده؛ مستقل از آگهی‌های شغلی" tone="amber"><section className="panel opportunities">
               <div className="section-head">
@@ -1093,34 +1094,10 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
           )}
           {tab === "automation" && <AutomationHub person={person} notify={notify}/>}
           {tab === "settings" && (
-            <div className="two-col">
-              <section className="panel">
-                <h3>اتصال سرویس‌ها</h3>
-                <GoogleConnection person={person} connection={googleConnection} notify={notify}/>
-                {person === "amir" && <GoogleConnection person={person} mailbox="secondary" connection={secondaryGoogleConnection} notify={notify}/>}
-                <CalendarDriveTools key={person+":"+Boolean(googleConnection.state.connected)+":"+(googleConnection.state.email||"")} person={person} notify={notify}/>
-                {[
-                  ["Telegram", "اعلان موقعیت‌ها و پیگیری‌ها", "telegram"],
-                  ["پایش منابع", "دریافت آگهی و تشخیص تغییر", "crawler"],
-                  ["هوش مصنوعی", "تحلیل درخواست‌محور با سقف مصرف", "ai"],
-                ].map(([a, b, key]) => (
-                  <div className="integration" key={a}>
-                    <span className="clinic-icon">
-                      <Globe size={20} />
-                    </span>
-                    <div>
-                      <strong>{a}</strong>
-                      <small>{b}</small>
-                    </div>
-                    <span className={"status "+(data.integrations?.[key]?.connected?"":"amber")}>{data.integrations?.[key]?.connected?(key==="telegram"&&!data.integrations.telegram.enabled?"متصل؛ اعلان خاموش":"آماده"):"نیازمند راه‌اندازی"}</span>
-                  </div>
-                ))}
-                <button className="secondary" onClick={()=>setTab("automation")}>بازکردن ابزارهای AI، تلگرام و پشتیبان</button>
-                <div className="notice">
-                  کلیدها و توکن‌ها فقط سمت سرور نگهداری می‌شوند. برای اتصال
-                  Google، تنظیم OAuth و تأیید دسترسی هر حساب لازم است.
-                </div>
-              </section>
+            <div className="settings-workspace">
+              <nav className="settings-shortcuts" aria-label="بخش‌های تنظیمات"><a href="#email-templates">قالب‌های ایمیل</a><a href="#cv-defaults">رزومهٔ پیش‌فرض</a><a href="#service-connections">اتصال حساب‌ها</a><a href="#calendar-documents">تقویم و مدارک</a></nav>
+              <div id="email-templates"><EmailTemplateSettings key={person} person={person} notify={notify}/></div>
+              <div className="settings-secondary-grid"><div id="cv-defaults"><CVVersions key={person} person={person} notify={notify}/></div>
               <section className="panel">
                 <h3>سیاست مکاتبات</h3>
                 <label className="policy">
@@ -1180,6 +1157,20 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                     : "تعویض پروفایل در نسخهٔ محلی، احراز هویت نیست. پیش از انتشار داده‌های خصوصی، ورود امن و کنترل دسترسی باید فعال شود."}
                 </div>
               </section>
+              </div>
+              <section id="service-connections" className="panel settings-connections">
+                <div className="section-head"><div><h3>اتصال حساب‌ها و سرویس‌ها</h3><p className="muted">هر اتصال فقط متعلق به همین کاربر است.</p></div></div>
+                <div className="settings-connection-grid">
+                  <GoogleConnection person={person} connection={googleConnection} notify={notify}/>
+                  {person === "amir" && <GoogleConnection person={person} mailbox="secondary" connection={secondaryGoogleConnection} notify={notify}/>}
+                  <div className="settings-system-services">{[
+                    ["Telegram", "اعلان موقعیت‌ها و پیگیری‌ها", "telegram"],
+                    ["پایش منابع", "دریافت آگهی و تشخیص تغییر", "crawler"],
+                    ["هوش مصنوعی", "تحلیل درخواست‌محور با سقف مصرف", "ai"],
+                  ].map(([a,b,key])=><div className="integration" key={a}><span className="clinic-icon"><Globe size={20}/></span><div><strong>{a}</strong><small>{b}</small></div><span className={"status "+(data.integrations?.[key]?.connected?"":"amber")}>{data.integrations?.[key]?.connected?(key==="telegram"&&!data.integrations.telegram.enabled?"متصل؛ اعلان خاموش":"آماده"):"نیازمند راه‌اندازی"}</span></div>)}<button className="secondary" onClick={()=>setTab("automation")}>ابزارهای AI، تلگرام و پشتیبان</button></div>
+                </div>
+              </section>
+              <details id="calendar-documents" className="settings-calendar-fold"><summary>تقویم دوره‌ها و مدارک شخصی <Calendar size={18}/></summary><CalendarDriveTools key={person+":"+Boolean(googleConnection.state.connected)+":"+(googleConnection.state.email||"")} person={person} notify={notify}/></details>
             </div>
           )}
           <footer>

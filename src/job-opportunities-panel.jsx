@@ -6,6 +6,7 @@ import {GPDiscovery} from './gp-discovery';
 import gpSources from '../cloud/gp-discovery-sources.json';
 import {UniversityCatalogue} from './university-catalogue';
 import {ExtractedEvidence} from './extracted-evidence';
+import {OpportunityMail} from './opportunity-mail';
 
 const text=value=>typeof value==='string'?value:'';
 const list=value=>Array.isArray(value)?value:[];
@@ -21,13 +22,15 @@ const organizationId=item=>text(item.organizationId||item.organization_id||(type
 const organizationName=item=>text(typeof item.organization==='string'?item.organization:item.organization?.name)||text(item.organizationName)||'سازمان نامشخص';
 const availableTo=(item,person)=>person==='amir'||item.country!=='IT';
 
-export function JobOpportunitiesPanel({person,notify}){
+export function JobOpportunitiesPanel({person,notify,onOpenSettings}){
  const [items,setItems]=useState([]),[sources,setSources]=useState([]),[automation,setAutomation]=useState(null);
  const [query,setQuery]=useState(''),[submittedQuery,setSubmittedQuery]=useState('');
  const [clinicalFocus,setClinicalFocus]=useState(person==='arash'?'medical':'all'),[ruralOnly,setRuralOnly]=useState(false),[sort,setSort]=useState('newest');
  const [country,setCountry]=useState('AU'),[state,setState]=useState('all'),[kind,setKind]=useState('all');
  const [official,setOfficial]=useState(true),[unofficial,setUnofficial]=useState(false),[types,setTypes]=useState(person==='arash'?['job']:TYPES.map(([id])=>id)),[includeClosed,setIncludeClosed]=useState(false);
  const [page,setPage]=useState(0),[total,setTotal]=useState(0),[busy,setBusy]=useState(false),[checking,setChecking]=useState(false),[error,setError]=useState(''),[checkNote,setCheckNote]=useState(''),[expanded,setExpanded]=useState(null);
+ const [mailOpportunity,setMailOpportunity]=useState(null);
+ useEffect(()=>{if(mailOpportunity){const node=document.getElementById('opportunity-mail-workspace');node?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});node?.focus({preventScroll:true});}},[mailOpportunity?.id]);
  const [history,setHistory]=useState({}),[historyOpen,setHistoryOpen]=useState(null),[historyBusy,setHistoryBusy]=useState(null),[historyError,setHistoryError]=useState('');
  const generation=useRef(0),owner=useRef(person);owner.current=person;
  const limit=25,effectiveCountry=person==='amir'?country:'AU';
@@ -51,7 +54,7 @@ export function JobOpportunitiesPanel({person,notify}){
  const loadCurrent=useRef(load);loadCurrent.current=load;
  useEffect(()=>{load();return()=>{generation.current++;};},[load]);
  useEffect(()=>{const timer=setInterval(()=>{if(document.visibilityState==='visible')loadCurrent.current();},10000);return()=>clearInterval(timer);},[]);
- useEffect(()=>{setItems([]);setSources([]);setAutomation(null);setQuery('');setSubmittedQuery('');setPage(0);setCountry('AU');setState('all');setKind('all');setClinicalFocus(person==='arash'?'medical':'all');setTypes(person==='arash'?['job']:TYPES.map(([id])=>id));setRuralOnly(false);setSort('newest');setExpanded(null);setHistory({});setHistoryOpen(null);setHistoryBusy(null);setHistoryError('');setCheckNote('');setChecking(false);},[person]);
+ useEffect(()=>{setMailOpportunity(null);setItems([]);setSources([]);setAutomation(null);setQuery('');setSubmittedQuery('');setPage(0);setCountry('AU');setState('all');setKind('all');setClinicalFocus(person==='arash'?'medical':'all');setTypes(person==='arash'?['job']:TYPES.map(([id])=>id));setRuralOnly(false);setSort('newest');setExpanded(null);setHistory({});setHistoryOpen(null);setHistoryBusy(null);setHistoryError('');setCheckNote('');setChecking(false);},[person]);
  const groups=useMemo(()=>{const result=new Map();for(const item of items){const id=organizationId(item),key=id||'ungrouped';if(!result.has(key))result.set(key,{id,name:id?organizationName(item):'فرصت‌های بدون ارتباط تأییدشده با یک مجموعه',items:[]});result.get(key).items.push(item);}return [...result.values()];},[items]);
  function changeFilter(setter,value){setPage(0);setHistoryOpen(null);setter(value);}
  function toggleType(id){setPage(0);setTypes(current=>current.includes(id)?current.filter(value=>value!==id):[...current,id]);}
@@ -68,7 +71,7 @@ export function JobOpportunitiesPanel({person,notify}){
   <p className="muted">اسپانسرشیپ: {item.sponsorship===true?'ذکرشده؛ نیازمند تأیید':'تأیید نشده'} · supervision: {item.supervision===true?'ذکرشده؛ نیازمند تأیید':'تأیید نشده'} · ثبت پزشکی، شرایط تحصیلی و MMM/DPA نیازمند بررسی مستقل‌اند.</p>
   {person==='arash'&&item.country==='AU'&&item.gpSignals&&<p className="muted"><MixedText>{'MMM در متن: '+(item.gpSignals.monashMentioned?.length?item.gpSignals.monashMentioned.join('، '):'ذکر نشده')+' · '+(item.gpSignals.ruralWording?'اشارهٔ متنی به rural/regional/remote':'منطقهٔ rural تأیید نشده')+'؛ طبقه‌بندی جغرافیایی باید مستقل بررسی شود.'}</MixedText></p>}
   {renderScreening(item)}
-  <div className="form-actions" style={{flexWrap:'wrap'}}>{safeLink(item.url)&&<a className="secondary link" href={safeLink(item.url)} target="_blank" rel="noreferrer">اصل فرصت <ExternalLink size={14}/></a>}<button className="text-button" onClick={()=>setExpanded(expanded===detailKey?null:detailKey)}>{expanded===detailKey?'بستن جزئیات':'جزئیات و منشأ انتشار'}</button></div>
+  <div className="form-actions" style={{flexWrap:'wrap'}}><button type="button" className="primary" onClick={()=>setMailOpportunity(item)}>ارسال ایمیل و رزومه</button>{safeLink(item.url)&&<a className="secondary link" href={safeLink(item.url)} target="_blank" rel="noreferrer">اصل فرصت <ExternalLink size={14}/></a>}<button className="text-button" onClick={()=>setExpanded(expanded===detailKey?null:detailKey)}>{expanded===detailKey?'بستن جزئیات':'جزئیات و منشأ انتشار'}</button></div>
   {expanded===detailKey&&<div className="message-details"><div className="cv-details"><span>منبع</span><b>{text(item.sourceId||item.source_id)||'نامعلوم'}</b><span>نسخه / نوبت انتشار</span><b>{text(item.editionKey||item.edition_key)||'اعلام نشده'}</b><span>نخستین مشاهده</span><b>{date(item.firstSeenAt||item.first_seen_at)}</b><span>نشانهٔ تطابق متن</span><b>{Number.isFinite(item.match?.score)?item.match.score.toLocaleString('fa-IR'):'ارزیابی نشده'}؛ احتمال پذیرش نیست</b></div><ul>{list(item.match?.reasons).map((reason,index)=><li key={index}>{reasonLabels[reason]||'نشانهٔ متنی برای بررسی؛ شرایط نهایی از اصل منبع تأیید شود.'}</li>)}</ul>{text(item.fullText)&&<p dir="auto" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{text(item.fullText)}</p>}{safeLink(item.sourceUrl)&&<a className="text-button" href={safeLink(item.sourceUrl)} target="_blank" rel="noreferrer">دادهٔ ناشر <ExternalLink size={13}/></a>}</div>}
  </article>;}
  const arash=person==='arash';
@@ -100,6 +103,7 @@ export function JobOpportunitiesPanel({person,notify}){
   {!busy&&!items.length&&!error&&!noSelection&&<div className="empty"><BriefcaseBusiness size={28}/><h3>موردی با این فیلتر ثبت نشده است</h3><p>منابعِ فقط پیوند یا تنظیم‌نشده، آگهی فعال محسوب نمی‌شوند. بانک تماس‌ها مستقل از این فهرست است.</p></div>}
   {groups.map(group=><div key={group.id||'ungrouped'} style={{marginTop:18}}><div className="section-head" style={{flexWrap:'wrap',gap:8}}><h4>{group.name}</h4>{group.id&&<button className="secondary" onClick={()=>toggleHistory(group.id)}>{historyOpen===group.id?'بستن تاریخچهٔ مجموعه':'نوبت‌های انتشار این مجموعه'}</button>}</div>{group.items.map(item=>renderItem(item))}{group.id&&historyOpen===group.id&&<div className="panel" aria-label="تاریخچهٔ انتشار مجموعه"><h4>فرصت‌های جداگانه و نسخه‌های انتشار این مجموعه</h4>{historyBusy===group.id?<p>در حال دریافت تاریخچه…</p>:historyError?<p role="alert">{historyError}</p>:history[group.id]?.length?history[group.id].map(item=>renderItem(item,true)):<p className="muted">تاریخچهٔ قابل‌نمایشی دریافت نشد.</p>}</div>}</div>)}
   {total>limit&&<div className="form-actions" style={{marginTop:18}}><button className="secondary" disabled={busy||page===0} onClick={()=>setPage(value=>Math.max(0,value-1))}><ChevronRight size={15}/>قبلی</button><span className="muted">صفحهٔ {(page+1).toLocaleString('fa-IR')} از {Math.ceil(total/limit).toLocaleString('fa-IR')}</span><button className="secondary" disabled={busy||(page+1)*limit>=total} onClick={()=>setPage(value=>value+1)}>بعدی<ChevronLeft size={15}/></button></div>}
+  {mailOpportunity&&<div id="opportunity-mail-workspace" tabIndex={-1}><OpportunityMail key={person+":"+mailOpportunity.id} person={person} opportunity={mailOpportunity} onClose={()=>setMailOpportunity(null)} notify={notify} onOpenSettings={onOpenSettings}/></div>}
   {arash&&<div className="arash-job-extras">
    <details className="arash-fold neon-cyan"><summary>کاوش بیشتر؛ کلینیک، مناطق rural و شبکه‌ها</summary><div className="arash-fold-body"><GPDiscovery sources={gpSources} notify={notify}/></div></details>
    <div className="arash-fold neon-violet"><ExtractedEvidence key={person+':'+effectiveCountry} person={person} section="jobs" country="AU"/></div>

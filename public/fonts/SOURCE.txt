@@ -1,0 +1,4 @@
+Vazirmatn, weights400/500/600/700/800. SIL Open Font License1.1 (OFL.txt).
+Font project: https://github.com/rastikerdar/vazirmatn
+These font binaries match the user's intMed-study-plan docs/fonts assets, retrieved2026-11-04.
+No Google Fonts request is required for website typography.

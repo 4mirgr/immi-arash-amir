@@ -3,8 +3,8 @@ import {build} from 'esbuild';
 import {readFile,mkdir,readdir,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 const root=process.cwd(),assets={};
-const types={html:'text/html',css:'text/css',js:'application/javascript',svg:'image/svg+xml',json:'application/json',webmanifest:'application/manifest+json',txt:'text/plain',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',ico:'image/x-icon'};
-const binary=new Set(['png','jpg','jpeg','webp','ico']);
+const types={html:'text/html',css:'text/css',js:'application/javascript',svg:'image/svg+xml',json:'application/json',webmanifest:'application/manifest+json',txt:'text/plain',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',ico:'image/x-icon',woff2:'font/woff2'};
+const binary=new Set(['png','jpg','jpeg','webp','ico','woff2']);
 async function collect(folder){
  for(const entry of await readdir(folder,{withFileTypes:true})){
   const file=path.join(folder,entry.name);

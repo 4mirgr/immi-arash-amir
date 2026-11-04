@@ -120,3 +120,9 @@ test('normal clinic messages do not acquire reply headers or Gmail thread routin
 test('reply-column upgrade preserves an existing pre-reply queue schema',()=>{
  const db=new DatabaseSync(':memory:');const schema=readFileSync(new URL('../cloud/google-send-schema.sql',import.meta.url),'utf8').replace('  reply_thread_id TEXT,\n','');db.exec(schema);db.exec(readFileSync(new URL('../cloud/google-send-replies.sql',import.meta.url),'utf8'));assert.equal(db.prepare('pragma table_info(google_send_queue)').all().filter(column=>column.name==='reply_thread_id').length,1);
 });
+test('trusted opportunity review identity pin rejects a changed subject before queue creation',async()=>{
+ const f=await fixture();
+ const scoped={...f.arash,expectedGoogleIdentity:{subject:'previously-reviewed-subject',email:'arash@example.invalid'}};
+ const response=await f.call('queue',payload(),scoped);assert.equal(response.status,409);assert.equal((await response.json()).error,'google_account_changed');
+ assert.equal(f.db.prepare('SELECT count(*) n FROM google_send_queue').get().n,0);assert.equal(f.calls.length,0);
+});

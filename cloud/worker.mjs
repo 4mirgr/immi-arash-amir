@@ -21,6 +21,7 @@ import {handleNetworkTargetsRequest} from './network-targets.mjs';
 import {handlePesciPracticeRequest} from './pesci-practice.mjs';
 import {handleAiAssistantRequest} from './ai-assistant.mjs';
 import {handleMailAutomationRequest} from './mail-automation.mjs';
+import {handleOpportunityMailRequest} from './opportunity-mail.mjs';
 import {handleTelegramWebhook,handleTelegramRequest,dispatchTelegramNotifications} from './telegram-notifications.mjs';
 import {handleOwnerBackupRequest} from './owner-backup.mjs';
 import {handleLinkedInSchedulerRequest,dispatchScheduledLinkedIn} from './linkedin-scheduler.mjs';
@@ -95,8 +96,8 @@ export function createHandler(fetcher = fetch) {
         return await handleRoadmapRequest(request,env,{userId:user.id,profileId,rest});
       }
       if(url.pathname==='/api/opportunities'||url.pathname.startsWith('/api/opportunities/')){
-        for(const handler of [handleRegisteredSourcesRequest,handleOpportunityV2Request]){
-          const response=await handler(request,env,{userId:user.id,profileId},fetcher);
+        for(const handler of [handleOpportunityMailRequest,handleRegisteredSourcesRequest,handleOpportunityV2Request]){
+          const response=await handler(request,env,{userId:user.id,profileId,rest},fetcher);
           if(response)return response;
         }
         throw new ApiError(404,'Not found');
