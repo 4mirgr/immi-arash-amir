@@ -25,3 +25,5 @@ migrationهای D1 از `cloud/*schema.sql` طبق نقش private/public اجر�
 - برای `.ir` مراحل [DOMAIN-IR](DOMAIN-IR.fa.md) و برای بازیابی [BACKUP-RESTORE](BACKUP-RESTORE.md) را دنبال کنید.
 
 برای رسید مستقل اجرای cron، `cloud/source-automation-schema.sql` را روی OPPORTUNITY_DB اعمال کنید. این رسید از دریافت دستی منابع جداست؛ نبودن آن اجرای خودکار را تأیید نمی‌کند.
+
+جدول فهرست دانشگاه‌ها و رسیدهای فنی از `cloud/university-catalogue-schema.sql` روی OPPORTUNITY_DB ساخته می‌شود. دادهٔ خام رسمی `cloud/italian-universities.json`، ابزار پویش و تهیهٔ SQL در scripts هستند؛ credential یا دادهٔ خصوصی برای این واردکردن عمومی لازم نیست. جدول فهرست با opportunity_editions یکی نیست.

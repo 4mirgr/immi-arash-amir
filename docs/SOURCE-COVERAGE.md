@@ -103,3 +103,8 @@ Source registry now combines `source-registry.json` with three fixed `RURAL_SOUR
 Actual Cloudflare bounded operator receipt at2026-11-03T19:28:06Z: RuralHealthWest40inserted of83matching (continuationcursor40), ThePeopleProjectTasmania6inserted, NTPHNHTTP403/source_access_denied and0imported. Local successful parsing of NTPHN7records is not production acquisition evidence. The temporary operator Worker was removed; no private grants were attached. These46new records have unknownclosingdates and are candidates for review, not guaranteed open vacancies or offers. Firstparty recruitmentpublisher is kept distinct from an independently verified clinic/employer.
 
 Arash discovery directory:19dated links spanning all8jurisdictions,4clinicnetworks and3publicpublisher sociallinks. Those links are manual discovery, not additional automated collectors. No private groups, private profiles or authenticated social pages are scraped. GP/MedicalOfficer and rural-wording filters apply before pagination; quoted MMM codes are unverified advertisement wording and never establish DPA or eligibility.
+
+
+## Source expansion —2026-11-04
+
+Eighteen configured adapters now merge registryJSON with rural,Italian andAustralian adapterdefinitions. ActualCloudflare imports: PisaBRS5+IRIC3,Catania0,QLD20,NSWJMO5. These33neweditions are distinct from the102institution directory and technicalpage receipts. See docs/research/ITALY-CATALOGUE-DELIVERY.md for MURscope,homepage/childreceipts and replay. Threecalls/hour implies~6hourround, not the older13-source4–5hourround. The UIcadence now derives fromactiveconfigurationcount. No additional cron or paid service was created.

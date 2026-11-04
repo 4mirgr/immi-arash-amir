@@ -1,0 +1,2694 @@
+[
+  {
+    "id": "it-university-poliba-it",
+    "name": "Politecnico di Bari",
+    "region": "Puglia",
+    "regions": [
+      "Puglia"
+    ],
+    "url": "https://www.poliba.it/en/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "https_homepage_observed",
+    "directoryListings": [
+      {
+        "name": "Politecnico di Bari",
+        "url": "http://www.poliba.it/",
+        "region": "Puglia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-polimi-it",
+    "name": "Politecnico di Milano",
+    "region": "Lombardia",
+    "regions": [
+      "Lombardia"
+    ],
+    "url": "https://polimi.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Politecnico di Milano",
+        "url": "https://polimi.it/",
+        "region": "Lombardia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-polito-it",
+    "name": "Politecnico di Torino",
+    "region": "Piemonte",
+    "regions": [
+      "Piemonte"
+    ],
+    "url": "https://www.polito.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Politecnico di Torino",
+        "url": "https://www.polito.it/",
+        "region": "Piemonte"
+      }
+    ]
+  },
+  {
+    "id": "it-university-iuav-it",
+    "name": "Università IUAV - Venezia",
+    "region": "Veneto",
+    "regions": [
+      "Veneto"
+    ],
+    "url": "https://www.iuav.it/it",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università IUAV - Venezia",
+        "url": "https://www.iuav.it/it",
+        "region": "Veneto"
+      }
+    ]
+  },
+  {
+    "id": "it-university-univpm-it",
+    "name": "Università Politecnica delle Marche – Ancona",
+    "region": "Marche",
+    "regions": [
+      "Marche"
+    ],
+    "url": "https://www.univpm.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università Politecnica delle Marche – Ancona",
+        "url": "https://www.univpm.it/",
+        "region": "Marche"
+      }
+    ]
+  },
+  {
+    "id": "it-university-www2-unimol-it",
+    "name": "Università degli Studi del Molise - Campobasso",
+    "region": "Molise",
+    "regions": [
+      "Molise"
+    ],
+    "url": "https://www2.unimol.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi del Molise - Campobasso",
+        "url": "https://www2.unimol.it/",
+        "region": "Molise"
+      }
+    ]
+  },
+  {
+    "id": "it-university-uniupo-it",
+    "name": "Università degli Studi del Piemonte Orientale \"Amedeo Avogadro” – Alessandria, Novara e Vercelli",
+    "region": "Piemonte",
+    "regions": [
+      "Piemonte"
+    ],
+    "url": "https://www.uniupo.it/it",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi del Piemonte Orientale \"Amedeo Avogadro” – Alessandria, Novara e Vercelli",
+        "url": "https://www.uniupo.it/it",
+        "region": "Piemonte"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unisalento-it",
+    "name": "Università degli Studi del Salento – Lecce",
+    "region": "Puglia",
+    "regions": [
+      "Puglia"
+    ],
+    "url": "https://www.unisalento.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi del Salento – Lecce",
+        "url": "https://www.unisalento.it/",
+        "region": "Puglia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unisannio-it",
+    "name": "Università degli Studi del Sannio – Benevento",
+    "region": "Campania",
+    "regions": [
+      "Campania"
+    ],
+    "url": "https://unisannio.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi del Sannio – Benevento",
+        "url": "https://unisannio.it/",
+        "region": "Campania"
+      }
+    ]
+  },
+  {
+    "id": "it-university-uninsubria-it",
+    "name": "Università degli Studi dell'Insubria – Varese e Como",
+    "region": "Lombardia",
+    "regions": [
+      "Lombardia"
+    ],
+    "url": "https://www.uninsubria.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi dell'Insubria – Varese e Como",
+        "url": "https://www.uninsubria.it/",
+        "region": "Lombardia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-portale-unibas-it",
+    "name": "Università degli Studi della Basilicata – Potenza e Matera",
+    "region": "Basilicata",
+    "regions": [
+      "Basilicata"
+    ],
+    "url": "https://portale.unibas.it/site/home.html",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi della Basilicata – Potenza e Matera",
+        "url": "https://portale.unibas.it/site/home.html",
+        "region": "Basilicata"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unicampania-it",
+    "name": "Università degli Studi della Campania \"Luigi Vanvitelli” – Caserta",
+    "region": "Campania",
+    "regions": [
+      "Campania"
+    ],
+    "url": "https://unicampania.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi della Campania \"Luigi Vanvitelli” – Caserta",
+        "url": "https://unicampania.it/",
+        "region": "Campania"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unitus-it",
+    "name": "Università degli Studi della Tuscia – Viterbo",
+    "region": "Lazio",
+    "regions": [
+      "Lazio"
+    ],
+    "url": "https://www.unitus.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi della Tuscia – Viterbo",
+        "url": "https://www.unitus.it/",
+        "region": "Lazio"
+      }
+    ]
+  },
+  {
+    "id": "it-university-univaq-it",
+    "name": "Università degli Studi dell’Aquila",
+    "region": "Abruzzo",
+    "regions": [
+      "Abruzzo"
+    ],
+    "url": "https://www.univaq.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi dell’Aquila",
+        "url": "https://www.univaq.it/",
+        "region": "Abruzzo"
+      }
+    ]
+  },
+  {
+    "id": "it-university-uniba-it",
+    "name": "Università degli Studi di Bari \"Aldo Moro\"",
+    "region": "Puglia",
+    "regions": [
+      "Puglia"
+    ],
+    "url": "https://www.uniba.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Bari \"Aldo Moro\"",
+        "url": "https://www.uniba.it/",
+        "region": "Puglia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unibg-it",
+    "name": "Università degli Studi di Bergamo",
+    "region": "Lombardia",
+    "regions": [
+      "Lombardia"
+    ],
+    "url": "https://www.unibg.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Bergamo",
+        "url": "https://www.unibg.it/",
+        "region": "Lombardia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unibo-it",
+    "name": "Università degli Studi di Bologna",
+    "region": "Emilia-Romagna",
+    "regions": [
+      "Emilia-Romagna"
+    ],
+    "url": "https://www.unibo.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Bologna",
+        "url": "https://www.unibo.it/",
+        "region": "Emilia-Romagna"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unibs-it",
+    "name": "Università degli Studi di Brescia",
+    "region": "Lombardia",
+    "regions": [
+      "Lombardia"
+    ],
+    "url": "https://www.unibs.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Brescia",
+        "url": "https://www.unibs.it/",
+        "region": "Lombardia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unica-it",
+    "name": "Università degli Studi di Cagliari",
+    "region": "Sardegna",
+    "regions": [
+      "Sardegna"
+    ],
+    "url": "https://unica.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Cagliari",
+        "url": "https://unica.it/",
+        "region": "Sardegna"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unicam-it",
+    "name": "Università degli Studi di Camerino – Camerino (MC)",
+    "region": "Marche",
+    "regions": [
+      "Marche"
+    ],
+    "url": "https://www.unicam.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Camerino – Camerino (MC)",
+        "url": "https://www.unicam.it/",
+        "region": "Marche"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unicas-it",
+    "name": "Università degli Studi di Cassino e del Lazio Meridionale",
+    "region": "Lazio",
+    "regions": [
+      "Lazio"
+    ],
+    "url": "https://www.unicas.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Cassino e del Lazio Meridionale",
+        "url": "https://www.unicas.it/",
+        "region": "Lazio"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unict-it",
+    "name": "Università degli Studi di Catania",
+    "region": "Sicilia",
+    "regions": [
+      "Sicilia"
+    ],
+    "url": "https://www.unict.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Catania",
+        "url": "https://www.unict.it/",
+        "region": "Sicilia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-web-unicz-it",
+    "name": "Università degli Studi di Catanzaro \"Magna Graecia\"",
+    "region": "Calabria",
+    "regions": [
+      "Calabria"
+    ],
+    "url": "https://web.unicz.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Catanzaro \"Magna Graecia\"",
+        "url": "https://web.unicz.it/",
+        "region": "Calabria"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unich-it",
+    "name": "Università degli Studi di Chieti-Pescara \"Gabriele D'Annunzio\"",
+    "region": "Abruzzo",
+    "regions": [
+      "Abruzzo"
+    ],
+    "url": "https://www.unich.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Chieti-Pescara \"Gabriele D'Annunzio\"",
+        "url": "https://www.unich.it/",
+        "region": "Abruzzo"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unife-it",
+    "name": "Università degli Studi di Ferrara",
+    "region": "Emilia-Romagna",
+    "regions": [
+      "Emilia-Romagna"
+    ],
+    "url": "https://www.unife.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Ferrara",
+        "url": "https://www.unife.it/",
+        "region": "Emilia-Romagna"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unifi-it",
+    "name": "Università degli Studi di Firenze",
+    "region": "Toscana",
+    "regions": [
+      "Toscana"
+    ],
+    "url": "https://www.unifi.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Firenze",
+        "url": "https://www.unifi.it/",
+        "region": "Toscana"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unifg-it",
+    "name": "Università degli Studi di Foggia",
+    "region": "Puglia",
+    "regions": [
+      "Puglia"
+    ],
+    "url": "https://www.unifg.it/it",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Foggia",
+        "url": "https://www.unifg.it/it",
+        "region": "Puglia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unige-it",
+    "name": "Università degli Studi di Genova",
+    "region": "Liguria",
+    "regions": [
+      "Liguria"
+    ],
+    "url": "https://unige.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Genova",
+        "url": "https://unige.it/",
+        "region": "Liguria"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unimc-it",
+    "name": "Università degli Studi di Macerata",
+    "region": "Marche",
+    "regions": [
+      "Marche"
+    ],
+    "url": "https://www.unimc.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Macerata",
+        "url": "https://www.unimc.it/",
+        "region": "Marche"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unime-it",
+    "name": "Università degli Studi di Messina",
+    "region": "Sicilia",
+    "regions": [
+      "Sicilia"
+    ],
+    "url": "https://www.unime.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Messina",
+        "url": "https://www.unime.it/",
+        "region": "Sicilia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unimib-it",
+    "name": "Università degli Studi di Milano “Bicocca”",
+    "region": "Lombardia",
+    "regions": [
+      "Lombardia"
+    ],
+    "url": "https://www.unimib.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Milano “Bicocca”",
+        "url": "https://www.unimib.it/",
+        "region": "Lombardia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unimi-it",
+    "name": "Università degli Studi di Milano “Statale”",
+    "region": "Lombardia",
+    "regions": [
+      "Lombardia"
+    ],
+    "url": "https://www.unimi.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Milano “Statale”",
+        "url": "https://www.unimi.it/",
+        "region": "Lombardia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unimore-it",
+    "name": "Università degli Studi di Modena e Reggio Emilia",
+    "region": "Emilia-Romagna",
+    "regions": [
+      "Emilia-Romagna"
+    ],
+    "url": "https://www.unimore.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Modena e Reggio Emilia",
+        "url": "https://www.unimore.it/",
+        "region": "Emilia-Romagna"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unipd-it",
+    "name": "Università degli Studi di Padova",
+    "region": "Veneto",
+    "regions": [
+      "Veneto"
+    ],
+    "url": "https://www.unipd.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Padova",
+        "url": "https://www.unipd.it/",
+        "region": "Veneto"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unipa-it",
+    "name": "Università degli Studi di Palermo",
+    "region": "Sicilia",
+    "regions": [
+      "Sicilia"
+    ],
+    "url": "https://www.unipa.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Palermo",
+        "url": "https://www.unipa.it/",
+        "region": "Sicilia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unipr-it",
+    "name": "Università degli Studi di Parma",
+    "region": "Emilia-Romagna",
+    "regions": [
+      "Emilia-Romagna"
+    ],
+    "url": "https://www.unipr.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Parma",
+        "url": "https://www.unipr.it/",
+        "region": "Emilia-Romagna"
+      }
+    ]
+  },
+  {
+    "id": "it-university-web-unipv-it",
+    "name": "Università degli Studi di Pavia",
+    "region": "Lombardia",
+    "regions": [
+      "Lombardia"
+    ],
+    "url": "https://web.unipv.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Pavia",
+        "url": "https://web.unipv.it/",
+        "region": "Lombardia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unipg-it",
+    "name": "Università degli Studi di Perugia",
+    "region": "Umbria",
+    "regions": [
+      "Umbria"
+    ],
+    "url": "https://www.unipg.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Perugia",
+        "url": "https://www.unipg.it/",
+        "region": "Umbria"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unipi-it",
+    "name": "Università degli Studi di Pisa",
+    "region": "Toscana",
+    "regions": [
+      "Toscana"
+    ],
+    "url": "https://www.unipi.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Pisa",
+        "url": "https://www.unipi.it/",
+        "region": "Toscana"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unirc-it",
+    "name": "Università degli Studi di Reggio Calabria \"Mediterranea\"",
+    "region": "Calabria",
+    "regions": [
+      "Calabria"
+    ],
+    "url": "https://unirc.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Reggio Calabria \"Mediterranea\"",
+        "url": "https://unirc.it/",
+        "region": "Calabria"
+      }
+    ]
+  },
+  {
+    "id": "it-university-uniroma3-it",
+    "name": "Università degli Studi di Roma Tre",
+    "region": "Lazio",
+    "regions": [
+      "Lazio"
+    ],
+    "url": "https://www.uniroma3.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Roma Tre",
+        "url": "https://www.uniroma3.it/",
+        "region": "Lazio"
+      }
+    ]
+  },
+  {
+    "id": "it-university-uniroma4-it",
+    "name": "Università degli Studi di Roma “Foro Italico\"",
+    "region": "Lazio",
+    "regions": [
+      "Lazio"
+    ],
+    "url": "https://www.uniroma4.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "https_homepage_observed",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Roma “Foro Italico\"",
+        "url": "http://www.uniroma4.it/",
+        "region": "Lazio"
+      }
+    ]
+  },
+  {
+    "id": "it-university-uniroma1-it",
+    "name": "Università degli Studi di Roma “La Sapienza”",
+    "region": "Lazio",
+    "regions": [
+      "Lazio"
+    ],
+    "url": "https://www.uniroma1.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Roma “La Sapienza”",
+        "url": "https://www.uniroma1.it/",
+        "region": "Lazio"
+      }
+    ]
+  },
+  {
+    "id": "it-university-web-uniroma2-it",
+    "name": "Università degli Studi di Roma “Tor Vergata”",
+    "region": "Lazio",
+    "regions": [
+      "Lazio"
+    ],
+    "url": "https://web.uniroma2.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "https_homepage_observed",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Roma “Tor Vergata”",
+        "url": "http://web.uniroma2.it/",
+        "region": "Lazio"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unisa-it",
+    "name": "Università degli Studi di Salerno",
+    "region": "Campania",
+    "regions": [
+      "Campania"
+    ],
+    "url": "https://www.unisa.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Salerno",
+        "url": "https://www.unisa.it/",
+        "region": "Campania"
+      }
+    ]
+  },
+  {
+    "id": "it-university-uniss-it",
+    "name": "Università degli Studi di Sassari",
+    "region": "Sardegna",
+    "regions": [
+      "Sardegna"
+    ],
+    "url": "https://www.uniss.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Sassari",
+        "url": "https://www.uniss.it/",
+        "region": "Sardegna"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unisi-it",
+    "name": "Università degli Studi di Siena",
+    "region": "Toscana",
+    "regions": [
+      "Toscana"
+    ],
+    "url": "https://www.unisi.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Siena",
+        "url": "https://www.unisi.it/",
+        "region": "Toscana"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unite-it",
+    "name": "Università degli Studi di Teramo",
+    "region": "Abruzzo",
+    "regions": [
+      "Abruzzo"
+    ],
+    "url": "https://www.unite.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Teramo",
+        "url": "https://www.unite.it/",
+        "region": "Abruzzo"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unito-it",
+    "name": "Università degli Studi di Torino",
+    "region": "Piemonte",
+    "regions": [
+      "Piemonte"
+    ],
+    "url": "https://www.unito.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Torino",
+        "url": "https://www.unito.it/",
+        "region": "Piemonte"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unitn-it",
+    "name": "Università degli Studi di Trento",
+    "region": "Trentino-Alto Adige",
+    "regions": [
+      "Trentino-Alto Adige"
+    ],
+    "url": "https://www.unitn.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Trento",
+        "url": "https://www.unitn.it/",
+        "region": "Trentino-Alto Adige"
+      }
+    ]
+  },
+  {
+    "id": "it-university-units-it",
+    "name": "Università degli Studi di Trieste",
+    "region": "Friuli-Venezia Giulia",
+    "regions": [
+      "Friuli-Venezia Giulia"
+    ],
+    "url": "https://www.units.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Trieste",
+        "url": "https://www.units.it/",
+        "region": "Friuli-Venezia Giulia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-uniud-it",
+    "name": "Università degli Studi di Udine",
+    "region": "Friuli-Venezia Giulia",
+    "regions": [
+      "Friuli-Venezia Giulia"
+    ],
+    "url": "https://www.uniud.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Udine",
+        "url": "https://www.uniud.it/",
+        "region": "Friuli-Venezia Giulia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-uniurb-it",
+    "name": "Università degli Studi di Urbino \"Carlo Bo\"",
+    "region": "Marche",
+    "regions": [
+      "Marche"
+    ],
+    "url": "https://www.uniurb.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Urbino \"Carlo Bo\"",
+        "url": "https://www.uniurb.it/",
+        "region": "Marche"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unive-it",
+    "name": "Università degli Studi di Venezia “Ca’ Foscari”",
+    "region": "Veneto",
+    "regions": [
+      "Veneto"
+    ],
+    "url": "https://unive.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Venezia “Ca’ Foscari”",
+        "url": "https://unive.it/",
+        "region": "Veneto"
+      }
+    ]
+  },
+  {
+    "id": "it-university-univr-it",
+    "name": "Università degli Studi di Verona",
+    "region": "Veneto",
+    "regions": [
+      "Veneto"
+    ],
+    "url": "https://www.univr.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Verona",
+        "url": "https://www.univr.it/",
+        "region": "Veneto"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unina-it",
+    "name": "Università degli Studi “Federico II” – Napoli",
+    "region": "Campania",
+    "regions": [
+      "Campania"
+    ],
+    "url": "https://www.unina.it/it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "https_homepage_observed",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi “Federico II” – Napoli",
+        "url": "http://www.unina.it/",
+        "region": "Campania"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unior-it",
+    "name": "Università degli Studi “L'Orientale” – Napoli",
+    "region": "Campania",
+    "regions": [
+      "Campania"
+    ],
+    "url": "https://www.unior.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi “L'Orientale” – Napoli",
+        "url": "https://www.unior.it/",
+        "region": "Campania"
+      }
+    ]
+  },
+  {
+    "id": "it-university-uniparthenope-it",
+    "name": "Università degli Studi “Parthenope” – Napoli",
+    "region": "Campania",
+    "regions": [
+      "Campania"
+    ],
+    "url": "https://www.uniparthenope.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi “Parthenope” – Napoli",
+        "url": "https://www.uniparthenope.it/",
+        "region": "Campania"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unical-it",
+    "name": "Università della Calabria – Arcavacata di Rende (CS)",
+    "region": "Calabria",
+    "regions": [
+      "Calabria"
+    ],
+    "url": "https://www.unical.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università della Calabria – Arcavacata di Rende (CS)",
+        "url": "https://www.unical.it/",
+        "region": "Calabria"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unistrapg-it",
+    "name": "Università per Stranieri di Perugia",
+    "region": "Umbria",
+    "regions": [
+      "Umbria"
+    ],
+    "url": "https://www.unistrapg.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università per Stranieri di Perugia",
+        "url": "https://www.unistrapg.it/",
+        "region": "Umbria"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unistrasi-it",
+    "name": "Università per Stranieri di Siena",
+    "region": "Toscana",
+    "regions": [
+      "Toscana"
+    ],
+    "url": "https://www.unistrasi.it/",
+    "directoryCategory": "public_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-statali",
+    "sourceUpdatedAt": "2023-04-04",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università per Stranieri di Siena",
+        "url": "https://www.unistrasi.it/",
+        "region": "Toscana"
+      }
+    ]
+  },
+  {
+    "id": "it-university-hunimed-eu",
+    "name": "Humanitas University – Rozzano (MI)",
+    "region": "Lombardia",
+    "regions": [
+      "Lombardia"
+    ],
+    "url": "https://www.hunimed.eu/it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Humanitas University – Rozzano (MI)",
+        "url": "https://www.hunimed.eu/it/",
+        "region": "Lombardia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-iulm-it",
+    "name": "IULM_Libera università di lingue e comunicazione – Milano",
+    "region": "Lombardia",
+    "regions": [
+      "Lombardia"
+    ],
+    "url": "https://www.iulm.it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "IULM_Libera università di lingue e comunicazione – Milano",
+        "url": "https://www.iulm.it/",
+        "region": "Lombardia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-liuc-it",
+    "name": "LIUC_Università Cattaneo – Castellanza (VA)",
+    "region": "Lombardia",
+    "regions": [
+      "Lombardia"
+    ],
+    "url": "https://www.liuc.it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "LIUC_Università Cattaneo – Castellanza (VA)",
+        "url": "https://www.liuc.it/",
+        "region": "Lombardia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-luiss-it",
+    "name": "LUISS_Libera Università Internazionale Studi Sociali \"Guido Carli\" – Roma",
+    "region": "Lazio",
+    "regions": [
+      "Lazio"
+    ],
+    "url": "https://www.luiss.it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "LUISS_Libera Università Internazionale Studi Sociali \"Guido Carli\" – Roma",
+        "url": "https://www.luiss.it/",
+        "region": "Lazio"
+      }
+    ]
+  },
+  {
+    "id": "it-university-lumsa-it",
+    "name": "LUMSA_Libera Università Maria Santissima Assunta – Roma",
+    "region": "Lazio",
+    "regions": [
+      "Lazio",
+      "Puglia",
+      "Sicilia"
+    ],
+    "url": "https://www.lumsa.it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "LUMSA_Libera Università Maria Santissima Assunta – Roma",
+        "url": "https://www.lumsa.it/",
+        "region": "Lazio"
+      },
+      {
+        "name": "LUMSA_Libera Università Maria Santissima Assunta – sede decentrata di Taranto",
+        "url": "https://www.lumsa.it/",
+        "region": "Puglia"
+      },
+      {
+        "name": "LUMSA_Libera Università Maria Santissima Assunta – sede decentrata di Palermo",
+        "url": "https://www.lumsa.it/",
+        "region": "Sicilia"
+      }
+    ],
+    "limitations": "Campus/listing duplicates are grouped using the same university website or MUR-explicit Catholic University central/campus affiliation; this is one institution, not multiple universities."
+  },
+  {
+    "id": "it-university-lum-it",
+    "name": "LUM_Libera Università Mediterranea “Giuseppe Degennaro” – Casamassima (BA)",
+    "region": "Puglia",
+    "regions": [
+      "Puglia"
+    ],
+    "url": "https://www.lum.it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "LUM_Libera Università Mediterranea “Giuseppe Degennaro” – Casamassima (BA)",
+        "url": "https://www.lum.it/",
+        "region": "Puglia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unibz-it",
+    "name": "Libera Università di Bolzano – Bolzano/Bozen",
+    "region": "Trentino Alto-Adige",
+    "regions": [
+      "Trentino Alto-Adige"
+    ],
+    "url": "https://www.unibz.it/it/home/profile/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Libera Università di Bolzano – Bolzano/Bozen",
+        "url": "https://www.unibz.it/it/home/profile/",
+        "region": "Trentino Alto-Adige"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unilink-it",
+    "name": "Link Campus University – sede di Napoli",
+    "region": "Campania",
+    "regions": [
+      "Campania",
+      "Lazio",
+      "Lombardia",
+      "Marche",
+      "Umbria"
+    ],
+    "url": "https://www.unilink.it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Link Campus University – sede di Napoli",
+        "url": "https://www.unilink.it/",
+        "region": "Campania"
+      },
+      {
+        "name": "Link Campus University – Roma",
+        "url": "https://www.unilink.it/",
+        "region": "Lazio"
+      },
+      {
+        "name": "Link Campus University – sede di Novedrate",
+        "url": "https://www.unilink.it/",
+        "region": "Lombardia"
+      },
+      {
+        "name": "Link Campus University – sedi di Ascoli Piceno, Fano e Macerata",
+        "url": "https://www.unilink.it/",
+        "region": "Marche"
+      },
+      {
+        "name": "Link Campus University – sede di Città di Castello (Pg)",
+        "url": "https://www.unilink.it/",
+        "region": "Umbria"
+      }
+    ],
+    "limitations": "Campus/listing duplicates are grouped using the same university website or MUR-explicit Catholic University central/campus affiliation; this is one institution, not multiple universities."
+  },
+  {
+    "id": "it-university-unicamillus-org",
+    "name": "Saint Camillus International University of Health and Medical Sciences – Roma",
+    "region": "Lazio",
+    "regions": [
+      "Lazio"
+    ],
+    "url": "https://www.unicamillus.org/it/homepage/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Saint Camillus International University of Health and Medical Sciences – Roma",
+        "url": "https://www.unicamillus.org/it/homepage/",
+        "region": "Lazio"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unineuromed-it",
+    "name": "UNINEUROMED - Neuromed Mediterranean University of Sciences and Technologies – Pozzilli (Isernia)",
+    "region": "Molise",
+    "regions": [
+      "Molise"
+    ],
+    "url": "https://www.unineuromed.it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "UNINEUROMED - Neuromed Mediterranean University of Sciences and Technologies – Pozzilli (Isernia)",
+        "url": "https://www.unineuromed.it/",
+        "region": "Molise"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unicampus-it",
+    "name": "Università \"Campus Bio-medico” – Roma",
+    "region": "Lazio",
+    "regions": [
+      "Lazio"
+    ],
+    "url": "https://www.unicampus.it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università \"Campus Bio-medico” – Roma",
+        "url": "https://www.unicampus.it/",
+        "region": "Lazio"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unicatt-it",
+    "name": "Università Cattolica del Sacro Cuore – Milano",
+    "region": "Lombardia",
+    "regions": [
+      "Emilia-Romagna",
+      "Lazio",
+      "Lombardia"
+    ],
+    "url": "https://www.unicatt.it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università Cattolica del Sacro Cuore – sede decentrata di Piacenza",
+        "url": "https://piacenza.unicatt.it/",
+        "region": "Emilia-Romagna"
+      },
+      {
+        "name": "Università Cattolica del Sacro Cuore – sede decentrata di Roma",
+        "url": "https://roma.unicatt.it/",
+        "region": "Lazio"
+      },
+      {
+        "name": "Università Cattolica del Sacro Cuore – Milano",
+        "url": "https://www.unicatt.it/",
+        "region": "Lombardia"
+      },
+      {
+        "name": "Università Cattolica del Sacro Cuore – sede decentrata di Brescia",
+        "url": "https://brescia.unicatt.it/",
+        "region": "Lombardia"
+      },
+      {
+        "name": "Università Cattolica del Sacro Cuore – sede decentrata di Cremona",
+        "url": "https://piacenza.unicatt.it/",
+        "region": "Lombardia"
+      }
+    ],
+    "limitations": "Campus/listing duplicates are grouped using the same university website or MUR-explicit Catholic University central/campus affiliation; this is one institution, not multiple universities."
+  },
+  {
+    "id": "it-university-unisr-it",
+    "name": "Università Vita-Salute “San Raffaele” – Milano",
+    "region": "Lombardia",
+    "regions": [
+      "Lombardia"
+    ],
+    "url": "https://www.unisr.it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università Vita-Salute “San Raffaele” – Milano",
+        "url": "https://www.unisr.it/",
+        "region": "Lombardia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unibocconi-it",
+    "name": "Università commerciale \"Luigi Bocconi\" – Milano",
+    "region": "Lombardia",
+    "regions": [
+      "Lombardia"
+    ],
+    "url": "https://www.unibocconi.it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università commerciale \"Luigi Bocconi\" – Milano",
+        "url": "https://www.unibocconi.it/",
+        "region": "Lombardia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-universitaeuropeadiroma-it",
+    "name": "Università degli Studi Europea – Roma",
+    "region": "Lazio",
+    "regions": [
+      "Lazio"
+    ],
+    "url": "https://www.universitaeuropeadiroma.it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi Europea – Roma",
+        "url": "https://www.universitaeuropeadiroma.it/",
+        "region": "Lazio"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unint-eu",
+    "name": "Università degli Studi Internazionali di Roma – Roma",
+    "region": "Lazio",
+    "regions": [
+      "Lazio"
+    ],
+    "url": "https://www.unint.eu/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi Internazionali di Roma – Roma",
+        "url": "https://www.unint.eu/",
+        "region": "Lazio"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unisg-it",
+    "name": "Università degli Studi di Scienze Gastronomiche – Pollenzo (CN)",
+    "region": "Piemonte",
+    "regions": [
+      "Piemonte"
+    ],
+    "url": "https://www.unisg.it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi di Scienze Gastronomiche – Pollenzo (CN)",
+        "url": "https://www.unisg.it/",
+        "region": "Piemonte"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unikore-it",
+    "name": "Università degli Studi “Kore” – Enna",
+    "region": "Sicilia",
+    "regions": [
+      "Sicilia"
+    ],
+    "url": "https://unikore.it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi “Kore” – Enna",
+        "url": "https://unikore.it/",
+        "region": "Sicilia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unisob-na-it",
+    "name": "Università degli Studi “Suor Orsola Benincasa” – Napoli",
+    "region": "Campania",
+    "regions": [
+      "Campania"
+    ],
+    "url": "https://www.unisob.na.it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università degli Studi “Suor Orsola Benincasa” – Napoli",
+        "url": "https://www.unisob.na.it/",
+        "region": "Campania"
+      }
+    ]
+  },
+  {
+    "id": "it-university-univda-it",
+    "name": "Università della Valle d’Aosta – Aosta",
+    "region": "Valle d’Aosta",
+    "regions": [
+      "Valle d’Aosta"
+    ],
+    "url": "https://www.univda.it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università della Valle d’Aosta – Aosta",
+        "url": "https://www.univda.it/",
+        "region": "Valle d’Aosta"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unidarc-it",
+    "name": "Università per Stranieri \"Dante Alighieri\" – Reggio Calabria",
+    "region": "Calabria",
+    "regions": [
+      "Calabria"
+    ],
+    "url": "https://www.unidarc.it/",
+    "directoryCategory": "recognized_private_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-non-statali-riconosciute",
+    "sourceUpdatedAt": "2026-01-23",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università per Stranieri \"Dante Alighieri\" – Reggio Calabria",
+        "url": "https://www.unidarc.it/",
+        "region": "Calabria"
+      }
+    ]
+  },
+  {
+    "id": "it-university-casd-it",
+    "name": "Centro Alti Studi per la Difesa (CASD) - Roma",
+    "region": "Lazio",
+    "regions": [
+      "Lazio"
+    ],
+    "url": "https://www.casd.it/",
+    "directoryCategory": "special_institute",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/istituti-universitari-ordinamento-speciale",
+    "sourceUpdatedAt": "2026-04-27",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Centro Alti Studi per la Difesa (CASD) - Roma",
+        "url": "https://www.casd.it/",
+        "region": "Lazio"
+      }
+    ]
+  },
+  {
+    "id": "it-university-bfeducational-it",
+    "name": "Institute of Advanced Science for Agriculture (IASA) - Jolanda di Savoia (FE)",
+    "region": "Emilia-Romagna",
+    "regions": [
+      "Emilia-Romagna"
+    ],
+    "url": "https://www.bfeducational.it/it/",
+    "directoryCategory": "special_institute",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/istituti-universitari-ordinamento-speciale",
+    "sourceUpdatedAt": "2026-04-27",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Institute of Advanced Science for Agriculture (IASA) - Jolanda di Savoia (FE)",
+        "url": "https://www.bfeducational.it/it/",
+        "region": "Emilia-Romagna"
+      }
+    ],
+    "limitations": "MUR lists the BF Educational website for IASA and explicitly says the specific institution website is under construction."
+  },
+  {
+    "id": "it-university-iusspavia-it",
+    "name": "Istituto Universitario di Studi Superiori (IUSS) - Pavia",
+    "region": "Lombardia",
+    "regions": [
+      "Lombardia"
+    ],
+    "url": "https://www.iusspavia.it/",
+    "directoryCategory": "special_institute",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/istituti-universitari-ordinamento-speciale",
+    "sourceUpdatedAt": "2026-04-27",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Istituto Universitario di Studi Superiori (IUSS) - Pavia",
+        "url": "https://www.iusspavia.it/",
+        "region": "Lombardia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-imtlucca-it",
+    "name": "Scuola IMT Alti Studi - Lucca",
+    "region": "Toscana",
+    "regions": [
+      "Toscana"
+    ],
+    "url": "https://www.imtlucca.it/",
+    "directoryCategory": "special_institute",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/istituti-universitari-ordinamento-speciale",
+    "sourceUpdatedAt": "2026-04-27",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Scuola IMT Alti Studi - Lucca",
+        "url": "https://www.imtlucca.it/",
+        "region": "Toscana"
+      }
+    ]
+  },
+  {
+    "id": "it-university-sissa-it",
+    "name": "Scuola Internazionale Superiore di Studi Avanzati (SISSA) - Trieste",
+    "region": "Friuli-Venezia Giulia",
+    "regions": [
+      "Friuli-Venezia Giulia"
+    ],
+    "url": "https://www.sissa.it/",
+    "directoryCategory": "special_institute",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/istituti-universitari-ordinamento-speciale",
+    "sourceUpdatedAt": "2026-04-27",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Scuola Internazionale Superiore di Studi Avanzati (SISSA) - Trieste",
+        "url": "https://www.sissa.it/",
+        "region": "Friuli-Venezia Giulia"
+      }
+    ]
+  },
+  {
+    "id": "it-university-sns-it",
+    "name": "Scuola Normale Superiore (SNS) - Pisa",
+    "region": "Toscana",
+    "regions": [
+      "Toscana"
+    ],
+    "url": "https://www.sns.it/",
+    "directoryCategory": "special_institute",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/istituti-universitari-ordinamento-speciale",
+    "sourceUpdatedAt": "2026-04-27",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Scuola Normale Superiore (SNS) - Pisa",
+        "url": "https://www.sns.it/",
+        "region": "Toscana"
+      }
+    ]
+  },
+  {
+    "id": "it-university-ssmeridionale-it",
+    "name": "Scuola Superiore Meridionale (SSM) - Napoli",
+    "region": "Campania",
+    "regions": [
+      "Campania"
+    ],
+    "url": "https://www.ssmeridionale.it/it-it/home",
+    "directoryCategory": "special_institute",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/istituti-universitari-ordinamento-speciale",
+    "sourceUpdatedAt": "2026-04-27",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Scuola Superiore Meridionale (SSM) - Napoli",
+        "url": "https://www.ssmeridionale.it/it-it/home",
+        "region": "Campania"
+      }
+    ]
+  },
+  {
+    "id": "it-university-santannapisa-it",
+    "name": "Scuola superiore “Sant’Anna” - Pisa",
+    "region": "Toscana",
+    "regions": [
+      "Toscana"
+    ],
+    "url": "https://www.santannapisa.it/it",
+    "directoryCategory": "special_institute",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/istituti-universitari-ordinamento-speciale",
+    "sourceUpdatedAt": "2026-04-27",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Scuola superiore “Sant’Anna” - Pisa",
+        "url": "https://www.santannapisa.it/it",
+        "region": "Toscana"
+      }
+    ]
+  },
+  {
+    "id": "it-university-gssi-it",
+    "name": "Scuola universitaria superiore “Gran Sasso Science Institute” (GSSI)",
+    "region": "Abruzzo",
+    "regions": [
+      "Abruzzo"
+    ],
+    "url": "https://gssi.it/",
+    "directoryCategory": "special_institute",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/istituti-universitari-ordinamento-speciale",
+    "sourceUpdatedAt": "2026-04-27",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Scuola universitaria superiore “Gran Sasso Science Institute” (GSSI)",
+        "url": "https://gssi.it/",
+        "region": "Abruzzo"
+      }
+    ]
+  },
+  {
+    "id": "it-university-unifortunato-eu",
+    "name": "Università telematica \"Giustino Fortunato\"",
+    "region": null,
+    "regions": [],
+    "url": "https://www.unifortunato.eu/",
+    "directoryCategory": "telematic_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-telematiche",
+    "sourceUpdatedAt": "2023-02-08",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università telematica \"Giustino Fortunato\"",
+        "url": "https://www.unifortunato.eu/",
+        "region": null
+      }
+    ]
+  },
+  {
+    "id": "it-university-unidav-it",
+    "name": "Università telematica \"Leonardo da Vinci\"",
+    "region": null,
+    "regions": [],
+    "url": "https://www.unidav.it/",
+    "directoryCategory": "telematic_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-telematiche",
+    "sourceUpdatedAt": "2023-02-08",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università telematica \"Leonardo da Vinci\"",
+        "url": "https://www.unidav.it/",
+        "region": null
+      }
+    ]
+  },
+  {
+    "id": "it-university-uniroma5-it",
+    "name": "Università telematica \"San Raffaele\"",
+    "region": null,
+    "regions": [],
+    "url": "https://www.uniroma5.it/",
+    "directoryCategory": "telematic_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-telematiche",
+    "sourceUpdatedAt": "2023-02-08",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università telematica \"San Raffaele\"",
+        "url": "https://www.uniroma5.it/",
+        "region": null
+      }
+    ]
+  },
+  {
+    "id": "it-university-unimercatorum-it",
+    "name": "Università telematica \"Universitas Mercatorum\"",
+    "region": null,
+    "regions": [],
+    "url": "https://www.unimercatorum.it/",
+    "directoryCategory": "telematic_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-telematiche",
+    "sourceUpdatedAt": "2023-02-08",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università telematica \"Universitas Mercatorum\"",
+        "url": "https://www.unimercatorum.it/",
+        "region": null
+      }
+    ]
+  },
+  {
+    "id": "it-university-uniecampus-it",
+    "name": "Università telematica \"e-Campus\"",
+    "region": null,
+    "regions": [],
+    "url": "https://www.uniecampus.it/",
+    "directoryCategory": "telematic_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-telematiche",
+    "sourceUpdatedAt": "2023-02-08",
+    "websiteVerification": "https_homepage_observed",
+    "directoryListings": [
+      {
+        "name": "Università telematica \"e-Campus\"",
+        "url": "http://www.uniecampus.it/",
+        "region": null
+      }
+    ]
+  },
+  {
+    "id": "it-university-iuline-it",
+    "name": "Università telematica degli studi “IUL”",
+    "region": null,
+    "regions": [],
+    "url": "https://www.iuline.it/",
+    "directoryCategory": "telematic_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-telematiche",
+    "sourceUpdatedAt": "2023-02-08",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università telematica degli studi “IUL”",
+        "url": "https://www.iuline.it/",
+        "region": null
+      }
+    ]
+  },
+  {
+    "id": "it-university-uninettunouniversity-net",
+    "name": "Università telematica internazionale “Uninettuno”",
+    "region": null,
+    "regions": [],
+    "url": "https://www.uninettunouniversity.net/",
+    "directoryCategory": "telematic_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-telematiche",
+    "sourceUpdatedAt": "2023-02-08",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università telematica internazionale “Uninettuno”",
+        "url": "https://www.uninettunouniversity.net/",
+        "region": null
+      }
+    ]
+  },
+  {
+    "id": "it-university-unimarconi-it",
+    "name": "Università telematica “Guglielmo Marconi”",
+    "region": null,
+    "regions": [],
+    "url": "https://www.unimarconi.it/",
+    "directoryCategory": "telematic_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-telematiche",
+    "sourceUpdatedAt": "2023-02-08",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università telematica “Guglielmo Marconi”",
+        "url": "https://www.unimarconi.it/",
+        "region": null
+      }
+    ]
+  },
+  {
+    "id": "it-university-unicusano-it",
+    "name": "Università telematica “Niccolò Cusano”",
+    "region": null,
+    "regions": [],
+    "url": "https://www.unicusano.it/",
+    "directoryCategory": "telematic_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-telematiche",
+    "sourceUpdatedAt": "2023-02-08",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università telematica “Niccolò Cusano”",
+        "url": "https://www.unicusano.it/",
+        "region": null
+      }
+    ]
+  },
+  {
+    "id": "it-university-unipegaso-it",
+    "name": "Università telematica “Pegaso”",
+    "region": null,
+    "regions": [],
+    "url": "https://www.unipegaso.it/",
+    "directoryCategory": "telematic_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-telematiche",
+    "sourceUpdatedAt": "2023-02-08",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università telematica “Pegaso”",
+        "url": "https://www.unipegaso.it/",
+        "region": null
+      }
+    ]
+  },
+  {
+    "id": "it-university-unitelmasapienza-it",
+    "name": "Università telematica “UNITELMA Sapienza”",
+    "region": null,
+    "regions": [],
+    "url": "https://www.unitelmasapienza.it/",
+    "directoryCategory": "telematic_university",
+    "country": "IT",
+    "profileScope": "amir",
+    "trust": "official",
+    "reviewedAt": "2026-11-04",
+    "reviewStatus": "official_directory_entry",
+    "automation": "directory_only",
+    "sourceUrl": "https://www.mur.gov.it/it/aree-tematiche/universita/le-universita/universita-telematiche",
+    "sourceUpdatedAt": "2023-02-08",
+    "websiteVerification": "official_directory_link_only",
+    "directoryListings": [
+      {
+        "name": "Università telematica “UNITELMA Sapienza”",
+        "url": "https://www.unitelmasapienza.it/",
+        "region": null
+      }
+    ]
+  }
+]

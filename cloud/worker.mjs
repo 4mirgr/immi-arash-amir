@@ -12,6 +12,7 @@ import {handleRoadmapRequest} from './roadmap.mjs';
 import {watchEvidenceSources} from './evidence-watch.mjs';
 import {runMaintenance} from './maintenance.mjs';
 import {handleOperationsRequest} from './operations.mjs';
+import {handleUniversityCatalogueRequest} from './university-catalogue.mjs';
 import {googleAccountContext} from './google-account-scope.mjs';
 import {handleLinkedInInsightsRequest} from './linkedin-insights.mjs';
 import {handleNetworkTargetsRequest} from './network-targets.mjs';
@@ -79,6 +80,7 @@ export function createHandler(fetcher = fetch) {
       if (!['arash','amir'].includes(profileId)) throw new ApiError(403, 'Account has not been provisioned for this workspace');
       const requestedProfile = url.searchParams.get('profile');
       if (requestedProfile && requestedProfile !== profileId) throw new ApiError(403, 'Profile access denied');
+      if(url.pathname==='/api/discovery/universities')return await handleUniversityCatalogueRequest(request,env,{userId:user.id,profileId})||json({error:'Not found'},404);
       if(url.pathname.startsWith('/api/operations/'))return await handleOperationsRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
       if(url.pathname.startsWith('/api/ai/'))return await handleAiAssistantRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
       if(url.pathname==='/api/mail-automation/scheduler'||url.pathname.startsWith('/api/mail-automation/scheduler/'))return await handleMailSchedulerRequest(request,env,{userId:user.id,profileId,rest},fetcher)||json({error:'Not found'},404);
