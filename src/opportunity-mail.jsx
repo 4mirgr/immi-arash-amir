@@ -35,43 +35,55 @@ export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{}
    const [source,presets,cvs,primary,secondary]=await Promise.all([api(path('')),api('presets?profile='+encodeURIComponent(person)),api('cv/versions?profile='+encodeURIComponent(person)),api('google/status?profile='+encodeURIComponent(person)+'&mailbox=primary').catch(accountError),person==='amir'?api('google/status?profile=amir&mailbox=secondary').catch(accountError):Promise.resolve(null)]);
    if(!valid()||request!==operation.current)return;
    const templates=rows(presets),versions=rows(cvs);setStored({scope,epoch,data:{source,presets:templates,cvs:versions,accounts:{primary,secondary}}});
-   setForm({scope,epoch,value:{presetId:templates.find(x=>x.isDefault)?.id||'',cvVersionId:versions.find(x=>x.isDefault)?.id||'',mailbox:'primary',recipient:source.publishedRecipients?.length===1?source.publishedRecipients[0]:''}});
+   setForm({scope,epoch,value:{presetId:templates.find(x=>x.isDefault||x.is_default)?.id||'',cvVersionId:versions.find(x=>x.isDefault||x.is_default)?.id||'',mailbox:'primary',recipient:source.publishedRecipients?.length===1?source.publishedRecipients[0]:''}});
   }catch(e){if(valid()&&request===operation.current)setError(message(e.message));}
   finally{if(valid()){lock.current=false;setBusy('');}}
  }
  useEffect(()=>{alive.current=true;lock.current=false;setStored(null);setForm(null);setError('');load();return()=>{alive.current=false;operation.current++;};},[scope]);
- async function checkedAccount(expected){
-  const current=await api(googlePath('status'));
+ async function checkedAccount(expected, mailbox){
+  // Email identity is displayed by status; the server review hash and queue also pin Google subject.
+  const current=await api('google/status?profile='+encodeURIComponent(person)+'&mailbox='+encodeURIComponent(mailbox));
   if(!current.connected||current.capabilities?.gmailSend!==true||email(current.email)!==email(expected))throw Error('sender_connection_changed');
   return current;
  }
  async function action(kind){
   if(lock.current||!data||!selection.presetId||!selection.cvVersionId||!selection.recipient||!canSend)return;
-  if(kind==='queue'&&(!preview||!checked||queue))return;
-  if(kind==='dispatch'&&(!queue||queue.item.status!=='queued'||queue.consumed))return;
+  if(['queue','send'].includes(kind)&&(!preview||!checked||queue))return;
+  if(kind==='dispatch'&&(!queue||queue.item.status!=='queued'||queue.consumed||queue.item.reused!==false))return;
+  const fixed={...selection},fixedPreview=preview?.data,fixedQueue=queue;
+  const expected=kind==='dispatch'?fixedQueue.sender:kind==='preview'?account.email:fixedPreview.sender;
+  const dispatchPath='google/mail/dispatch?profile='+encodeURIComponent(person)+'&mailbox='+encodeURIComponent(fixed.mailbox);
   lock.current=true;const request=++operation.current,selectedKey=payloadKey;let dispatchStarted=false;setBusy(kind);setError('');
   const fresh=()=>valid()&&operation.current===request&&latest.current===selectedKey;
+  async function dispatch(record){
+   await checkedAccount(expected,fixed.mailbox);if(!fresh())return;
+   // Consume this approval before transport; ambiguous results never expose a retry.
+   setQueued({...record,consumed:true});setResult({scope,epoch,item:{status:'sending'}});dispatchStarted=true;
+   const response=await api(dispatchPath,{method:'POST',body:JSON.stringify({ids:[record.item.id]})});
+   if(!fresh())return;
+   const matching=Array.isArray(response.items)?response.items.filter(value=>value.id===record.item.id):[];
+   const item=matching.length===1?matching[0]:{status:'delivery_unknown'};
+   setResult({scope,epoch,item});notify(statuses[item.status]||'نتیجهٔ ارسال را در مرکز مکاتبات بررسی کنید.');
+  }
   try{
-   const expected=kind==='dispatch'?queue.sender:kind==='queue'?preview.data.sender:account.email;
-   await checkedAccount(expected);if(!fresh())return;
-   if(kind==='dispatch'){
-    // Consume this local approval before transport; ambiguous outcomes never offer retry.
-    setQueued({...queue,consumed:true});setResult({scope,epoch,item:{status:'sending'}});dispatchStarted=true;
-    const response=await api(googlePath('mail/dispatch'),{method:'POST',body:JSON.stringify({ids:[queue.item.id]})});
-    if(!fresh())return;const item=response.items?.find(x=>x.id===queue.item.id)||{status:'delivery_unknown'};
-    setResult({scope,epoch,item});notify(statuses[item.status]||'نتیجهٔ ارسال را در مرکز مکاتبات بررسی کنید.');return;
-   }
-   const response=await api(path(kind),{method:'POST',body:JSON.stringify({...selection,...(kind==='queue'?{confirmReviewed:true,reviewHash:preview.data.reviewHash}:{})})});
+   await checkedAccount(expected,fixed.mailbox);if(!fresh())return;
+   if(kind==='dispatch'){await dispatch(fixedQueue);return;}
+   const isQueue=kind==='queue'||kind==='send';
+   const response=await api(path(isQueue?'queue':'preview'),{method:'POST',body:JSON.stringify({...fixed,...(isQueue?{confirmReviewed:true,reviewHash:fixedPreview.reviewHash}:{})})});
    if(!fresh())return;
    if(kind==='preview'){
-    if(email(response.sender)!==email(account.email)||response.recipients?.length!==1||email(response.recipients[0].recipient)!==email(selection.recipient))throw Error('sender_connection_changed');
+    if(email(response.sender)!==email(expected)||response.recipients?.length!==1||email(response.recipients[0].recipient)!==email(fixed.recipient)||(response.mailbox&&response.mailbox!==fixed.mailbox)||(response.opportunityId&&response.opportunityId!==oppId)||!response.reviewHash)throw Error('application_changed_review_required');
     setReview({scope,epoch,payloadKey:selectedKey,data:response});setChecked(false);setQueued(null);setResult(null);
    }else{
-    const item=response.items?.find(x=>email(x.recipient)===email(selection.recipient)&&email(x.sender)===email(preview.data.sender)&&x.cvVersionId===selection.cvVersionId);
-    // Existing queue records are shown, never borrowed as a new send approval.
-    if(!item)throw Error(response.excluded?.[0]?.reason||'recipient_unavailable');
-    setQueued({scope,epoch,payloadKey:selectedKey,item,sender:preview.data.sender,consumed:Boolean(item.reused)});setChecked(false);
-    notify(item.reused?'این پیام قبلاً ثبت شده است؛ وضعیت را در مرکز مکاتبات بررسی کنید.':'پیام و رزومه در صف قرار گرفت؛ هنوز ارسال نشده است.');
+    const all=Array.isArray(response.items)?response.items:[];
+    const matching=all.filter(item=>email(item.recipient)===email(fixed.recipient)&&email(item.sender)===email(expected)&&item.cvVersionId===fixed.cvVersionId&&item.subject===fixedPreview.message?.subject&&item.attachmentName===fixedPreview.recipients[0]?.attachmentName);
+    if(all.length!==1||matching.length!==1||response.excluded?.length||(response.mailbox&&response.mailbox!==fixed.mailbox)||(response.opportunityId&&response.opportunityId!==oppId))throw Error(response.excluded?.[0]?.reason||'application_changed_review_required');
+    const item=matching[0],newQueue=item.reused===false&&item.status==='queued'&&typeof item.id==='string'&&item.id.length>0;
+    const record={scope,epoch,payloadKey:selectedKey,item,sender:expected,consumed:!newQueue};
+    setQueued(record);setChecked(false);
+    if(!newQueue){notify('این پیام تازه و قابل ارسال تشخیص داده نشد؛ وضعیت را در مرکز مکاتبات بررسی کنید.');return;}
+    if(kind==='send'){await dispatch(record);return;}
+    notify('پیام و رزومه در صف قرار گرفت؛ هنوز ارسال نشده است.');
    }
   }catch(e){if(fresh()){setError(message(e.message));if(dispatchStarted)setResult({scope,epoch,item:{status:'delivery_unknown'}});else resetReview();}}
   finally{if(valid()){lock.current=false;setBusy('');}}
@@ -89,17 +101,18 @@ export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{}
      <label>قالب ایمیل<select value={selection.presetId} disabled={!!busy||!!queue} onChange={e=>change('presetId',e.target.value)}><option value="">قالب را انتخاب کنید</option>{data.presets.map(x=><option key={x.id} value={x.id}>{x.name||x.subject||'قالب'}{x.isDefault?' · پیش‌فرض':''}</option>)}</select></label>
      <label>نسخهٔ رزومهٔ پیوست<select value={selection.cvVersionId} disabled={!!busy||!!queue} onChange={e=>change('cvVersionId',e.target.value)}><option value="">رزومه را انتخاب کنید</option>{data.cvs.map(x=><option key={x.id} value={x.id}>{x.name||'رزومه'}{x.isDefault?' · پیش‌فرض':''}</option>)}</select></label>
      <label>صندوق فرستنده<select value={selection.mailbox} disabled={!!busy||!!queue} onChange={e=>change('mailbox',e.target.value)}><option value="primary">Google اصلی {person==='arash'?'آرش':'امیر'}</option>{person==='amir'&&<option value="secondary">ایمیل دوم امیر</option>}</select></label>
-     <label>گیرندهٔ منتشرشده در همین آگهی<select dir="ltr" value={selection.recipient} disabled={!!busy||!!queue} onChange={e=>change('recipient',e.target.value)}><option value="">انتخاب گیرنده</option>{data.source.publishedRecipients.map(x=><option key={x} value={x}>{x}</option>)}</select></label>
+     <label>گیرندهٔ عمومی مرتبط با این فرصت<select dir="ltr" value={selection.recipient} disabled={!!busy||!!queue} onChange={e=>change('recipient',e.target.value)}><option value="">انتخاب گیرنده</option>{data.source.publishedRecipients.map(x=><option key={x} value={x}>{x}</option>)}</select></label>
     </div>
+    {data.source.recipientDetails?.find(contact=>contact.value===selection.recipient)&&(()=>{const contact=data.source.recipientDetails.find(contact=>contact.value===selection.recipient);return <div className="notice"><p>{contact.sourceRelation==='linked_page'?'این ایمیل در صفحهٔ مرتبط مجموعه منتشر شده و گیرندهٔ خاص همین آگهی تأیید نشده است.':'این ایمیل از محتوای عمومی همین صفحه استخراج شده است.'} {contact.contactRole==='application'?'نقش ذکرشده: درخواست همکاری.':contact.contactRole==='organization_general'?'نقش ذکرشده: تماس عمومی مجموعه.':'نقش گیرنده روشن نیست.'}</p><blockquote dir="auto"><MixedText>{contact.quote}</MixedText></blockquote>{safeURL(contact.sourceURL)&&<a href={safeURL(contact.sourceURL)} target="_blank" rel="noreferrer">منبع ایمیل انتخابی</a>}</div>;})()}
     <p className="muted">فرستنده: <bdi dir="ltr">{account?.email||'متصل نیست'}</bdi> · {canSend?'مجوز Gmail برقرار است':'اتصال و مجوز ارسال همین صندوق لازم است'}</p>
     {account?.error&&<p className="notice"><MixedText>{account.error}</MixedText></p>}
     {(!data.presets.length||!data.cvs.length)&&<p className="notice">برای درخواست، یک قالب ایمیل و یک نسخهٔ ذخیره‌شدهٔ رزومهٔ همین پروفایل لازم است؛ آن‌ها را از تنظیمات و مرکز مکاتبات آماده کنید.</p>}
     <p className="muted">انتشار ایمیل در آگهی، هویت گیرنده یا مناسب‌بودن درخواست را تضمین نمی‌کند. عنوان، متن و رزومه را پیش از ارسال بررسی کنید.</p>
     <div className="opportunity-mail-actions"><button type="button" className="secondary" disabled={!!busy||!selection.cvVersionId} onClick={downloadCV}><FileText size={15}/> دریافت همین رزومه برای بازبینی</button><button type="button" className="secondary" disabled={!!busy||!!queue||!canSend||!selection.presetId||!selection.cvVersionId||!selection.recipient} onClick={()=>action('preview')}><Eye size={15}/> {busy==='preview'?'در حال بررسی…':'نمایش ایمیل و پیوست پیش از ارسال'}</button></div>
     {preview&&<div className="opportunity-mail-review send-preview"><h4>متن و پیوست ثابت این درخواست</h4><p>از <bdi dir="ltr">{preview.data.sender}</bdi> به <bdi dir="ltr">{selection.recipient}</bdi></p><p>پیوست: <MixedText>{preview.data.recipients[0]?.attachmentName||'نسخهٔ رزومهٔ انتخاب‌شده'}</MixedText></p><p className="muted">سقف روزانه: {preview.data.dailyLimit} · جایگاه استفاده‌شده: {preview.data.reservedToday||0} · مبنا UTC</p><h4 dir="auto"><MixedText>{preview.data.message?.subject}</MixedText></h4><pre dir="auto" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{preview.data.message?.body}</pre>
-     {!queue&&<><label className="checkline"><input type="checkbox" checked={checked} disabled={!!busy} onChange={e=>setChecked(e.target.checked)}/> آگهی، گیرنده، متن و همین فایل رزومه را بازبینی کردم.</label><button type="button" className="primary" disabled={!!busy||!checked} onClick={()=>action('queue')}>افزودن همین درخواست به صف؛ بدون ارسال</button></>}
+     {!queue&&<><label className="checkline"><input type="checkbox" checked={checked} disabled={!!busy} onChange={e=>setChecked(e.target.checked)}/> آگهی، گیرنده، متن و همین فایل رزومه را بازبینی کردم.</label><button type="button" className="primary" disabled={!!busy||!checked} onClick={()=>action('send')}><Send size={16}/> {busy==='send'?'در حال آماده‌سازی و ارسال…':'ارسال همین ایمیل و رزومه'}</button><button type="button" className="text-button" disabled={!!busy||!checked} onClick={()=>action('queue')}>فقط ذخیره در صف؛ بدون ارسال</button></>}
     </div>}
-    {queue&&<div className="notice opportunity-mail-queued"><strong>{statuses[last?.status||queue.item.status]||queue.item.status}</strong>{queue.item.reused?<p>این پیام قبلاً در صف ثبت شده است؛ برای جلوگیری از ارسال تکراری، ادامه را در مرکز مکاتبات بررسی کنید.</p>:!last&&!queue.consumed&&queue.item.status==='queued'?<><p>با دکمهٔ زیر ایمیل واقعی همراه همین رزومه از <bdi dir="ltr">{queue.sender}</bdi> به <bdi dir="ltr">{queue.item.recipient}</bdi> ارسال می‌شود.</p><button type="button" className="primary" disabled={!!busy} onClick={()=>action('dispatch')}><Send size={16}/> {busy==='dispatch'?'در حال ارسال…':'ارسال همین ایمیل و رزومه'}</button></>:null}{last&&<p>تلاش مجدد خودکار انجام نمی‌شود؛ نتیجهٔ نامشخص را در پوشهٔ Sent همین حساب بررسی کنید.</p>}</div>}
+    {queue&&<div className="notice opportunity-mail-queued"><strong>{statuses[last?.status||queue.item.status]||queue.item.status}</strong>{queue.consumed&&!last?<p>این رکورد قبلی یا غیرقابل ارسال است؛ برای جلوگیری از ارسال تکراری، وضعیت را در مرکز مکاتبات بررسی کنید.</p>:!last&&!queue.consumed&&queue.item.status==='queued'?<><p>با دکمهٔ زیر ایمیل واقعی همراه همین رزومه از <bdi dir="ltr">{queue.sender}</bdi> به <bdi dir="ltr">{queue.item.recipient}</bdi> ارسال می‌شود.</p><button type="button" className="primary" disabled={!!busy} onClick={()=>action('dispatch')}><Send size={16}/> {busy==='dispatch'?'در حال ارسال…':'ارسال همین ایمیل و رزومه'}</button></>:null}{last&&<p>تلاش مجدد خودکار انجام نمی‌شود؛ نتیجهٔ نامشخص را در پوشهٔ Sent همین حساب بررسی کنید.</p>}</div>}
    </>}
   </>}
  </section>;

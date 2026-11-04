@@ -1,3 +1,4 @@
+import {extractPublicContacts} from './public-contact-extraction.mjs';
 import {storePublicReading,PUBLIC_PAGE_REFRESH_MS,PUBLIC_PAGE_RETRY_MS} from './public-page-store.mjs';
 const AGENT='MasirUniversityDiscovery/1.0',MAX_BODY=1000000;
 const sensitive=/(?:^|\/)(?:login|logout|signin|sign-in|admin|wp-admin|account|auth|apply|application|candidate)(?:\/|$)/i;
@@ -59,6 +60,7 @@ export async function readQueuedPage(row,fetcher=fetch,sleep=ms=>new Promise(res
    if(!/text\/html|application\/xhtml|text\/plain/i.test(contentType)){await response.body?.cancel();error('unsupported_content');}
    const body=await bounded(response,MAX_BODY),parsed=/html/i.test(contentType)?visiblePageText(body):{title:'',text:body.slice(0,50000),partial:body.length>50000};
    if(!parsed.text.trim())error('empty_text');Object.assign(record,parsed,{status:parsed.partial?'read_partial':'read',finalUrl:url});
+   record.enrichment=extractPublicContacts({...(/html/i.test(contentType)?{html:body}:{text:parsed.text}),sourceURL:url,readAt:record.readAt});
    if(parsed.partial)record.limitations.push('Only the first 50000 text characters were evaluated.');return record;
   }
  }catch(e){record.status=/^(invalid_url|body_too_large|empty_text|robots_blocked|robots_unavailable|crawl_delay_exceeds_budget|redirect_limit|access_denied|http_error|http_rejected|pdf_reader_required|unsupported_content)$/.test(e.message)?e.message:'fetch_failed';}
@@ -72,13 +74,17 @@ export async function dispatchPublicPageReading(env,fetcher=fetch,now=Date.now()
   // Legacy successful rows with available_at=0 still obey the seven-day read_at age.
   const eligible="lease_until<=? AND available_at<=? AND (status IN ('pending','reading','fetch_failed','robots_unavailable','http_error','reading_storage_failed') AND attempts<3 OR (status IN ('read','read_partial') AND (attempts<3 OR lease_until=0) AND (read_at<=? OR json_extract(data,'$.refreshRequested')=1)))";
   const cutoff=new Date(now-PUBLIC_PAGE_REFRESH_MS).toISOString();
-  const row=await db.prepare(`UPDATE public_page_queue SET status=CASE WHEN status IN ('read','read_partial') THEN status ELSE 'reading' END,lease_until=?,attempts=CASE WHEN status IN ('read','read_partial') AND lease_until=0 THEN 1 ELSE attempts+1 END WHERE id=(SELECT id FROM public_page_queue WHERE ${eligible} ORDER BY available_at,attempts,id LIMIT 1) AND ${eligible} RETURNING *`).bind(now+180000,now,now,cutoff,now,now,cutoff).first();
+  const clinicalText="lower(title||' '||coalesce(json_extract(data,'$.labels'),''))";
+  const clinical=`(${clinicalText} LIKE '%general pract%' OR ${clinicalText} LIKE '%medical officer%' OR ${clinicalText} LIKE '%rural generalist%' OR ${clinicalText} LIKE '%level 1%' OR instr(' '||replace(replace(${clinicalText},'-',' '),'\"',' ')||' ',' gp ')>0)`;
+  const priority=i===0?`CASE WHEN country='AU' AND ${clinical} AND NOT EXISTS(SELECT 1 FROM public_page_enrichment x,json_each(x.data,'$.contacts') contact WHERE x.page_id=public_page_queue.id AND json_extract(contact.value,'$.type')='email') THEN 0 WHEN country='AU' THEN 1 ELSE 2 END`:"CASE WHEN country='IT' THEN 0 ELSE 1 END";
+  const row=await db.prepare(`UPDATE public_page_queue SET status=CASE WHEN status IN ('read','read_partial') THEN status ELSE 'reading' END,lease_until=?,attempts=CASE WHEN status IN ('read','read_partial') AND lease_until=0 THEN 1 ELSE attempts+1 END WHERE id=(SELECT id FROM public_page_queue WHERE ${eligible} ORDER BY ${priority},available_at,attempts,id LIMIT 1) AND ${eligible} RETURNING *`).bind(now+180000,now,now,cutoff,now,now,cutoff).first();
   if(!row)break;
   try{receipts.push(await storePublicReading(db,await readQueuedPage(row,fetcher),now));}catch{
    // A failed result must not leave a prior extracted conclusion active.
    await db.batch([
     db.prepare("UPDATE public_page_queue SET status='reading_storage_failed',lease_until=0,last_error='reading_storage_failed',available_at=? WHERE id=? AND lease_until=?").bind(now+PUBLIC_PAGE_RETRY_MS,row.id,now+180000),
-    db.prepare('DELETE FROM public_page_evidence WHERE page_id=?').bind(row.id)
+    db.prepare('DELETE FROM public_page_evidence WHERE page_id=?').bind(row.id),
+    db.prepare('DELETE FROM public_page_enrichment WHERE page_id=?').bind(row.id)
    ]);receipts.push({id:row.id,status:'reading_storage_failed'});
   }
  }

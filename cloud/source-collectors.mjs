@@ -2,12 +2,13 @@
 import registry from './source-registry.json' with {type:'json'};
 import {ITALY_SOURCE_DEFINITIONS,normalizeItalySourceRecords} from './italy-source-adapters.mjs';
 import {AU_SOURCE_DEFINITIONS,normalizeAuSourceRecords} from './au-source-adapters.mjs';
+import {GP_EXPANDED_SOURCE_DEFINITIONS,normalizeExpandedGpSourceRecords} from './gp-expanded-sources.mjs';
 import {RURAL_SOURCE_DEFINITIONS,normalizeRuralSourceRecords} from './rural-source-adapters.mjs';
 import {sourceAutomationStatus} from './source-automation.mjs';
 import {plainJobText,pageUpDate} from './job-opportunities.mjs';
 import {upsertOpportunityBatch} from './opportunity-store.mjs';
 import {enqueuePublicPages} from './public-page-store.mjs';
-export const SOURCE_REGISTRY=Object.freeze([...registry,...RURAL_SOURCE_DEFINITIONS,...ITALY_SOURCE_DEFINITIONS,...AU_SOURCE_DEFINITIONS].map(source=>Object.freeze({...source,allowedHosts:Object.freeze([...source.allowedHosts])})));
+export const SOURCE_REGISTRY=Object.freeze([...registry,...RURAL_SOURCE_DEFINITIONS,...ITALY_SOURCE_DEFINITIONS,...AU_SOURCE_DEFINITIONS,...GP_EXPANDED_SOURCE_DEFINITIONS].map(source=>Object.freeze({...source,allowedHosts:Object.freeze([...source.allowedHosts])})));
 const ACTIVE=SOURCE_REGISTRY.filter(s=>s.executable);
 const MAX_BYTES=3000000, MAX_CALLS=3, MAX_RECORDS=100, PER_SOURCE=40;
 const SUCCESS_COOLDOWN=3*60*60*1000, FAILURE_COOLDOWN=6*60*60*1000;
@@ -117,7 +118,7 @@ async function rss(source,body){
 }
 export async function normalizeSourceRecords(input,body){
  const source=canonicalSource(input);if(typeof body!=='string'||new TextEncoder().encode(body).length>MAX_BYTES)fail('source_response_too_large');
- const records=source.adapter.startsWith('italy_')?await normalizeItalySourceRecords(source,body):source.adapter.startsWith('au_')?await normalizeAuSourceRecords(source,body):source.adapter.startsWith('rural_')?await normalizeRuralSourceRecords(source,body):source.adapter==='bologna_rss'?await rss(source,body):source.adapter==='nt_public_search'?ntPublicSearch(source,body):source.adapter==='careerpages_public_html'?await careerpages(source,body):source.adapter==='smartrecruiters_university'?smartrecruiters(source,body):pageup(source,body);
+ const records=source.adapter.startsWith('gp_')?await normalizeExpandedGpSourceRecords(source,body):source.adapter.startsWith('italy_')?await normalizeItalySourceRecords(source,body):source.adapter.startsWith('au_')?await normalizeAuSourceRecords(source,body):source.adapter.startsWith('rural_')?await normalizeRuralSourceRecords(source,body):source.adapter==='bologna_rss'?await rss(source,body):source.adapter==='nt_public_search'?ntPublicSearch(source,body):source.adapter==='careerpages_public_html'?await careerpages(source,body):source.adapter==='smartrecruiters_university'?smartrecruiters(source,body):pageup(source,body);
  for(const row of records)validateSourceUrl(row.url,source);
  return records;
 }
@@ -133,7 +134,7 @@ async function collectOne(db,source,fetcher,remaining,now,readPages=false){
  if(!claim)return {sourceId:source.id,status:'cooldown_or_busy',imported:0};
  try{
   validateSourceUrl(source.feedUrl,source);
-  const headers={Accept:['bologna_rss','rural_ntphn_rss'].includes(source.adapter)?'application/rss+xml, application/xml':(['careerpages_public_html','rural_people_html'].includes(source.adapter)||source.adapter.startsWith('italy_')||source.adapter.startsWith('au_'))?'text/html':'application/json','User-Agent':'MasirPublicSourceCollector/1.0'};
+  const headers={Accept:['bologna_rss','rural_ntphn_rss'].includes(source.adapter)?'application/rss+xml, application/xml':(['careerpages_public_html','rural_people_html'].includes(source.adapter)||source.adapter.startsWith('italy_')||source.adapter.startsWith('au_')||source.adapter.startsWith('gp_'))?'text/html':'application/json','User-Agent':'MasirPublicSourceCollector/1.0'};
   // Partial snapshots must fetch their next segment even when publisher ETag is unchanged.
   if(source.requestMethod!=='POST'&&!claim.record_cursor&&claim.etag&&claim.etag.length<1000&&!/[\r\n]/.test(claim.etag))headers['If-None-Match']=claim.etag;
   let response;try{response=await fetcher(source.feedUrl,{headers:{...headers,...(source.requestMethod==='POST'?{'Content-Type':'application/json'}:{})},...(source.requestMethod==='POST'?{method:'POST',body:JSON.stringify(source.requestBody)}:{}),redirect:'manual',signal:AbortSignal.timeout(15000)});}catch{fail('source_unavailable');}

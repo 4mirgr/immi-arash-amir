@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {enqueuePublicPages,storePublicReading,handlePublicPagesRequest} from '../cloud/public-page-store.mjs';
 import {robotsAllows,readQueuedPage,dispatchPublicPageReading,visiblePageText} from '../cloud/public-page-worker.mjs';
-function fixture(){const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../cloud/public-page-schema.sql',import.meta.url),'utf8'));let queries=0;const binding={prepare(sql){queries++;return {bind(...args){return {async first(){return db.prepare(sql).get(...args)||null;},async all(){return {results:db.prepare(sql).all(...args)};},run(){return {meta:db.prepare(sql).run(...args)};}};}};},async batch(items){db.exec('BEGIN');try{const results=items.map(s=>s.run());db.exec('COMMIT');return results;}catch(e){db.exec('ROLLBACK');throw e;}}};return {db,env:{OPPORTUNITY_DB:binding,PUBLIC_PAGE_READING_ENABLED:'true'},queries:()=>queries};}
+function fixture(){const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../cloud/public-page-schema.sql',import.meta.url),'utf8'));db.exec(readFileSync(new URL('../cloud/public-page-enrichment-schema.sql',import.meta.url),'utf8'));let queries=0;const binding={prepare(sql){queries++;return {bind(...args){return {async first(){return db.prepare(sql).get(...args)||null;},async all(){return {results:db.prepare(sql).all(...args)};},run(){return {meta:db.prepare(sql).run(...args)};}};}};},async batch(items){db.exec('BEGIN');try{const results=items.map(s=>s.run());db.exec('COMMIT');return results;}catch(e){db.exec('ROLLBACK');throw e;}}};return {db,env:{OPPORTUNITY_DB:binding,PUBLIC_PAGE_READING_ENABLED:'true'},queries:()=>queries};}
 const row=(n=1,country='IT')=>({id:'page_'+String(n).padStart(32,'0'),url:'https://example.invalid/call-'+n,country,institutionIds:['university-1'],officialBases:['example.invalid'],labels:['Clinical research call']});
 const body='Clinical research scholarship. Applications are invited for a doctoral programme in medicine. Applicants must hold a relevant degree. Funding is subject to the full published call. Applications close on 30 November 2026. Read the full requirements before applying.';
 test('only actual reading produces owner-scoped extracted evidence; queued links do not',async()=>{const f=fixture(),r=row();await enqueuePublicPages(f.env.OPPORTUNITY_DB,[r]);assert.equal(f.db.prepare('SELECT count(*) n FROM public_page_evidence').get().n,0);await storePublicReading(f.env.OPPORTUNITY_DB,{...r,status:'read',readAt:new Date().toISOString(),title:'Clinical scholarship',text:body});const a=f.db.prepare('SELECT * FROM public_page_evidence').all();assert.equal(a.length,1);assert.equal(a[0].profile_id,'amir');assert.equal(JSON.parse(a[0].analysis).eligibility,'not_assessed');assert.equal(f.db.prepare('SELECT count(*) n FROM public_page_content').get().n,1);});
@@ -86,4 +86,51 @@ test('static hidden nested elements cannot contribute claims; visible sibling su
  const parsed=visiblePageText('<main>Visible requirements.<div hidden><div>Guaranteed funding.</div>Secret offer</div><p aria-hidden="true">Automatic registration.</p><section style="display: none !important"><b>Visa guaranteed.</b></section><div style="visibility:hidden">No exams.</div><p title="hidden">Visible deadline.</p></main>');
  assert(parsed.text.includes('Visible requirements.'));assert(parsed.text.includes('Visible deadline.'));
  for(const hidden of ['Guaranteed funding','Secret offer','Automatic registration','Visa guaranteed','No exams'])assert(!parsed.text.includes(hidden));
+});
+const contactData=(r,readAt,links=[])=>({sourceURL:r.url,readAt,contacts:[{type:'email',value:'contact@example.invalid',sourceURL:r.url,quote:'Contact contact@example.invalid',method:'visible_text',contactRole:'organization_general',sourceRelation:'same_page'}],organizations:[{name:'Synthetic university',sourceURL:r.url,quote:'Synthetic university',method:'visible_text'}],followLinks:links.map(url=>({url,label:'Contact office'})),limitations:[]});
+test('actual enrichment is atomic, receipt-bound, profile scoped and invalidated after read failure',async()=>{
+ const f=fixture(),r=row(),at=new Date().toISOString();await enqueuePublicPages(f.env.OPPORTUNITY_DB,[r]);
+ await storePublicReading(f.env.OPPORTUNITY_DB,{...r,status:'read',readAt:at,text:body,enrichment:contactData(r,at)});
+ const result=await(await handlePublicPagesRequest(new Request('https://app.example/api/research/pages?country=IT'),f.env,{userId:'amir-owner',profileId:'amir'})).json();
+ assert.equal(result.pages[0].enrichment.contacts[0].value,'contact@example.invalid');assert.equal(result.enrichmentCoverage.contacts,1);
+ assert.equal((await handlePublicPagesRequest(new Request('https://app.example/api/research/pages?country=IT'),f.env,{userId:'arash-owner',profileId:'arash'})).status,403);
+ await storePublicReading(f.env.OPPORTUNITY_DB,{...r,status:'robots_blocked',readAt:at});assert.equal(f.db.prepare('SELECT count(*) n FROM public_page_enrichment').get().n,0);
+});
+test('enrichment write failure rolls back content and queue updates together',async()=>{
+ const f=fixture(),r=row(),at=new Date().toISOString();await enqueuePublicPages(f.env.OPPORTUNITY_DB,[r]);
+ f.db.exec("CREATE TRIGGER reject_enrichment BEFORE INSERT ON public_page_enrichment BEGIN SELECT RAISE(ABORT,'synthetic failure'); END;");
+ await assert.rejects(storePublicReading(f.env.OPPORTUNITY_DB,{...r,status:'read',readAt:at,text:body,enrichment:contactData(r,at)}));
+ assert.equal(f.db.prepare('SELECT status FROM public_page_queue').get().status,'pending');assert.equal(f.db.prepare('SELECT count(*) n FROM public_page_content').get().n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM public_page_evidence').get().n,0);
+});
+test('linked reading queue caps unique official same-host pages at three per parent across refreshes, without second-hop expansion',async()=>{
+ const f=fixture(),r=row(),at=new Date().toISOString();await enqueuePublicPages(f.env.OPPORTUNITY_DB,[r]);
+ const links=['https://example.invalid/contact/a','https://example.invalid/contact/b','https://foreign.invalid/contact','https://example.invalid/login','https://example.invalid/contact/file.pdf','https://example.invalid/contact/c'];
+ await storePublicReading(f.env.OPPORTUNITY_DB,{...r,status:'read',readAt:at,text:body,enrichment:contactData(r,at,links)});
+ let children=f.db.prepare("SELECT * FROM public_page_queue WHERE json_extract(data,'$.parentPageId')=?").all(r.id);assert.equal(children.length,3);for(const child of children){assert.equal(child.country,'IT');assert.equal(child.profile_scope,'amir');assert.equal(JSON.parse(child.data).depth,1);assert.equal(JSON.parse(child.data).parentURL,r.url);}
+ await storePublicReading(f.env.OPPORTUNITY_DB,{...r,status:'read',readAt:at,text:body,enrichment:contactData(r,at,['https://example.invalid/contact/d'])});
+ assert.equal(f.db.prepare('SELECT count(*) n FROM public_page_queue').get().n,4);
+ const child=children[0],childContact=contactData(child,at,['https://example.invalid/contact/grandchild']);
+ await storePublicReading(f.env.OPPORTUNITY_DB,{id:child.id,url:child.url,status:'read',readAt:at,text:body,enrichment:childContact});assert.equal(f.db.prepare('SELECT count(*) n FROM public_page_queue').get().n,4);
+ const stored=JSON.parse(f.db.prepare('SELECT data FROM public_page_enrichment WHERE page_id=?').get(child.id).data);assert.equal(stored.contacts[0].sourceURL,child.url);assert.notEqual(stored.contacts[0].sourceURL,r.url);assert.equal(stored.parentPageId,r.id);assert.equal(stored.contacts[0].contactRole,'organization_general');
+});
+test('worker extracts from actual fetched markup and queued contact page keeps its own source under two-page budget',async()=>{
+ const f=fixture(),r={...row(),url:'https://synthetic.edu.au/jobs/one',officialBases:['synthetic.edu.au']};await enqueuePublicPages(f.env.OPPORTUNITY_DB,[r]);let requests=0;
+ const fetcher=async url=>{requests++;if(url.endsWith('/robots.txt'))return new Response('User-agent: *\nAllow: /');return new Response(url.endsWith('/contact')?'<main>Organization: Synthetic University<p>Contact general@synthetic.edu.au</p></main>':'<main>General Practitioner<p>Apply via jobs@synthetic.edu.au</p><div hidden>hidden@synthetic.edu.au</div><a href="/contact">Contact office</a></main>',{headers:{'Content-Type':'text/html'}});};
+ const result=await dispatchPublicPageReading(f.env,fetcher);assert.equal(result.processed,2);assert.equal(requests,4);assert(f.queries()<35);
+ const records=f.db.prepare('SELECT * FROM public_page_enrichment').all().map(x=>JSON.parse(x.data));assert.equal(records.length,2);
+ const parent=records.find(x=>x.sourceURL===r.url),linked=records.find(x=>x.sourceURL.endsWith('/contact'));
+ assert(parent.contacts.some(c=>c.value==='jobs@synthetic.edu.au'));assert(!parent.contacts.some(c=>c.value==='hidden@synthetic.edu.au'||c.value==='general@synthetic.edu.au'));
+ assert(linked.contacts.some(c=>c.value==='general@synthetic.edu.au'));assert.equal(linked.parentURL,r.url);assert.equal(linked.depth,1);
+});
+test('two reader slots prioritize missing-contact AU clinical pages then Italy, with same-query fallback',async()=>{
+ const f=fixture(),rows=[{...row(1,'AU'),labels:['University general information']},{...row(2,'AU'),labels:['General Practitioner Level 1']},{...row(3,'IT'),labels:['Italian scholarship']}];await enqueuePublicPages(f.env.OPPORTUNITY_DB,rows);
+ const read=await dispatchPublicPageReading(f.env,readable);assert.deepEqual(read.receipts.map(r=>r.id),[rows[1].id,rows[2].id]);
+ assert.equal(f.db.prepare('SELECT status FROM public_page_queue WHERE id=?').get(rows[0].id).status,'pending');
+ const fallback=await dispatchPublicPageReading(f.env,readable);assert.equal(fallback.receipts[0].id,rows[0].id);
+});
+test('worst two successful AU parent reads with link discovery stay within twenty reader SQL statements',async()=>{
+ const f=fixture(),rows=[1,2].map(n=>({...row(n,'AU'),url:'https://synthetic.edu.au/jobs/'+n,officialBases:['synthetic.edu.au'],labels:['General Practitioner Level 1']}));await enqueuePublicPages(f.env.OPPORTUNITY_DB,rows);
+ const start=f.queries();
+ const fetcher=async url=>url.endsWith('/robots.txt')?new Response('User-agent: *\nAllow: /'):new Response('<main>General Practitioner: Applications invited. Apply jobs@synthetic.edu.au. Clinical supervision will be discussed. <a href="/contact/team">Contact clinical team</a></main>',{headers:{'Content-Type':'text/html'}});
+ const result=await dispatchPublicPageReading(f.env,fetcher);assert.equal(result.processed,2);const readerQueries=f.queries()-start;assert.equal(readerQueries,20);assert(readerQueries+18+5<=50);
 });

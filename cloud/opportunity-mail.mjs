@@ -23,11 +23,12 @@ export async function handleOpportunityMailRequest(request,env,context,fetcher=f
   condition(row,context.profileId);let source=JSON.parse(row.data);
   if(env.PUBLIC_PAGE_READING_ENABLED==='true'){
    try{const [enriched]=await enrichReadPages(env.OPPORTUNITY_DB,[row],context.profileId,Date.now(),true);
-    if(['read','read_partial'].includes(enriched?.reading?.status))source={...source,fullText:enriched.fullText,reading:enriched.reading};
+    if(['read','read_partial'].includes(enriched?.reading?.status))source={...source,fullText:enriched.fullText,reading:enriched.reading,contactEvidence:enriched.contactEvidence||[]};
    }catch{/* Missing reading storage never manufactures a recipient. */}
   }
-  const recipients=publishedRecipients(source);
-  const sourceView={opportunityId:row.id,title:row.title,url:row.url,trust:row.trust,lastSeenAt:row.last_seen_at,recipientEvidence:'public_advertisement_contact_not_verified_identity'};
+  const recipientDetails=(source.contactEvidence||[]).filter(contact=>contact.type==='email'&&['same_page','linked_page'].includes(contact.sourceRelation)&&['application','organization_general','unknown'].includes(contact.contactRole)&&/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(contact.value)).map(contact=>({...contact,value:contact.value.toLowerCase()}));
+  const recipients=[...new Set([...publishedRecipients(source),...recipientDetails.map(contact=>contact.value)])];
+  const sourceView={opportunityId:row.id,title:row.title,url:row.url,trust:row.trust,lastSeenAt:row.last_seen_at,recipientEvidence:'public_source_contact_not_verified_identity',recipientDetails};
   const reading=source.reading?{status:source.reading.status,readAt:source.reading.readAt}:null;
   if(request.method==='GET'&&!match[2])return json({...sourceView,reading,publishedRecipients:recipients,blockedReason:recipients.length?null:'published_recipient_missing',automaticSending:false});
   if(request.method!=='POST'||!match[2])fail('method_not_allowed',405);

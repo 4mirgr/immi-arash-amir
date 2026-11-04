@@ -76,3 +76,14 @@ test('old, mismatched, future and different-owner readings cannot supply a conta
   assert.equal((await f.call('preview',{...f.payload,recipient:'read-contact@example.invalid'})).status,409,mode);
  }
 });
+
+test('source-linked contact metadata is bound to review and cannot outlive its reading receipt',async()=>{
+ const f=await fixture(),{at}=seedRead(f);f.publicDb.exec(readFileSync(new URL('../cloud/public-page-enrichment-schema.sql',import.meta.url),'utf8'));
+ f.publicDb.prepare("UPDATE public_page_content SET text='Clinical recruitment office. Select the published email link to apply.'").run();
+ const metadata={sourceURL:'https://source.example/jobs/1',readAt:at,contacts:[{type:'email',value:'linked-contact@example.invalid',method:'visible_link',contactRole:'application',sourceRelation:'same_page',sourceURL:'https://source.example/jobs/1',quote:'Email your CV to linked-contact@example.invalid'}],organizations:[],followLinks:[],limitations:[]};
+ f.publicDb.prepare('INSERT INTO public_page_enrichment VALUES(?,?,?,?)').run('read-page',at,'AU',JSON.stringify(metadata));
+ const info=await(await f.call()).json();assert(info.publishedRecipients.includes('linked-contact@example.invalid'));assert.equal(info.recipientDetails[0].contactRole,'application');
+ const payload={...f.payload,recipient:'linked-contact@example.invalid'},preview=await(await f.call('preview',payload)).json();assert(preview.reviewHash);
+ f.publicDb.prepare("UPDATE public_page_enrichment SET read_at='2020-01-01T00:00:00Z'").run();
+ const stale=await(await f.call()).json();assert(!stale.publishedRecipients.includes(payload.recipient));assert.equal((await f.call('queue',{...payload,confirmReviewed:true,reviewHash:preview.reviewHash})).status,409);assert.equal(f.calls.length,0);
+});

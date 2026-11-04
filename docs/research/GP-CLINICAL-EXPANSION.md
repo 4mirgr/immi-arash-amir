@@ -1,0 +1,39 @@
+# Clinical GP / IMG recruitment expansion — checked 2026-11-04
+
+Scope: actual clinical employer recruitment content, not reference portals, social snippets or guaranteed offers. `cloud/gp-expanded-sources.mjs` contains five fixed public HTML adapters; `normalizeExpandedGpSourceRecords(input, body)` returns one clinical recruitment record per configured source. First-party clinic content is `trust: official` as publisher provenance, not regulator endorsement. Registration, sponsorship, MMM and DPA claims remain unverified employer statements.
+
+All five configured pages and robots files were retrieved directly without login/cookies/tokens; page responses were HTTP200. Firecrawl fresh-page retrieval was used independently to inspect the full public text. No application form, email, private group or account was submitted. Raw public HTML/robots receipts are outside Git in `/workspace/scratch/gp-expanded/`; initial normalized records are in `/workspace/scratch/gp-expansion-records.json` as `[{source,records}]`. The root must register/import/run these sources before describing them as production acquisition.
+
+## Verified employer records
+
+| Employer / source | State | Exact published evidence | Important restriction / next verification |
+|---|---|---|---|
+| [Calwell Family Medical Centre](https://calwellfmc.com.au/jobs/general-practitioner/) | ACT | “PESCI candidates are strongly encouraged to apply.” “Visa sponsorship is available for the right candidates.” Apply to Dr Haroon Younas at **Haroon.younas@calwellfmc.com.au**. | The page separates VR and non-VR criteria. Level1 supervision is **not** stated. Its wording about general registration after PESCI is an employer claim, not a validated regulator conclusion. Obtain exact supervision plan, current vacancy, registration route and sponsorship terms. |
+| [First Health Medical Centre](https://firsthealth.net.au/our-team/employmenttraining-opportunities/) | VIC | “The clinic offers junior doctors training positions and provides sponsorship for international medical graduates interested in General Practice.” “PESCI: Offer of employment lets the IMG to sit for PESCI.” Published **careers@firsthealth.net.au** and **fhmc.yilin@gmail.com**. Hampton Park, Rowville, Casey Central named. | Evergreen recruiting/training page: stored as an **employment register**, not a dated specific vacancy. Modified-time metadata is2023-03-09; programme links and some wording are old. Level1 not stated. Confirm current availability, lawful pathway, offered supervision and any training/observership conditions before treating it as a suitable job. |
+| [Macleay Island Medical Centre](https://www.mimc.net.au/about/careers/) | QLD | “Registrar Medical Doctor position. Part-time or full-time. Onsite Supervisor, accredited with RACGP. Can supervise RACGP FSP registrars and IMGs PESCI pathway level 2 or above.” Published **manager@mimc.net.au**, **07 34503704**. | **Level2 or above**, not a verified Level1 opening. Do not rank it as Level1 merely because supervision/PESCI appear. No closing/publication date stated. |
+| [Murray Bridge Day Night Surgery / Medical Centre](https://www.murraybridgemedical.com.au/careers/general-practitioner-for-full-time-part-time/) | SA | “Suitable of Non-VR and VR GP’s.” Essential qualifications include **AHPRA Registration**, **General Registration**, a pathway to fellowship and a Medicare provider number. Page advertises DPA / Modified Monash Model3. | General registration is an explicit prerequisite; non-VR does **not** establish limited-registration or Level1 eligibility. MDRAP mention may be outdated. An application form exists but is not submitted. No public closing date. |
+| Northern Afterhours via [Adelaide PHN external clinical vacancies](https://adelaidephn.com.au/careers/external-vacancies-primary-health-care) | SA | “The clinic offers support for both VR and non VR GPs with atleast three years of experience.” Contact Dr Muazzam Rifat, **1800 114 114**, **admin@northernafterhours.com.au**. Employer link **https://northernafterhours.com.au/**. Advertised closing display31/12/2026. | PHN publishes employer-submitted content and disclaims its accuracy. Minimum3years is stated; Level1/PESCI/sponsorship not stated. The adapter selects only this named non-VR clinical card, not all PHN advertisements. Closing is date-only without exact cutoff/timezone and stays null, with the literal display retained in full text. |
+
+The rendered PHN contact email is assembled in its public HTML from two literal JavaScript strings. The parser reads those literal strings; it does not execute script, contact an internal API or decode an authenticated resource.
+
+## Retrieval boundaries and robots
+
+- First Health `robots.txt`: empty `Disallow`, public sitemap.
+- Calwell: disallows `/wp-admin/`, allows public pages; configured jobs path is public.
+- Macleay: empty `Disallow`, public sitemap.
+- Murray Bridge: public WordPress careers page and robots; no application endpoint is contacted.
+- Adelaide PHN: excludes `/cpresources/`, `/vendor/`, `/.env`, `/cache/`; the configured public careers page is outside these paths.
+
+Page body sizes from direct retrieval: First Health95,247bytes; Calwell101,083bytes; Macleay134,125bytes; Murray Bridge137,117bytes; Adelaide PHN98,099bytes. Each parser fails closed if expected clinical recruitment wording disappears or the page becomes a login/empty shell. Bodies are capped at2MB. Canonical definitions ignore caller-supplied host/URL overrides. Only selected recruitment text enters normalized records; forms, script bodies and general footer content are excluded. All publication and exact closing instants remain unknown. Missing dates are not converted into a verified-open status.
+
+## Level1 evidence shortfall and exclusions
+
+**Zero current first-party Level1 offers were verified in this batch.** No all-eight-jurisdiction Level1 coverage is claimed. Current records cover ACT, VIC, QLD and SA only. Existing rural workforce feeds elsewhere remain separate; a shortfall is preferable to inventing matches.
+
+- [Supernova Medical Centre careers](https://supernovamedical.com.au/careers/) returned a generic expression-of-interest application form and publicly linked social pages. Historical Facebook search snippets claim Level1 roles, but the current first-party page does **not** repeat that commitment. It is not imported as a Level1 vacancy.
+- [Globe Healthcare VAC-10269](https://www.globehealthcare.com.au/jobs/vac-10269/permanent-general-practitioner-vr-or-non-vr-gp-dpa-mm3-job-in-vic) advertises Level3 supervision/visa sponsorship but explicitly requires specialist registration or specialist-pathway eligibility; not imported as a Standard-Pathway IMG match.
+- [NT PHN Bath Street105322](https://ntphn.org.au/job/general-practitioner-bath-street-family-medical-centre-alice-springs-105322/) has conflicting language: introduction welcomes non-VR/general/provisional, but requirements list RACGP/ACRRM Fellowship. It needs written clarification and is not imported as a positive Level1/non-Fellowship match.
+- A DXC Cannonvale search result offers higher rates for a GP who can **provide** Level1 supervision. That can be a supervisor vacancy, not an entry-level supervised role. No positive Level1 label was inferred.
+- Indeed/SEEK/Jora aggregates, Facebook/Instagram search excerpts and inaccessible private-network pages were not promoted to verified roles. No private group was scraped or bypassed.
+
+Verification: `node --test tests/cloud_gp_expanded_sources.mjs` — eight synthetic tests for provenance, canonical URLs, unknown dates, conditional sponsorship, registration/supervision restrictions, public literal email, missing recruitment clauses and input/body limits. Tests and page reading are not proof of production import, appointment availability or personal eligibility.

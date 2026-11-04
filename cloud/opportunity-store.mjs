@@ -1,3 +1,4 @@
+import {assessOpportunityFit,sortOpportunityPageByFit,deriveProfileReadiness} from './opportunity-fit.mjs';
 import {gpOpportunitySignals} from './gp-opportunity-signals.mjs';
 import {screenOpportunity} from './opportunity-screening.mjs';
 // Server-controlled source configurations enter here; public HTTP routes are read-only.
@@ -138,7 +139,7 @@ function owner(context) {if(typeof context?.userId!=='string'||!context.userId||
 function filters(url,profile) {
   const country=url.searchParams.get('country')||'all',state=url.searchParams.get('state')||'all',trust=url.searchParams.get('trust')||'all',kind=url.searchParams.get('kind')||'all',q=(url.searchParams.get('q')||'').trim().toLowerCase(),includeClosed=url.searchParams.get('includeClosed')||'false';
   const clinicalFocus=url.searchParams.get('clinicalFocus')||'all',ruralOnly=url.searchParams.get('ruralOnly')||'false',sort=url.searchParams.get('sort')||'deadline';
-  if(!['all','gp','medical'].includes(clinicalFocus)||!['true','false'].includes(ruralOnly)||!['deadline','newest'].includes(sort))fail(400,'invalid_opportunity_filter');
+  if(!['all','gp','medical'].includes(clinicalFocus)||!['true','false'].includes(ruralOnly)||!['deadline','newest','fit'].includes(sort))fail(400,'invalid_opportunity_filter');
   const typesRaw=url.searchParams.get('types')||url.searchParams.get('type')||'all';
   const types=typesRaw==='all'?[]:[...new Set(typesRaw.split(',').filter(Boolean))];
   const organizationId=url.searchParams.get('organizationId')||null,limit=Number(url.searchParams.get('limit')||25),offset=Number(url.searchParams.get('offset')||0);
@@ -165,12 +166,39 @@ function whereFor(f,profile,now) {
   return {sql:'WHERE '+clauses.join(' AND '),args};
 }
 function publicItem(row,profile,ms) {
-  const item=JSON.parse(row.data);return {...item,status:statusAt({...item,status:row.status},ms),firstSeenAt:row.first_seen_at,lastSeenAt:row.last_seen_at,match:match(item,profile),screening:screenOpportunity(item,profile),gpSignals:gpOpportunitySignals(item)};
+  const item=JSON.parse(row.data),view={...item,status:statusAt({...item,status:row.status},ms),firstSeenAt:row.first_seen_at,lastSeenAt:row.last_seen_at},screening=screenOpportunity(view,profile);return {...view,match:match(view,profile),screening,gpSignals:gpOpportunitySignals(view),fit:assessOpportunityFit(view,profile,screening)};
+}
+function evidenceUrl(value){try{const u=new URL(value);if(u.protocol!=='https:'||u.username||u.password||u.port||!u.hostname.includes('.')||/^\d+(?:\.\d+){3}$/.test(u.hostname)||u.hostname.includes(':')||/(?:^|\.)(?:local|localhost|internal)$/.test(u.hostname))return null;u.hash='';return u.href;}catch{return null;}}
+function evidenceText(value,max=700){return typeof value==='string'?value.replace(/[\x00-\x1f]/g,' ').trim().slice(0,max):'';}
+function officialEvidenceUrl(value,origin,pageData={}){const target=evidenceUrl(value),base=evidenceUrl(origin);if(!target||!base)return null;const hostname=new URL(target).hostname.replace(/^www\d*\./,''),original=new URL(base).hostname.replace(/^www\d*\./,'');const bases=[original,...(Array.isArray(pageData.officialBases)?pageData.officialBases.filter(x=>typeof x==='string'&&/^[a-z0-9.-]+$/i.test(x)&&x.includes('.')&&!/^\d+(?:\.\d+){3}$/.test(x)):[])];return bases.some(root=>hostname===root||hostname.endsWith('.'+root))?target:null;}
+function parsePageData(raw){try{const data=JSON.parse(raw);return data&&typeof data==='object'&&!Array.isArray(data)?data:{};}catch{return {};}}
+function validEnrichment(row,item,profile,ms){
+ if(!row||row.country!==item.country||row.queue_country!==item.country||!['read','read_partial'].includes(row.queue_status)||row.queue_status!==row.content_status||row.read_at!==row.queue_read_at||row.read_at!==row.content_read_at)return null;
+ const at=Date.parse(row.read_at);if(!Number.isFinite(at)||at>ms+60000)return null;
+ const data=parsePageData(row.data),pageData=parsePageData(row.page_data),sourceURL=officialEvidenceUrl(data.sourceURL,row.page_url,pageData);
+ if(!sourceURL||data.readAt!==row.read_at||data.country&&data.country!==item.country||data.profileId&&data.profileId!==profile)return null;
+ const contacts=[];
+ for(const contact of Array.isArray(data.contacts)?data.contacts:[]){
+  if(!contact||!['email','phone','website','social'].includes(contact.type)||!['visible_text','visible_link','jsonld_jobposting'].includes(contact.method)||contact.sourceRelation&&contact.sourceRelation!=='same_page'||evidenceUrl(contact.sourceURL)!==sourceURL)continue;
+  const value=evidenceText(contact.value,2048),quote=evidenceText(contact.quote);if(!quote)continue;
+  if(contact.type==='email'&&(!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value)||value.length>254))continue;
+  if(contact.type==='phone'&&(!/^[+\d(][\d+(). xte-]{4,60}$/i.test(value)||!/[0-9]{2}/.test(value)))continue;
+  if(['website','social'].includes(contact.type)&&!evidenceUrl(value))continue;
+  contacts.push({type:contact.type,value,sourceURL,quote,method:contact.method,contactRole:['application','organization_general','unknown'].includes(contact.contactRole)?contact.contactRole:'unknown',sourceRelation:'same_page',readAt:row.read_at});if(contacts.length>=24)break;
+ }
+ const organizations=[];for(const organization of Array.isArray(data.organizations)?data.organizations:[]){if(!organization||!['visible_label','jsonld_jobposting'].includes(organization.method)||evidenceUrl(organization.sourceURL)!==sourceURL)continue;const name=evidenceText(organization.name||organization.value,300),quote=evidenceText(organization.quote);if(!name||!quote)continue;organizations.push({name,sourceURL,quote,method:organization.method,...(evidenceUrl(organization.url)?{url:evidenceUrl(organization.url)}:{}),identityStatus:'source_statement_not_independently_verified'});if(organizations.length>=6)break;}
+ const followLinks=(Array.isArray(data.followLinks)?data.followLinks:[]).map(link=>{const url=officialEvidenceUrl(link?.url||link?.value,sourceURL,pageData);return url?{url,label:evidenceText(link.label||link.text,300),sourceURL}:null;}).filter(Boolean).slice(0,12);
+ const publicationDates=(Array.isArray(data.publicationDates)?data.publicationDates:[]).filter(x=>x&&['datePosted','validThrough'].includes(x.field)&&x.method==='jsonld_jobposting'&&evidenceUrl(x.sourceURL)===sourceURL).slice(0,4).map(x=>({field:x.field,value:evidenceText(x.value,100),sourceURL,quote:evidenceText(x.quote),method:x.method}));
+ const candidate=data.ai;
+ const ai=candidate?.model==='@cf/meta/llama-3.1-8b-instruct-fp8'&&candidate.readAt===row.read_at&&candidate.meaning==='machine_selected_verbatim_quotes_requires_review'&&Number.isFinite(Date.parse(candidate.selectedAt))&&Array.isArray(candidate.quotes)&&candidate.quotes.length>0&&candidate.quotes.length<=3&&candidate.quotes.every(quote=>typeof quote==='string'&&quote.length>=25&&quote.length<=600&&typeof row.read_text==='string'&&row.read_text.includes(quote))?{model:candidate.model,readAt:candidate.readAt,selectedAt:candidate.selectedAt,quotes:candidate.quotes,meaning:candidate.meaning}:null;
+ return {sourceURL,readAt:row.read_at,contacts,organizations,followLinks,publicationDates,...(ai?{ai}:{}),limitations:(Array.isArray(data.limitations)?data.limitations:[]).filter(x=>typeof x==='string').slice(0,6).map(x=>x.slice(0,500)),parentPageId:data.parentPageId,parentURL:data.parentURL,depth:data.depth};
 }
 export async function enrichReadPages(db,rows,profile,ms,enabled){
  const items=rows.map(row=>publicItem(row,profile,ms));if(!enabled||!items.length)return items;
- const readings=await all(db,"SELECT q.url,q.country,q.status,q.read_at,c.read_at AS content_read_at,c.status AS content_status,c.text,e.analysis,e.read_at AS evidence_read_at FROM public_page_queue q JOIN public_page_content c ON c.page_id=q.id LEFT JOIN public_page_evidence e ON e.page_id=q.id AND e.profile_id=? WHERE q.url IN (SELECT value FROM json_each(?)) AND q.status IN ('read','read_partial') AND (q.profile_scope='both' OR ?='amir')",profile,JSON.stringify(items.map(item=>item.url)),profile);
+ const readings=await all(db,"SELECT q.id AS page_id,q.url,q.country,q.status,q.read_at,c.read_at AS content_read_at,c.status AS content_status,c.text,e.analysis,e.read_at AS evidence_read_at FROM public_page_queue q JOIN public_page_content c ON c.page_id=q.id LEFT JOIN public_page_evidence e ON e.page_id=q.id AND e.profile_id=? WHERE q.url IN (SELECT value FROM json_each(?)) AND q.status IN ('read','read_partial') AND (q.profile_scope='both' OR ?='amir')",profile,JSON.stringify(items.map(item=>item.url)),profile);
  if(!readings.length)return items;
+ let enrichments=[];try{enrichments=await all(db,"SELECT x.page_id,x.read_at,x.country,x.data,q.url AS page_url,q.country AS queue_country,q.profile_scope,q.status AS queue_status,q.read_at AS queue_read_at,q.data AS page_data,c.read_at AS content_read_at,c.status AS content_status,c.text AS read_text FROM public_page_enrichment x JOIN public_page_queue q ON q.id=x.page_id JOIN public_page_content c ON c.page_id=x.page_id WHERE (x.page_id IN (SELECT value FROM json_each(?)) OR CASE WHEN json_valid(x.data) THEN json_extract(x.data,'$.parentPageId') END IN (SELECT value FROM json_each(?))) AND (q.profile_scope='both' OR ?='amir') LIMIT 500",JSON.stringify(readings.map(row=>row.page_id)),JSON.stringify(readings.map(row=>row.page_id)),profile);}catch{/* Optional extraction migration/failure never fabricates contact evidence or hides a valid listing. */}
+
  // A current URL can be reused by a later publication. Do not rewrite an older edition
  // with content fetched after its successor was first seen, including equal-time imports.
  const boundaries=await all(db,"SELECT current.id,(SELECT min(next.first_seen_at) FROM opportunity_editions next WHERE next.source_id=current.source_id AND next.external_id=current.external_id AND (next.first_seen_at>current.first_seen_at OR (next.first_seen_at=current.first_seen_at AND next.rowid>current.rowid))) AS next_first_seen FROM opportunity_editions current WHERE current.id IN (SELECT value FROM json_each(?))",JSON.stringify(items.map(item=>item.id)));
@@ -183,9 +211,22 @@ export async function enrichReadPages(db,rows,profile,ms,enabled){
   if(readTime<firstSeen)return {...item,reading:{status:'before_current_edition',readAt:read.read_at}};
   if(Number.isFinite(nextSeen)&&readTime>=nextSeen)return {...item,reading:{status:'after_current_edition',readAt:read.read_at,editionChangedAt:nextById.get(item.id)}};
   let analysis=null;if(read.analysis&&read.evidence_read_at===read.read_at){try{analysis=JSON.parse(read.analysis);}catch{/* Content remains usable; stale/broken evidence never breaks the opportunity list. */}}
-  const body={...item,fullText:read.text.slice(0,20000)};
-  return {...body,screening:screenOpportunity(body,profile),gpSignals:gpOpportunitySignals(body),reading:{status:read.status,readAt:read.read_at,partialReading:read.status==='read_partial',textTruncatedForDisplay:read.text.length>20000,summary:typeof analysis?.summary==='string'?analysis.summary.slice(0,1800):'',category:['call','admission','funding','career','development','guidance','navigation','unrelated'].includes(analysis?.category)?analysis.category:null,eligibility:'not_assessed'}};
+  const body={...item,fullText:read.text.slice(0,20000)},screening=screenOpportunity({...item,fullText:read.text},profile);
+  const directRow=enrichments.find(row=>row.page_id===read.page_id),direct=directRow?validEnrichment(directRow,item,profile,ms):null;
+  let enrichment=null;
+  if(direct){
+   const linked=[];for(const row of enrichments){if(row.page_id===read.page_id)continue;const child=validEnrichment(row,item,profile,ms);if(!child||child.parentPageId!==read.page_id||child.parentURL&&![item.url,direct.sourceURL].includes(evidenceUrl(child.parentURL))||child.depth!==1||!officialEvidenceUrl(child.sourceURL,direct.sourceURL,parsePageData(directRow.page_data)))continue;const childAt=Date.parse(child.readAt);if(childAt<firstSeen||Number.isFinite(nextSeen)&&childAt>=nextSeen)continue;for(const contact of child.contacts)linked.push({...contact,sourceRelation:'linked_page',parentURL:item.url,parentPageId:read.page_id});}
+   const contacts=[...new Map([...direct.contacts,...linked].map(contact=>[JSON.stringify([contact.type,contact.value,contact.sourceURL]),contact])).values()].slice(0,36);
+   enrichment={...direct,contacts,limitations:[...direct.limitations,'Contact evidence is public source wording, not a verified recipient or organization identity. Linked-page contacts keep their own source and are not advertisement recipients.']};
+  }
+  return {...body,screening,gpSignals:gpOpportunitySignals({...item,fullText:read.text}),fit:assessOpportunityFit({...item,fullText:read.text},profile,screening),...(enrichment?{enrichment,contactEvidence:enrichment.contacts}:{}),reading:{status:read.status,readAt:read.read_at,partialReading:read.status==='read_partial',textTruncatedForDisplay:read.text.length>20000,...(enrichment?{enrichment}:{}),summary:typeof analysis?.summary==='string'?analysis.summary.slice(0,1800):'',category:['call','admission','funding','career','development','guidance','navigation','unrelated'].includes(analysis?.category)?analysis.category:null,eligibility:'not_assessed'}};
  });
+}
+async function ownProfileReadiness(items,profile,context){
+ if(!items.length||typeof context.rest!=='function')return items;
+ let data={};try{const rows=await context.rest('immi_profiles','?select=data&profile_id=eq.'+profile);if(Array.isArray(rows)&&rows.length===1&&(!rows[0].profile_id||rows[0].profile_id===profile))data=rows[0].data||{};}catch{/* Missing private context is unknown, never a public listing failure. */}
+ const profileReadiness=deriveProfileReadiness(data,profile);
+ return items.map(item=>({...item,fit:{...item.fit,profileReadiness}}));
 }
 export async function handleOpportunityV2Request(request,env,context) {
   const url=new URL(request.url),path=url.pathname;
@@ -204,15 +245,16 @@ export async function handleOpportunityV2Request(request,env,context) {
       const where=whereFor({...f,organizationId:org.id,includeClosed:'true'},profile,now.iso);
       const rows=await all(db,'SELECT * FROM opportunity_editions '+where.sql+' ORDER BY published_at DESC,first_seen_at DESC,id LIMIT ? OFFSET ?',...where.args,f.limit,f.offset);
       const count=await stmt(db,'SELECT count(*) AS n FROM opportunity_editions '+where.sql,...where.args).first();
-      return json({organization:JSON.parse(org.data),opportunities:await enrichReadPages(db,rows,profile,now.ms,env.PUBLIC_PAGE_READING_ENABLED==='true'),total:count.n,limit:f.limit,offset:f.offset});
+      return json({organization:JSON.parse(org.data),opportunities:await ownProfileReadiness(await enrichReadPages(db,rows,profile,now.ms,env.PUBLIC_PAGE_READING_ENABLED==='true'),profile,context),total:count.n,limit:f.limit,offset:f.offset});
     }
     const where=whereFor(f,profile,now.iso);
     if(path==='/api/opportunities/organizations') {
       const rows=await all(db,'SELECT o.id,o.data,count(e.id) AS editions FROM opportunity_organizations o JOIN opportunity_editions e ON e.organization_id=o.id '+where.sql.replaceAll('country','e.country').replaceAll('profile_scope','e.profile_scope').replaceAll('state','e.state').replaceAll('trust','e.trust').replaceAll('opportunity_type','e.opportunity_type').replaceAll('title','e.title').replaceAll('data','e.data').replaceAll('organization_id','e.organization_id').replaceAll('status','e.status').replaceAll('closing_at','e.closing_at').replaceAll('published_at','e.published_at')+' GROUP BY o.id ORDER BY o.id LIMIT ? OFFSET ?',...where.args,f.limit,f.offset);
       return json({organizations:rows.map(row=>({...JSON.parse(row.data),editionCount:row.editions})),limit:f.limit,offset:f.offset});
     }
-    const rows=await all(db,'SELECT * FROM opportunity_editions '+where.sql+(f.sort==='newest'?' ORDER BY first_seen_at DESC,published_at DESC,id':' ORDER BY closing_at IS NULL,closing_at,published_at DESC,id')+' LIMIT ? OFFSET ?',...where.args,f.limit,f.offset);
+    const rows=await all(db,'SELECT * FROM opportunity_editions '+where.sql+(['newest','fit'].includes(f.sort)?' ORDER BY first_seen_at DESC,published_at DESC,id':' ORDER BY closing_at IS NULL,closing_at,published_at DESC,id')+' LIMIT ? OFFSET ?',...where.args,f.limit,f.offset);
     const count=await stmt(db,'SELECT count(*) AS n FROM opportunity_editions '+where.sql,...where.args).first();
-    return json({opportunities:await enrichReadPages(db,rows,profile,now.ms,env.PUBLIC_PAGE_READING_ENABLED==='true'),total:count.n,limit:f.limit,offset:f.offset,sourceCoverage:'configured_sources_only',scope:{country:f.country,trust:f.trust,types:f.types,italyAllowed:profile==='amir'}});
+    const enriched=await ownProfileReadiness(await enrichReadPages(db,rows,profile,now.ms,env.PUBLIC_PAGE_READING_ENABLED==='true'),profile,context);
+    return json({opportunities:f.sort==='fit'?sortOpportunityPageByFit(enriched):enriched,rankingScope:f.sort==='fit'?'current_page_evidence_priority':null,total:count.n,limit:f.limit,offset:f.offset,sourceCoverage:'configured_sources_only',scope:{country:f.country,trust:f.trust,types:f.types,italyAllowed:profile==='amir'}});
   } catch(error) {return json({error:error instanceof OpportunityStoreError?error.code:'opportunity_request_failed'},error instanceof OpportunityStoreError?error.status:500);}
 }
