@@ -6,6 +6,7 @@ import {RURAL_SOURCE_DEFINITIONS,normalizeRuralSourceRecords} from './rural-sour
 import {sourceAutomationStatus} from './source-automation.mjs';
 import {plainJobText,pageUpDate} from './job-opportunities.mjs';
 import {upsertOpportunityBatch} from './opportunity-store.mjs';
+import {enqueuePublicPages} from './public-page-store.mjs';
 export const SOURCE_REGISTRY=Object.freeze([...registry,...RURAL_SOURCE_DEFINITIONS,...ITALY_SOURCE_DEFINITIONS,...AU_SOURCE_DEFINITIONS].map(source=>Object.freeze({...source,allowedHosts:Object.freeze([...source.allowedHosts])})));
 const ACTIVE=SOURCE_REGISTRY.filter(s=>s.executable);
 const MAX_BYTES=3000000, MAX_CALLS=3, MAX_RECORDS=100, PER_SOURCE=40;
@@ -125,7 +126,7 @@ async function boundedText(response){
  const reader=response.body?.getReader();if(!reader)fail('invalid_source_response');let bytes=0,text='';const decoder=new TextDecoder();
  try{while(true){const part=await reader.read();if(part.done)break;bytes+=part.value.byteLength;if(bytes>MAX_BYTES){await reader.cancel();fail('source_response_too_large');}text+=decoder.decode(part.value,{stream:true});}return text+decoder.decode();}finally{reader.releaseLock();}
 }
-async function collectOne(db,source,fetcher,remaining,now){
+async function collectOne(db,source,fetcher,remaining,now,readPages=false){
  const lock=crypto.randomUUID();
  await run(db,'INSERT OR IGNORE INTO registered_source_checks(source_id) VALUES(?)',source.id);
  const claim=await first(db,'UPDATE registered_source_checks SET lock_token=?,lock_until=?,last_attempt_at=? WHERE source_id=? AND lock_until<? AND next_check_at<=? RETURNING etag,record_cursor',lock,now+90000,now,source.id,now,now);
@@ -145,6 +146,10 @@ async function collectOne(db,source,fetcher,remaining,now){
   const selected=records.slice(start,start+Math.min(PER_SOURCE,remaining));
   const partial=start+selected.length<records.length, nextCursor=partial?start+selected.length:0;
   const imported=await upsertOpportunityBatch(db,source,selected,now);
+  if(readPages&&selected.length){
+   const queue=await Promise.all(selected.map(async record=>{const bytes=new TextEncoder().encode(record.url),id='page_'+[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,32);return {id,url:record.url,country:source.country,institutionIds:[],officialBases:[new URL(record.url).hostname.replace(/^www\./,'')],labels:[record.title],discoveredFrom:[source.feedUrl],sourceId:source.id};}));
+   try{await enqueuePublicPages(db,queue);imported.readingQueue='queued';}catch{imported.readingQueue='queue_retry_required';}
+  }
   let etag=response.headers.get('etag');if(!etag||etag.length>=1000||/[\r\n]/.test(etag))etag=null;
   await run(db,"UPDATE registered_source_checks SET status='updated',etag=?,last_success_at=?,next_check_at=?,last_error_code=NULL,imported_records=?,record_cursor=?,partial=? WHERE source_id=? AND lock_token=?",etag,now,now+(partial?15*60*1000:SUCCESS_COOLDOWN),selected.length,nextCursor,Number(partial),source.id,lock);
   return {...imported,sourceId:source.id,status:'updated',imported:selected.length,matchingRecords:records.length,partial,nextCursor};
@@ -159,7 +164,7 @@ export async function collectRegisteredSources(env,fetcher=fetch){
  const start=rotation?(rotation.position-MAX_CALLS+ACTIVE.length*2)%ACTIVE.length:position;
  const receipts=[];let remaining=MAX_RECORDS;
  for(let i=0;i<Math.min(MAX_CALLS,ACTIVE.length)&&remaining>0;i++){
-  const source=ACTIVE[(start+i)%ACTIVE.length];const receipt=await collectOne(db,source,fetcher,remaining,now);receipts.push(receipt);remaining-=receipt.imported||0;
+  const source=ACTIVE[(start+i)%ACTIVE.length];const receipt=await collectOne(db,source,fetcher,remaining,now,env.PUBLIC_PAGE_READING_ENABLED==='true');receipts.push(receipt);remaining-=receipt.imported||0;
  }
  return {status:receipts.some(r=>r.status==='failed')?'partial_failure':'completed',checkedAt:iso(now),sourceBudget:MAX_CALLS,recordBudget:MAX_RECORDS,imported:MAX_RECORDS-remaining,sources:receipts,coverage:'bounded_registered_public_sources_only'};
 }

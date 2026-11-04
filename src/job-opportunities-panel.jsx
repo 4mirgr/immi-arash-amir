@@ -5,6 +5,7 @@ import {MixedText} from './mixed-text';
 import {GPDiscovery} from './gp-discovery';
 import gpSources from '../cloud/gp-discovery-sources.json';
 import {UniversityCatalogue} from './university-catalogue';
+import {ExtractedEvidence} from './extracted-evidence';
 
 const text=value=>typeof value==='string'?value:'';
 const list=value=>Array.isArray(value)?value:[];
@@ -62,6 +63,7 @@ export function JobOpportunitiesPanel({person,notify}){
   <div className="section-head" style={{gap:10,flexWrap:'wrap',alignItems:'start'}}><div style={{minWidth:0,flex:1}}><h4 dir="auto" style={{margin:'0 0 8px',overflowWrap:'anywhere'}}>{text(item.title)||'عنوان اعلام نشده'}</h4><small>{organizationName(item)} · {item.country==='IT'?'ایتالیا':text(item.state)||'استرالیا'}</small></div><span className="status">{TYPES.find(([key])=>key===type)?.[1]||'نوع نیازمند بررسی'}</span><span className="status amber">{trustLabel(item)}</span><span className="status">{statusLabels[item.status]||'وضعیت نیازمند بررسی'}</span></div>
   {item.kind==='employment_register'&&<p className="notice">این مورد بانک متقاضی / اعلام علاقه‌مندی است؛ جای خالی مشخص تأیید نشده است.</p>}
   <p className="muted">انتشار: {date(item.publishedAt||item.published_at)} · مهلت: {date(item.closingAt||item.closing_at)} · آخرین مشاهده: {date(item.lastSeenAt||item.last_seen_at)}</p>
+  {item.reading&&<p className="notice">{item.reading.status==='before_current_edition'?'متن خوانده‌شده مربوط به قبل از این نوبت انتشار است؛ برای شرایط تازه کافی نیست.':item.reading.status==='after_current_edition'?'متن فعلی نشانی مربوط به نوبت انتشار بعدی است و برای این سابقه استفاده نشده.':!['read','read_partial'].includes(item.reading.status)?'رسید خواندن این نسخه قابل تأیید نیست؛ متن دریافت‌شده به این آگهی نسبت داده نشد.':item.reading.status==='read_partial'?'بخشی از متن اصلی خوانده شده؛ محدودیت محتوا و اصل منبع را بررسی کنید.':'متن اصلی این صفحه خوانده و شواهد آن استخراج شده است؛ صلاحیت شخصی هنوز ارزیابی نشده.'} زمان: {date(item.reading.readAt)}</p>}
   <p className="message-snippet" dir="auto">{text(item.summary)}</p>
   <p className="muted">اسپانسرشیپ: {item.sponsorship===true?'ذکرشده؛ نیازمند تأیید':'تأیید نشده'} · supervision: {item.supervision===true?'ذکرشده؛ نیازمند تأیید':'تأیید نشده'} · ثبت پزشکی، شرایط تحصیلی و MMM/DPA نیازمند بررسی مستقل‌اند.</p>
   {person==='arash'&&item.country==='AU'&&item.gpSignals&&<p className="muted"><MixedText>{'MMM در متن: '+(item.gpSignals.monashMentioned?.length?item.gpSignals.monashMentioned.join('، '):'ذکر نشده')+' · '+(item.gpSignals.ruralWording?'اشارهٔ متنی به rural/regional/remote':'منطقهٔ rural تأیید نشده')+'؛ طبقه‌بندی جغرافیایی باید مستقل بررسی شود.'}</MixedText></p>}
@@ -71,6 +73,7 @@ export function JobOpportunitiesPanel({person,notify}){
  </article>;}
  return <section className="panel" aria-label="فرصت‌های منتشرشده در منابع رسمی و غیررسمی">
   <div className="section-head" style={{flexWrap:'wrap',gap:12}}><div><span className="eyebrow">SOURCE EVIDENCE • OPPORTUNITY HISTORY</span><h3><BriefcaseBusiness size={19}/> فرصت‌ها و نوبت‌های انتشار هر مجموعه</h3></div><button className="secondary" disabled={checking||busy} onClick={refreshSources}><RefreshCw size={15} className={checking?'spin':''}/>{checking?'در حال بررسی…':'بررسی تازهٔ منابع'}</button></div>
+  <ExtractedEvidence key={person+':'+effectiveCountry} person={person} section={person==='arash'?'jobs':effectiveCountry==='IT'?'study':'jobs'} country={effectiveCountry}/>
   {person==='amir'&&effectiveCountry==='IT'&&<UniversityCatalogue key={person} person={person}/>}
   {person==='arash'&&<GPDiscovery sources={gpSources} notify={notify}/>}
   <div className="notice">دادهٔ منبع، پیشنهاد کار قطعی یا تأیید شرایط شما نیست. پوشش فعال هر منبع در فهرست زیر مشخص است؛ وجود نام یک ایالت یا دانشگاه به معنی فعال‌بودن جمع‌آوری خودکار آن نیست.{person==='amir'?' فرصت‌های دانشگاهی ایتالیا فقط در این پنل در دسترس‌اند.':''}</div>

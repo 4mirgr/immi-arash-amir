@@ -54,6 +54,7 @@ const AutomationHub=deferredPanel(()=>import("./automation-hub"),"AutomationHub"
 const LinkedInWorkspace=deferredPanel(()=>import("./linkedin-workspace"),"LinkedInWorkspace");
 const PesciPractice=deferredPanel(()=>import("./pesci-practice"),"PesciPractice");
 const JobOpportunitiesPanel=deferredPanel(()=>import("./job-opportunities-panel"),"JobOpportunitiesPanel");
+const ExtractedEvidence=deferredPanel(()=>import("./extracted-evidence"),"ExtractedEvidence");
 const RoadmapPanel=deferredPanel(()=>import("./roadmap-panel"),"RoadmapPanel");
 const nav = [
   ["overview", "نمای کلی", LayoutDashboard],
@@ -1023,9 +1024,11 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
               <RoadmapPanel person={person} category="pathways" notify={notify} cloud={cloud}/>
             ))}
           {tab === "linkedin" && <LinkedInWorkspace person={person} notify={notify}/> }
-          {tab === "roadmap" && <RoadmapPanel key={person+":pathways"} person={person} category="pathways" notify={notify} cloud={cloud} />}
-          {tab === "study" && person === "amir" && <RoadmapPanel key={person+":study"} person={person} category="study" notify={notify} cloud={cloud} />}
-          {tab === "development" && <RoadmapPanel key={person+":development"} person={person} category="development" notify={notify} cloud={cloud} />}
+          {tab === "sources" && <><ExtractedEvidence person={person} section="all" country="AU"/>{person==="amir"&&<ExtractedEvidence person={person} section="all" country="IT"/>}</>}
+          {tab === "cv" && <ExtractedEvidence person={person} section="development" country="AU"/>}
+          {tab === "roadmap" && <><RoadmapPanel key={person+":pathways"} person={person} category="pathways" notify={notify} cloud={cloud} /><ExtractedEvidence person={person} section="pathway" country="AU"/>{person==="amir"&&<ExtractedEvidence person={person} section="pathway" country="IT"/>}</>}
+          {tab === "study" && person === "amir" && <><RoadmapPanel key={person+":study"} person={person} category="study" notify={notify} cloud={cloud} /><ExtractedEvidence person={person} section="study" country="IT"/><ExtractedEvidence person={person} section="study" country="AU"/></>}
+          {tab === "development" && <><RoadmapPanel key={person+":development"} person={person} category="development" notify={notify} cloud={cloud} /><ExtractedEvidence person={person} section="development" country="AU"/>{person==="amir"&&<ExtractedEvidence person={person} section="development" country="IT"/>}</>}
           {tab === "sources" && (
             <>
               <div className="notice">

@@ -1,5 +1,7 @@
 # Resume this project with minimal context
 
+Public page reading/extraction: read docs/CONTENT-PIPELINE.fa.md selectively. Dedicated public-page schema and queue/content/profile evidence live ONLY in OPPORTUNITY_DB. Discovered links are not evidence until content is actually retrieved. Runtime HTML/text reader is bounded; PDF ingestion uses the separate offline reader. Keep partial/blocked/archived/eligibility uncertainty visible and never apply a later page reading to an earlier publication edition.
+
 1. Read `AGENTS.md`, then only your role file under `docs/agents/`.
 2. Read `docs/GOALS.md` for requirements/status and `docs/STATUS.fa.md` for delivery notes. Consult `docs/POLICY.md` before privacy, source, external-action or deployment changes.
 3. Confirm `git status`, current commit and recent CI. Do not restart completed work or assume old deployment notes describe today's runtime.

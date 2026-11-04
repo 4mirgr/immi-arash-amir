@@ -167,6 +167,26 @@ function whereFor(f,profile,now) {
 function publicItem(row,profile,ms) {
   const item=JSON.parse(row.data);return {...item,status:statusAt({...item,status:row.status},ms),firstSeenAt:row.first_seen_at,lastSeenAt:row.last_seen_at,match:match(item,profile),screening:screenOpportunity(item,profile),gpSignals:gpOpportunitySignals(item)};
 }
+async function enrichReadPages(db,rows,profile,ms,enabled){
+ const items=rows.map(row=>publicItem(row,profile,ms));if(!enabled||!items.length)return items;
+ const readings=await all(db,"SELECT q.url,q.country,q.status,q.read_at,c.read_at AS content_read_at,c.status AS content_status,c.text,e.analysis,e.read_at AS evidence_read_at FROM public_page_queue q JOIN public_page_content c ON c.page_id=q.id LEFT JOIN public_page_evidence e ON e.page_id=q.id AND e.profile_id=? WHERE q.url IN (SELECT value FROM json_each(?)) AND q.status IN ('read','read_partial') AND (q.profile_scope='both' OR ?='amir')",profile,JSON.stringify(items.map(item=>item.url)),profile);
+ if(!readings.length)return items;
+ // A current URL can be reused by a later publication. Do not rewrite an older edition
+ // with content fetched after its successor was first seen, including equal-time imports.
+ const boundaries=await all(db,"SELECT current.id,(SELECT min(next.first_seen_at) FROM opportunity_editions next WHERE next.source_id=current.source_id AND next.external_id=current.external_id AND (next.first_seen_at>current.first_seen_at OR (next.first_seen_at=current.first_seen_at AND next.rowid>current.rowid))) AS next_first_seen FROM opportunity_editions current WHERE current.id IN (SELECT value FROM json_each(?))",JSON.stringify(items.map(item=>item.id)));
+ const nextById=new Map(boundaries.map(row=>[row.id,row.next_first_seen]));
+ return items.map(item=>{
+  const read=readings.find(r=>r.url===item.url&&r.country===item.country);if(!read)return item;
+  const readTime=Date.parse(read.read_at),firstSeen=Date.parse(item.firstSeenAt),nextSeen=Date.parse(nextById.get(item.id));
+  if(!Number.isFinite(readTime)||!Number.isFinite(firstSeen)||readTime>ms+60000)return {...item,reading:{status:'invalid_reading_timestamp',readAt:null}};
+  if(read.read_at!==read.content_read_at||read.status!==read.content_status||typeof read.text!=='string')return {...item,reading:{status:'content_receipt_mismatch',readAt:read.read_at}};
+  if(readTime<firstSeen)return {...item,reading:{status:'before_current_edition',readAt:read.read_at}};
+  if(Number.isFinite(nextSeen)&&readTime>=nextSeen)return {...item,reading:{status:'after_current_edition',readAt:read.read_at,editionChangedAt:nextById.get(item.id)}};
+  let analysis=null;if(read.analysis&&read.evidence_read_at===read.read_at){try{analysis=JSON.parse(read.analysis);}catch{/* Content remains usable; stale/broken evidence never breaks the opportunity list. */}}
+  const body={...item,fullText:read.text.slice(0,20000)};
+  return {...body,screening:screenOpportunity(body,profile),gpSignals:gpOpportunitySignals(body),reading:{status:read.status,readAt:read.read_at,partialReading:read.status==='read_partial',textTruncatedForDisplay:read.text.length>20000,summary:typeof analysis?.summary==='string'?analysis.summary.slice(0,1800):'',category:['call','admission','funding','career','development','guidance','navigation','unrelated'].includes(analysis?.category)?analysis.category:null,eligibility:'not_assessed'}};
+ });
+}
 export async function handleOpportunityV2Request(request,env,context) {
   const url=new URL(request.url),path=url.pathname;
   const group=path.match(/^\/api\/opportunities\/organizations\/(org_[a-f0-9]{24})$/);
@@ -184,7 +204,7 @@ export async function handleOpportunityV2Request(request,env,context) {
       const where=whereFor({...f,organizationId:org.id,includeClosed:'true'},profile,now.iso);
       const rows=await all(db,'SELECT * FROM opportunity_editions '+where.sql+' ORDER BY published_at DESC,first_seen_at DESC,id LIMIT ? OFFSET ?',...where.args,f.limit,f.offset);
       const count=await stmt(db,'SELECT count(*) AS n FROM opportunity_editions '+where.sql,...where.args).first();
-      return json({organization:JSON.parse(org.data),opportunities:rows.map(row=>publicItem(row,profile,now.ms)),total:count.n,limit:f.limit,offset:f.offset});
+      return json({organization:JSON.parse(org.data),opportunities:await enrichReadPages(db,rows,profile,now.ms,env.PUBLIC_PAGE_READING_ENABLED==='true'),total:count.n,limit:f.limit,offset:f.offset});
     }
     const where=whereFor(f,profile,now.iso);
     if(path==='/api/opportunities/organizations') {
@@ -193,6 +213,6 @@ export async function handleOpportunityV2Request(request,env,context) {
     }
     const rows=await all(db,'SELECT * FROM opportunity_editions '+where.sql+(f.sort==='newest'?' ORDER BY first_seen_at DESC,published_at DESC,id':' ORDER BY closing_at IS NULL,closing_at,published_at DESC,id')+' LIMIT ? OFFSET ?',...where.args,f.limit,f.offset);
     const count=await stmt(db,'SELECT count(*) AS n FROM opportunity_editions '+where.sql,...where.args).first();
-    return json({opportunities:rows.map(row=>publicItem(row,profile,now.ms)),total:count.n,limit:f.limit,offset:f.offset,sourceCoverage:'configured_sources_only',scope:{country:f.country,trust:f.trust,types:f.types,italyAllowed:profile==='amir'}});
+    return json({opportunities:await enrichReadPages(db,rows,profile,now.ms,env.PUBLIC_PAGE_READING_ENABLED==='true'),total:count.n,limit:f.limit,offset:f.offset,sourceCoverage:'configured_sources_only',scope:{country:f.country,trust:f.trust,types:f.types,italyAllowed:profile==='amir'}});
   } catch(error) {return json({error:error instanceof OpportunityStoreError?error.code:'opportunity_request_failed'},error instanceof OpportunityStoreError?error.status:500);}
 }
