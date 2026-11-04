@@ -17,15 +17,20 @@ export async function enqueuePublicPages(db,rows){
  const valid=rows.map(row=>{
   if(!/^page_[a-f0-9]{32}$/.test(row.id)||!['AU','IT'].includes(row.country))throw Error('invalid_public_page');
   const url=new URL(row.url);if(url.protocol!=='https:'||url.username||url.password||url.port)throw Error('invalid_public_url');
+  if(row.discoveryVersion!==undefined&&(typeof row.discoveryVersion!=='string'||!row.discoveryVersion||row.discoveryVersion.length>200))throw Error('invalid_discovery_version');
   const profileScope=row.country==='IT'?'amir':'both';
   return {...row,profileScope};
  });
  const payload=JSON.stringify(valid);if(new TextEncoder().encode(payload).length>500000)throw Error('page_batch_limit');
  if(!valid.length)return {enqueued:0};
- await stmt(db,"INSERT INTO public_page_queue(id,url,country,profile_scope,data) SELECT json_extract(value,'$.id'),json_extract(value,'$.url'),json_extract(value,'$.country'),json_extract(value,'$.profileScope'),value FROM json_each(?) WHERE 1 ON CONFLICT(url) DO UPDATE SET data=json_set(json_patch(public_page_queue.data,excluded.data),'$.institutionIds',json((SELECT json_group_array(value) FROM (SELECT value FROM json_each(public_page_queue.data,'$.institutionIds') UNION SELECT value FROM json_each(excluded.data,'$.institutionIds')))),'$.officialBases',json((SELECT json_group_array(value) FROM (SELECT value FROM json_each(public_page_queue.data,'$.officialBases') UNION SELECT value FROM json_each(excluded.data,'$.officialBases'))))) WHERE public_page_queue.country=excluded.country AND public_page_queue.profile_scope=excluded.profile_scope",payload).run();
+ const changed="json_type(excluded.data,'$.discoveryVersion')='text' AND json_extract(excluded.data,'$.discoveryVersion')<>coalesce(json_extract(public_page_queue.data,'$.discoveryVersion'),'')";
+ await stmt(db,`INSERT INTO public_page_queue(id,url,country,profile_scope,data) SELECT json_extract(value,'$.id'),json_extract(value,'$.url'),json_extract(value,'$.country'),json_extract(value,'$.profileScope'),value FROM json_each(?) WHERE 1 ON CONFLICT(url) DO UPDATE SET available_at=CASE WHEN ${changed} THEN 0 ELSE public_page_queue.available_at END,attempts=CASE WHEN ${changed} THEN 0 ELSE public_page_queue.attempts END,data=json_set(json_patch(public_page_queue.data,excluded.data),'$.institutionIds',json((SELECT json_group_array(value) FROM (SELECT value FROM json_each(public_page_queue.data,'$.institutionIds') UNION SELECT value FROM json_each(excluded.data,'$.institutionIds')))),'$.officialBases',json((SELECT json_group_array(value) FROM (SELECT value FROM json_each(public_page_queue.data,'$.officialBases') UNION SELECT value FROM json_each(excluded.data,'$.officialBases')))),'$.refreshRequested',json(CASE WHEN ${changed} THEN 'true' ELSE coalesce(json_extract(public_page_queue.data,'$.refreshRequested'),'false') END)) WHERE public_page_queue.country=excluded.country AND public_page_queue.profile_scope=excluded.profile_scope`,payload).run();
  return {enqueued:valid.length};
 }
-export async function storePublicReading(db,record){
+export const PUBLIC_PAGE_REFRESH_MS=7*24*60*60*1000;
+export const PUBLIC_PAGE_RETRY_MS=24*60*60*1000;
+export const PUBLIC_PAGE_TRANSIENT_STATUSES=['fetch_failed','robots_unavailable','http_error','reading_storage_failed'];
+export async function storePublicReading(db,record,now=Date.parse(record.readAt)){
  const row=await stmt(db,'SELECT * FROM public_page_queue WHERE id=?',record.id).first();
  if(!row||row.url!==record.url)throw Error('page_not_registered');
  if(!Number.isFinite(Date.parse(record.readAt)))throw Error('invalid_read_date');
@@ -33,7 +38,8 @@ export async function storePublicReading(db,record){
  const status=read?record.status:String(record.status||'failed').replace(/[^a-z_]/g,'').slice(0,60)||'failed';
  const text=read?record.text.slice(0,50000):'';
  const bound={...record,text,title:String(record.title||'').slice(0,500),country:row.country,institutionIds:JSON.parse(row.data).institutionIds||[]};
- const writes=[stmt(db,'UPDATE public_page_queue SET status=?,read_at=?,title=?,content_hash=?,lease_until=0,last_error=? WHERE id=?',status,record.readAt,bound.title,record.contentHash||null,read?null:status,row.id)];
+ const availableAt=now+(read?PUBLIC_PAGE_REFRESH_MS:PUBLIC_PAGE_RETRY_MS);
+ const writes=[stmt(db,`UPDATE public_page_queue SET status=?,read_at=?,title=?,content_hash=?,lease_until=0,last_error=?,available_at=?,attempts=?,data=json_remove(data,'$.refreshRequested') WHERE id=?`,status,record.readAt,bound.title,record.contentHash||null,read?null:status,availableAt,read?0:row.attempts,row.id)];
  if(read)writes.push(stmt(db,'INSERT INTO public_page_content(page_id,read_at,status,title,content_type,text,content_hash,limitations) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET read_at=excluded.read_at,status=excluded.status,title=excluded.title,content_type=excluded.content_type,text=excluded.text,content_hash=excluded.content_hash,limitations=excluded.limitations',row.id,record.readAt,status,bound.title,String(record.contentType||'').slice(0,100),text,record.contentHash||null,JSON.stringify(record.limitations||[])));
  // Invalidate prior extraction on every result, including an unreadable changed page.
  writes.push(stmt(db,'DELETE FROM public_page_evidence WHERE page_id=?',row.id));

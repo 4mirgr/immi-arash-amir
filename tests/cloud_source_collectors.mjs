@@ -131,3 +131,14 @@ test('NT search uses only fixed public POST filters with no browser credentials'
 });
 
 test('NT date-only closing display is preserved without inventing an exact cutoff',async()=>{const rows=[{rtfId:55,jobTitle:'Medical Registrar',agency:'Department of Health',dateAdded:'/Date(1793491200000)/',closingDate:'08/11/2026',closingDateAsDateTime:'/Date(1794061800000)/',RecruitmentProgramId:1}];const [row]=await normalizeSourceRecords(source('nt-health-public-search'),ntBody(rows));assert.equal(row.closingAt,null);assert(row.fullText.includes('08/11/2026'));assert(row.fullText.includes('exact cutoff/time zone not verified'));assert.equal(row.kind,'vacancy');});
+
+test('page queue receives stable content version and requests fresh reading when the same source URL changes',async()=>{
+ const {db,env}=fixture();db.exec(readFileSync(new URL('../cloud/public-page-schema.sql',import.meta.url),'utf8'));env.PUBLIC_PAGE_READING_ENABLED='true';
+ await collectRegisteredSources(env,fetchFixture());
+ const row=db.prepare("SELECT * FROM public_page_queue WHERE json_extract(data,'$.sourceId')='tas-pageup-759'").get();assert(row);const firstVersion=JSON.parse(row.data).discoveryVersion;assert.match(firstVersion,/^[a-f0-9]{64}$/);
+ const due=Date.now()+86400000;db.prepare("UPDATE public_page_queue SET status='read',available_at=?,read_at=? WHERE id=?").run(due,new Date().toISOString(),row.id);
+ const reset=()=>db.exec('UPDATE source_collector_state SET position=0; UPDATE registered_source_checks SET next_check_at=0;');reset();await collectRegisteredSources(env,fetchFixture());
+ assert.equal(db.prepare('SELECT available_at FROM public_page_queue WHERE id=?').get(row.id).available_at,due,'identical poll retains schedule');
+ reset();const original=fetchFixture();await collectRegisteredSources(env,async(url,options)=>url.includes('/759/')?new Response(JSON.stringify([pageup('1',{Title:'Medical Registrar - Rural Medicine'})])):original(url,options));
+ const changed=db.prepare('SELECT * FROM public_page_queue WHERE id=?').get(row.id);assert.equal(changed.status,'read');assert.equal(changed.available_at,0);assert.notEqual(JSON.parse(changed.data).discoveryVersion,firstVersion);assert.equal(JSON.parse(changed.data).refreshRequested,true);
+});

@@ -48,6 +48,7 @@ import { ThemeControl } from "./theme-control";
 import { downloadCVPDF } from "./cv-pdf.mjs";
 import { MixedText } from "./mixed-text";
 import { TextSizeControl } from "./text-size-control";
+import {ArashHome,ArashNavigation,WorkspaceFold,ARASH_TONES} from "./arash-workspace";
 import sourceRegistry from "../library/sources.json";
 function deferredPanel(load,name){const Component=React.lazy(()=>load().then(module=>({default:module[name]})));return function DeferredPanel(props){return <React.Suspense fallback={<section className="panel" role="status">در حال آماده‌سازی این بخش…</section>}><Component {...props}/></React.Suspense>;};}
 const AutomationHub=deferredPanel(()=>import("./automation-hub"),"AutomationHub");
@@ -316,7 +317,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
     ],
   ];
   return (
-    <div className={"app " + (!arash ? "amir" : "")}>
+    <div className={"app " + (!arash ? "amir" : "arash-workspace neon-"+ARASH_TONES[tab])} data-section={tab}>
       <aside className="sidebar">
         <a className="brand" href="#" onClick={(e) => e.preventDefault()}>
           <span className="brand-icon"><img src="/brand-aa-64.png" alt="AA" width="42" height="42" style={{borderRadius:10}}/></span>
@@ -350,7 +351,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
             ? "ورود امن · دسترسی محدود به حساب شما"
             : "تعویض نمای آزمایشی · ورود امن هنوز متصل نیست"}
         </div>
-        <nav>
+        {arash ? <ArashNavigation items={nav} tab={tab} onNavigate={setTab}/> : <nav>
           {nav.filter(([id])=>(id!=="study"||person==="amir")&&(id!=="pesci"||person==="arash")).map(([id, title, Icon]) => (
             <button
               key={id}
@@ -364,7 +365,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
               {id === "opportunities" && <b>{clinics.length}</b>}
             </button>
           ))}
-        </nav>
+        </nav>}
         <div className="sidebar-bottom">
           <div className="connection">
             <span className={"dot " + (online ? "green" : "amber")} />
@@ -443,7 +444,8 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                 : "نسخهٔ پایه · سرور داده در دسترس نیست. برای دریافت اطلاعات واقعی، API را اجرا کنید."}
             </div>
           )}
-          {tab === "overview" && (
+          {tab === "overview" && arash && <ArashHome onNavigate={setTab} online={online} googleConnected={googleConnection.state.connected} leadCount={clinics.length} draftCount={drafts.length} hasCV={!!profile?.cvText}/>}
+          {tab === "overview" && !arash && (
             <>
               <section className="hero">
                 <div className="hero-copy">
@@ -623,8 +625,8 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
             </>
           )}
           {tab === "opportunities" && <JobOpportunitiesPanel person={person} notify={notify} />}
-          {(tab === "opportunities" || tab === "overview") && (
-            <section className="panel opportunities">
+          {(tab === "opportunities" || (tab === "overview" && !arash)) && (
+            <WorkspaceFold enabled={arash} title="بانک مراکز و انتخاب مخاطب" hint="سرنخ‌های تماس واردشده؛ مستقل از آگهی‌های شغلی" tone="amber"><section className="panel opportunities">
               <div className="section-head">
                 <div>
                   <span className="eyebrow">OPPORTUNITY RADAR</span>
@@ -834,7 +836,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                   </button>
                 </div>
               )}
-            </section>
+            </section></WorkspaceFold>
           )}
           {tab === "mail" && (
             <div className="two-col compose-grid">
