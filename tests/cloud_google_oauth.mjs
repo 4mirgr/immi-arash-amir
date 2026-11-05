@@ -150,3 +150,25 @@ test('secondary bridge does not replace either existing primary grant and keeps 
  const callback=await handleGoogleCallback(new Request(origin+'/api/google/callback?state='+consent.searchParams.get('state')+'&code=synthetic-code',{headers:{Cookie:launch.headers.get('Set-Cookie').split(';')[0]}}),env,google('amir-secondary','secondary@example.invalid'));
  assert.equal(callback.status,200);assert.equal((await getGoogleAccess(env,arash.userId)).subject,'arash-primary');assert.equal((await getGoogleAccess(env,amir.userId)).subject,'amir-primary');assert.equal((await getGoogleAccess(env,secondary.userId)).subject,'amir-secondary');assert.equal(db.prepare('select count(*) as n from google_accounts').get().n,3);
 });
+
+
+test('backup Drive consent is explicit, secondary-only, retained through canonical launch, and leaves primary grants unchanged',async()=>{
+ const {env}=fixture();env.GOOGLE_APP_ORIGINS=appOrigin;env.GOOGLE_SECONDARY_EMAIL='secondary@example.invalid';
+ await link(env,amir,'primary-amir','amir@example.invalid');await link(env,arash,'primary-arash','arash@example.invalid');
+ for(const context of [amir,arash])await assert.rejects(()=>handleGoogleRequest(req('start?purpose=backup','POST'),env,context),e=>e.code==='invalid_purpose');
+ const secondary={userId:amir.userId+':secondary',profileId:'amir'};
+ const ordinary=await begin(env,secondary);assert(!ordinary.url.searchParams.get('scope').includes('drive.file'));
+ const response=await handleGoogleRequest(new Request(origin+'/api/google/start?purpose=backup',{method:'POST',headers:{Origin:appOrigin}}),env,secondary),body=await response.json();
+ const launch=await handleGoogleLaunch(launchRequest(body.launchTicket),env),url=new URL(launch.headers.get('Location'));
+ const scope=url.searchParams.get('scope');assert(scope.includes('gmail.readonly'));assert(scope.includes('gmail.send'));assert(scope.includes('drive.file'));assert(!scope.includes('calendar.events'));
+ const pending={url,cookie:launch.headers.get('Set-Cookie').split(';')[0]};assert.equal((await finish(env,pending,google('secondary-amir','secondary@example.invalid'))).status,200);
+ const status=await(await handleGoogleRequest(req('status'),env,secondary)).json();assert.equal(status.capabilities.backupDrive,true);assert.equal(status.capabilities.drive,false);assert.equal(status.capabilities.calendar,false);
+ assert.equal((await getGoogleAccess(env,amir.userId)).subject,'primary-amir');assert.equal((await getGoogleAccess(env,arash.userId)).subject,'primary-arash');
+});
+test('declining backup scope preserves the already connected secondary Gmail grant',async()=>{
+ const {env}=fixture();env.GOOGLE_SECONDARY_EMAIL='secondary@example.invalid';const secondary={userId:amir.userId+':secondary',profileId:'amir'};
+ await link(env,secondary,'secondary-amir','secondary@example.invalid');
+ const response=await handleGoogleRequest(req('start?purpose=backup','POST'),env,secondary),body=await response.json();
+ const result=await finish(env,{url:new URL(body.authorizationUrl),cookie:response.headers.get('Set-Cookie').split(';')[0]},google('secondary-amir','secondary@example.invalid',{scope:GOOGLE_SCOPES.slice(0,5).join(' ')}));
+ assert.equal(result.status,400);assert((await result.text()).includes('backup_permission_missing'));assert.equal((await getGoogleAccess(env,secondary.userId)).accessToken,'synthetic-access-secondary-amir');
+});

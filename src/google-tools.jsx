@@ -23,20 +23,22 @@ export function useGoogleConnection(person, cloud, mailbox='primary') {
   return {state:state._scopeKey===key?state:{connected:false,configured:false,loading:cloud},refresh,mailbox};
 }
 
-export function GoogleConnection({person,connection,notify}) {
+export function GoogleConnection({person,connection,notify,purpose=null,onConnected}) {
+  const backup=purpose==='backup';
   const {state,refresh}=connection,mailbox=connection.mailbox||'primary',secondary=mailbox==='secondary';
   const [busy,setBusy]=useState(false),[connectError,setConnectError]=useState('');
   const popup=useRef(null),timer=useRef(null),epoch=useRef(0),messageListener=useRef(null);
   function stopListening(){if(messageListener.current){window.removeEventListener('message',messageListener.current);messageListener.current=null;}}
-  useEffect(()=>{setBusy(false);setConnectError('');return()=>{epoch.current++;clearInterval(timer.current);stopListening();try{popup.current?.close()}catch{}};},[person,mailbox]);
+  useEffect(()=>{setBusy(false);setConnectError('');return()=>{epoch.current++;clearInterval(timer.current);stopListening();try{popup.current?.close()}catch{}};},[person,mailbox,purpose]);
   async function connect(){
+    const ready=status=>status?.connected&&(!backup||status.capabilities?.backupDrive===true);
     // Open synchronously so browser popup protection preserves the existing session.
     const popupName='immi-google-'+person+'-'+mailbox;
     const windowRef=window.open('about:blank',popupName,'popup,width=560,height=740');
     if(!windowRef){notify('اجازهٔ بازکردن پنجرهٔ اتصال را در مرورگر فعال کنید.');return;}
     popup.current=windowRef;setBusy(true);setConnectError('');stopListening();const requestEpoch=epoch.current;
     try{
-      const result=await api(`google/start?profile=${person}${mailboxSuffix(mailbox)}`,{method:'POST',body:'{}'});
+      const result=await api(`google/start?profile=${person}${mailboxSuffix(mailbox)}${backup?'&purpose=backup':''}`,{method:'POST',body:'{}'});
       const target=new URL(result.authorizationUrl);
       if(target.protocol!=='https:'||target.hostname!=='accounts.google.com')throw Error('نشانی اتصال Google معتبر نیست.');
       if(requestEpoch!==epoch.current){windowRef.close();return;}
@@ -45,7 +47,7 @@ export function GoogleConnection({person,connection,notify}) {
         if(launch.protocol!=='https:'||callback.protocol!=='https:'||launch.origin!==callback.origin||launch.pathname!=='/api/google/launch'||launch.search||launch.hash||callback.pathname!=='/api/google/callback'||!/^[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{43}$/.test(result.launchTicket)||!/^[A-Za-z0-9_-]{43}$/.test(result.callbackNonce))throw Error('نشانی آغاز امن اتصال Google معتبر نیست.');
         const listener=async event=>{
           if(event.origin!==launch.origin||event.source!==windowRef||requestEpoch!==epoch.current||event.data?.type!=='immi-google-oauth'||event.data?.nonce!==result.callbackNonce)return;
-          if(event.data.ok===true){const status=await refresh();if(requestEpoch!==epoch.current)return;if(status?.connected){clearInterval(timer.current);stopListening();setBusy(false);try{windowRef.close()}catch{}notify('حساب Google این پروفایل متصل شد.');}}
+          if(event.data.ok===true){const status=await refresh();if(requestEpoch!==epoch.current)return;if(ready(status)){clearInterval(timer.current);stopListening();setBusy(false);try{windowRef.close()}catch{}notify(backup?'مجوز ذخیرهٔ پشتیبان در Drive تأیید شد.':'حساب Google این پروفایل متصل شد.');onConnected?.(status);}}
           else if(event.data.ok===false){clearInterval(timer.current);stopListening();setBusy(false);const code=typeof event.data.code==='string'&&/^[a-z_]{1,80}$/.test(event.data.code)?event.data.code:'callback_failed';setConnectError('Google اتصال را کامل نکرد. کد بررسی: '+code);}
         };
         messageListener.current=listener;window.addEventListener('message',listener);
@@ -66,15 +68,16 @@ export function GoogleConnection({person,connection,notify}) {
         inFlight=true;
         const status=await refresh();
         if(requestEpoch!==epoch.current)return;
-        if(status?.connected){clearInterval(timer.current);stopListening();setBusy(false);try{windowRef.close()}catch{}notify('حساب Google این پروفایل متصل شد.');}
+        if(ready(status)){clearInterval(timer.current);stopListening();setBusy(false);try{windowRef.close()}catch{}notify(backup?'مجوز ذخیرهٔ پشتیبان در Drive تأیید شد.':'حساب Google این پروفایل متصل شد.');onConnected?.(status);}
         else if(windowRef.closed){clearInterval(timer.current);stopListening();setBusy(false);}
         inFlight=false;
       },2500);
     }catch(e){try{windowRef.close()}catch{}stopListening();setBusy(false);const message=e.message?.includes('oauth_domain_setup_required')?'این دامنه هنوز مسیر امن اتصال Google را دریافت نکرده است؛ مجوز حساب‌های فعلی حفظ شده و تنظیم مسیر دامنه باید تکمیل شود.':e.message;setConnectError(message);notify(message);}
   }
   async function disconnect(){setBusy(true);try{await api(`google/disconnect?profile=${person}${mailboxSuffix(mailbox)}`,{method:'POST',body:'{}'});await refresh();notify('اتصال Google همین پروفایل قطع شد.');}catch(e){notify(e.message);}finally{setBusy(false);}}
+  if(backup)return <div className="google-connection backup-drive-connection"><p className="section-help">برای ذخیرهٔ فایل رمزگذاری‌شده، اجازهٔ ساخت و خواندن فایل‌های همین برنامه در Drive ایمیل دوم را تأیید کنید. دسترسی عمومی به همهٔ فایل‌های Drive درخواست نمی‌شود.</p>{state.connected&&<p className="google-mailbox" dir="ltr">{state.email}</p>}{state.capabilities?.backupDrive?<p className="status">مجوز Drive برای پشتیبان فعال است</p>:<button className="primary" type="button" disabled={busy||state.loading||!state.configured||state.local||person!=='amir'||!secondary} onClick={connect}><Link2 size={16}/>{busy?'منتظر تأیید Google…':'اجازهٔ ذخیرهٔ پشتیبان در Drive'}</button>}{connectError&&<p className="notice" role="alert">{connectError}</p>}{state.error&&<p className="notice" role="alert">{state.error}</p>}</div>;
   return <div className="google-connection">
-    <div className="integration"><span className="clinic-icon"><Mail size={21}/></span><div><strong>{secondary?'ایمیل دوم امیر':`Google اختصاصی ${person==='arash'?'آرش':'امیر'}`}</strong><small>{secondary?'فقط Gmail این ایمیل؛ مستقل از حساب اصلی':'Gmail، Drive و Calendar همین حساب'}</small></div><span className={'status '+(state.connected?'':'amber')}>{state.loading?'در حال بررسی':state.connected?'متصل':'متصل نیست'}</span></div>
+    <div className="integration"><span className="clinic-icon"><Mail size={21}/></span><div><strong>{secondary?'ایمیل دوم امیر':`Google اختصاصی ${person==='arash'?'آرش':'امیر'}`}</strong><small>{secondary?'Gmail این صندوق؛ مجوز ذخیرهٔ پشتیبان جداگانه است':'Gmail، Drive و Calendar همین حساب'}</small></div><span className={'status '+(state.connected?'':'amber')}>{state.loading?'در حال بررسی':state.connected?'متصل':'متصل نیست'}</span></div>
     {state.connected?<><p className="google-mailbox" dir="ltr">{state.email}</p><p className="muted">پیام‌ها، مجوزها و صف ارسال این حساب از کاربر دیگر جدا هستند.</p><button className="secondary" disabled={busy} onClick={disconnect}><Unplug size={16}/> قطع اتصال همین حساب</button></>:<>
       <p className="muted">{secondary?'برای ایمیل دوم فقط حساب دومِ پیکربندی‌شدهٔ امیر را انتخاب کنید؛ حساب اصلی و آرش تغییر نمی‌کنند.':'با حساب Google خودتان وارد شوید. اتصال حساب کاربر دیگر، دسترسی این پنل را فعال نمی‌کند.'}</p>
       {state.local?<div className="notice">اتصال Google از نسخهٔ آنلاین و پس از ورود امن انجام می‌شود.</div>:state.configured?<button className="primary" disabled={busy} onClick={connect}><Link2 size={16}/>{busy?'منتظر تأیید Google…':'اتصال Google همین کاربر'}</button>:<div className="notice">تنظیم اولیهٔ اتصال Google هنوز کامل نشده است. پس از آماده‌شدن، دکمهٔ اتصال مستقل برای هر پزشک فعال می‌شود. <a href={setupURL} target="_blank" rel="noreferrer">راهنمای راه‌اندازی <ExternalLink size={12}/></a></div>}

@@ -43,3 +43,12 @@ Contact/discovery engine: read docs/PUBLIC-CONTACT-ENGINE.md selectively. New pu
 
 ### Follow-up 2026-11-05
 Owner reported successful second Gmail connection. Template delete uses owner-bound POST /api/presets/delete and immi_preset_owner_delete migration; own default FK cascades, prepared send snapshots unchanged. Inbox topic and display-count filters remain scoped to owner+Google mailbox; scores are heuristic, not acceptance predictions. Shared glass skin now covers Arash while preserving GP/PESCI navigation. Offsite backup remains planned: see BACKUP-AUTOMATION-PLAN.fa.md; no live schedule/exporter/restore proof.
+
+
+## 2026-11-05 — مقصد Drive پشتیبان
+
+مالک، حساب Google دوم امیر را به‌عنوان مقصد انتخاب کرد. مرحلهٔ دستی به پنل امیر اضافه شد: Google/start با purpose=backup برای همان secondary درخواست drive.file در کنار Gmail می‌کند؛ هدف در state رمزگذاری‌شده و پل دامنه حفظ می‌شود و بدون مجوز کامل، grant قبلی جایگزین نمی‌شود. عمومی‌کردن Drive ثانویه یا دسترسی آرش به توکن امیر انجام نمی‌شود.
+
+GET /api/backup/drive/status فقط بررسی می‌کند. POST /api/backup/drive/upload فقط envelope رمزگذاری‌شدهٔ مرورگر را برای مالک امیر می‌پذیرد؛ پوشهٔ خصوصی برنامه، بررسی مالک/مجوز و دانلود/هش تطبیقی دارد. گذرواژه در مرورگر می‌ماند؛ سرور محتوا را رمزگشایی نمی‌کند و صرف تطبیق هش، صحت محتوا یا بازیابی را ثابت نمی‌کند. درخواست واقعی فقط با دکمهٔ کاربر؛ آزمایش‌ها از داده و provider ساختگی استفاده می‌کنند.
+
+هنوز فعال نیست: رضایت واقعی Drive، خروجی کامل و نامحدود سرور، زمان‌بندی مستقل، حفاظت مستقل کلید و بازیابی روی دیتابیس آزمایشی. این فاز پشتیبان خودکار مرکزی دو پزشک نیست. طرح در BACKUP-AUTOMATION-PLAN.fa.md است.

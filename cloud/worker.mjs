@@ -25,6 +25,7 @@ import {handleMailAutomationRequest} from './mail-automation.mjs';
 import {handleOpportunityMailRequest} from './opportunity-mail.mjs';
 import {handleTelegramWebhook,handleTelegramRequest,dispatchTelegramNotifications} from './telegram-notifications.mjs';
 import {handleOwnerBackupRequest} from './owner-backup.mjs';
+import {handleBackupDriveRequest} from './backup-drive.mjs';
 import {handleLinkedInSchedulerRequest,dispatchScheduledLinkedIn} from './linkedin-scheduler.mjs';
 import {handleMailSchedulerRequest,dispatchScheduledMail} from './mail-automation-scheduler.mjs';
 import educationalCase from '../library/pesci/PESCI-PRACTICE-COMM-001.json' with { type: 'json' };
@@ -92,6 +93,7 @@ export function createHandler(fetcher = fetch) {
       if(url.pathname==='/api/mail-automation/scheduler'||url.pathname.startsWith('/api/mail-automation/scheduler/'))return await handleMailSchedulerRequest(request,env,{userId:user.id,profileId,rest},fetcher)||json({error:'Not found'},404);
       if(url.pathname==='/api/mail-automation'||url.pathname.startsWith('/api/mail-automation/'))return await handleMailAutomationRequest(request,env,{userId:user.id,profileId,rest},fetcher)||json({error:'Not found'},404);
       if(url.pathname.startsWith('/api/telegram/'))return await handleTelegramRequest(request,env,{userId:user.id,profileId,rest},fetcher)||json({error:'Not found'},404);
+      if(url.pathname.startsWith('/api/backup/drive/'))return await handleBackupDriveRequest(request,env,{userId:user.id,profileId},fetcher)||json({error:'Not found'},404);
       if(url.pathname==='/api/backup/export')return await handleOwnerBackupRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
       if(url.pathname==='/api/pesci/practice'||url.pathname.startsWith('/api/pesci/practice/'))return await handlePesciPracticeRequest(request,env,{userId:user.id,profileId});
       if(url.pathname==='/api/roadmap'||url.pathname==='/api/roadmap/actions'){
