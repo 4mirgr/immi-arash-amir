@@ -1,3 +1,4 @@
+import {readGpGoalMode,assessFiveTier} from './gp-workflow.mjs';
 import {assessOpportunityFit,sortOpportunityPageByFit,deriveProfileReadiness} from './opportunity-fit.mjs';
 import {gpOpportunitySignals} from './gp-opportunity-signals.mjs';
 import {screenOpportunity} from './opportunity-screening.mjs';
@@ -228,6 +229,12 @@ async function ownProfileReadiness(items,profile,context){
  const profileReadiness=deriveProfileReadiness(data,profile);
  return items.map(item=>({...item,fit:{...item.fit,profileReadiness}}));
 }
+async function gpApplicationPriority(items,env,context,profile){
+ if(profile!=='arash')return {items,goalMode:null};
+ const goalMode=await readGpGoalMode(env,context);
+ return {items:items.map(item=>({...item,gpApplicationPriority:assessFiveTier(item,goalMode)})),goalMode};
+}
+function sortGpApplicationPage(items){return items.map((item,index)=>({item,index})).sort((a,b)=>(b.item.gpApplicationPriority?.tier||0)-(a.item.gpApplicationPriority?.tier||0)||(b.item.gpApplicationPriority?.priorityWeight||0)-(a.item.gpApplicationPriority?.priorityWeight||0)||a.index-b.index).map(row=>row.item);}
 export async function handleOpportunityV2Request(request,env,context) {
   const url=new URL(request.url),path=url.pathname;
   const group=path.match(/^\/api\/opportunities\/organizations\/(org_[a-f0-9]{24})$/);
@@ -245,7 +252,8 @@ export async function handleOpportunityV2Request(request,env,context) {
       const where=whereFor({...f,organizationId:org.id,includeClosed:'true'},profile,now.iso);
       const rows=await all(db,'SELECT * FROM opportunity_editions '+where.sql+' ORDER BY published_at DESC,first_seen_at DESC,id LIMIT ? OFFSET ?',...where.args,f.limit,f.offset);
       const count=await stmt(db,'SELECT count(*) AS n FROM opportunity_editions '+where.sql,...where.args).first();
-      return json({organization:JSON.parse(org.data),opportunities:await ownProfileReadiness(await enrichReadPages(db,rows,profile,now.ms,env.PUBLIC_PAGE_READING_ENABLED==='true'),profile,context),total:count.n,limit:f.limit,offset:f.offset});
+      const result=await gpApplicationPriority(await ownProfileReadiness(await enrichReadPages(db,rows,profile,now.ms,env.PUBLIC_PAGE_READING_ENABLED==='true'),profile,context),env,context,profile);
+      return json({organization:JSON.parse(org.data),opportunities:result.items,...(profile==='arash'?{goalMode:result.goalMode}:{}),total:count.n,limit:f.limit,offset:f.offset});
     }
     const where=whereFor(f,profile,now.iso);
     if(path==='/api/opportunities/organizations') {
@@ -254,7 +262,7 @@ export async function handleOpportunityV2Request(request,env,context) {
     }
     const rows=await all(db,'SELECT * FROM opportunity_editions '+where.sql+(['newest','fit'].includes(f.sort)?' ORDER BY first_seen_at DESC,published_at DESC,id':' ORDER BY closing_at IS NULL,closing_at,published_at DESC,id')+' LIMIT ? OFFSET ?',...where.args,f.limit,f.offset);
     const count=await stmt(db,'SELECT count(*) AS n FROM opportunity_editions '+where.sql,...where.args).first();
-    const enriched=await ownProfileReadiness(await enrichReadPages(db,rows,profile,now.ms,env.PUBLIC_PAGE_READING_ENABLED==='true'),profile,context);
-    return json({opportunities:f.sort==='fit'?sortOpportunityPageByFit(enriched):enriched,rankingScope:f.sort==='fit'?'current_page_evidence_priority':null,total:count.n,limit:f.limit,offset:f.offset,sourceCoverage:'configured_sources_only',scope:{country:f.country,trust:f.trust,types:f.types,italyAllowed:profile==='amir'}});
+    const result=await gpApplicationPriority(await ownProfileReadiness(await enrichReadPages(db,rows,profile,now.ms,env.PUBLIC_PAGE_READING_ENABLED==='true'),profile,context),env,context,profile);
+    return json({opportunities:f.sort==='fit'?(profile==='arash'?sortGpApplicationPage(result.items):sortOpportunityPageByFit(result.items)):result.items,...(profile==='arash'?{goalMode:result.goalMode}:{}),rankingScope:f.sort==='fit'?'current_page_evidence_priority':null,total:count.n,limit:f.limit,offset:f.offset,sourceCoverage:'configured_sources_only',scope:{country:f.country,trust:f.trust,types:f.types,italyAllowed:profile==='amir'}});
   } catch(error) {return json({error:error instanceof OpportunityStoreError?error.code:'opportunity_request_failed'},error instanceof OpportunityStoreError?error.status:500);}
 }

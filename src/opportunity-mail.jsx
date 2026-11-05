@@ -4,21 +4,22 @@ import {Mail,Eye,Send,X,ExternalLink,RefreshCw,FileText} from 'lucide-react';
 import {api,apiResponse} from './api';
 import {MixedText} from './mixed-text';
 
-const reasons={published_recipient_missing:'در متن همین آگهی ایمیلی منتشر نشده است؛ از لینک درخواست رسمی استفاده کنید.',recipient_not_published:'گیرنده در نسخهٔ جاری آگهی نیست؛ دوباره بازبینی کنید.',source_observation_stale:'مشاهدهٔ منبع قدیمی است؛ ابتدا دریافت تازهٔ آگهی لازم است.',opportunity_closed_or_future:'این آگهی اکنون قابل اقدام نیست؛ مهلت و اصل منبع را بررسی کنید.',preset_and_cv_required:'قالب ایمیل و نسخهٔ رزومهٔ همین پروفایل را انتخاب کنید.',template_placeholders_require_review:'متغیرهای قالب هنوز تکمیل نشده‌اند؛ قالب را در مرکز مکاتبات ویرایش کنید.',application_changed_review_required:'قالب، رزومه، منبع یا اتصال تغییر کرده است؛ بازبینی تازه لازم است.',recipient_suppressed:'گیرنده در فهرست عدم مکاتبهٔ شماست.',daily_quota_reached:'سهمیهٔ امروز تکمیل شده است.',sender_connection_changed:'اتصال فرستنده تغییر کرده است؛ دوباره بازبینی کنید.',recipient_unavailable:'گیرنده برای آماده‌سازی در دسترس نیست.',google_connection_required:'اتصال Google همین صندوق لازم است.',preset_not_found:'قالب انتخاب‌شده دیگر در دسترس نیست.',cv_not_found:'نسخهٔ رزومهٔ انتخاب‌شده در دسترس نیست.'};
+const reasons={gp_application_template_mismatch:'قالب نامه با بستهٔ انتخاب‌شده هماهنگ نیست؛ پروندهٔ کلینیک را دوباره باز کنید.',gp_application_evidence_required:'شواهد نامه یا رزومه تغییر کرده یا ناقص است؛ بسته را دوباره آماده کنید.',invalid_gp_application:'انتخاب‌های نامهٔ اختصاصی معتبر نیست؛ پرونده را دوباره باز کنید.',published_recipient_missing:'در متن همین آگهی ایمیلی منتشر نشده است؛ از لینک درخواست رسمی استفاده کنید.',recipient_not_published:'گیرنده در نسخهٔ جاری آگهی نیست؛ دوباره بازبینی کنید.',source_observation_stale:'مشاهدهٔ منبع قدیمی است؛ ابتدا دریافت تازهٔ آگهی لازم است.',opportunity_closed_or_future:'این آگهی اکنون قابل اقدام نیست؛ مهلت و اصل منبع را بررسی کنید.',preset_and_cv_required:'قالب ایمیل و نسخهٔ رزومهٔ همین پروفایل را انتخاب کنید.',template_placeholders_require_review:'متغیرهای قالب هنوز تکمیل نشده‌اند؛ قالب را در مرکز مکاتبات ویرایش کنید.',application_changed_review_required:'قالب، رزومه، منبع یا اتصال تغییر کرده است؛ بازبینی تازه لازم است.',recipient_suppressed:'گیرنده در فهرست عدم مکاتبهٔ شماست.',daily_quota_reached:'سهمیهٔ امروز تکمیل شده است.',sender_connection_changed:'اتصال فرستنده تغییر کرده است؛ دوباره بازبینی کنید.',recipient_unavailable:'گیرنده برای آماده‌سازی در دسترس نیست.',google_connection_required:'اتصال Google همین صندوق لازم است.',preset_not_found:'قالب انتخاب‌شده دیگر در دسترس نیست.',cv_not_found:'نسخهٔ رزومهٔ انتخاب‌شده در دسترس نیست.'};
 const statuses={queued:'در صف؛ هنوز ارسال نشده',sent:'Gmail ارسال را تأیید کرد',sending:'نتیجه در حال بررسی است؛ دوباره ارسال نکنید',delivery_unknown:'نتیجه نامشخص است؛ پوشهٔ Sent همین حساب را بررسی کنید',failed:'ارسال ناموفق؛ تلاش مجدد خودکار انجام نمی‌شود',suppressed:'گیرنده در فهرست عدم ارسال است',blocked_google_connection:'اتصال Google در دسترس نیست',blocked_account_changed:'حساب Google تغییر کرده است؛ ارسال متوقف شد',not_claimed:'ارسال نشد؛ وضعیت، سهمیه یا اجازه تغییر کرده است'};
 const rows=value=>Array.isArray(value)?value:value?.versions||value?.items||[];
 const safeURL=value=>{try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password?u.href:null;}catch{return null;}};
 const email=value=>String(value||'').toLowerCase();
 
-export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{},onOpenSettings=()=>{}}){
- const oppId=opportunity?.id||'',scope=person+':'+oppId;
+export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{},onOpenSettings=()=>{},gpApplication=null}){
+ const application=person==='arash'&&gpApplication?{variant:gpApplication.variant,subjectIndex:gpApplication.subjectIndex,clinicQuote:gpApplication.clinicQuote,cvQuote:gpApplication.cvQuote,confirmCvQuote:gpApplication.confirmCvQuote}:null;
+ const oppId=opportunity?.id||'',scope=person+':'+oppId+':'+JSON.stringify(application);
  const identity=useRef({scope,epoch:0});if(identity.current.scope!==scope)identity.current={scope,epoch:identity.current.epoch+1};
  const epoch=identity.current.epoch,alive=useRef(true),operation=useRef(0),lock=useRef(false);
  const [stored,setStored]=useState(null),[form,setForm]=useState(null),[review,setReview]=useState(null),[checked,setChecked]=useState(false),[queued,setQueued]=useState(null),[result,setResult]=useState(null),[busy,setBusy]=useState(''),[error,setError]=useState('');
  const valid=()=>alive.current&&identity.current.scope===scope&&identity.current.epoch===epoch;
  const data=stored?.epoch===epoch&&stored.scope===scope?stored.data:null;
  const selection=form?.epoch===epoch&&form.scope===scope?form.value:{presetId:'',cvVersionId:'',mailbox:'primary',recipient:''};
- const payloadKey=JSON.stringify(selection),latest=useRef(payloadKey);latest.current=payloadKey;
+ const payloadKey=JSON.stringify({selection,application}),latest=useRef(payloadKey);latest.current=payloadKey;
  const preview=review?.scope===scope&&review.epoch===epoch&&review.payloadKey===payloadKey?review:null;
  const queue=queued?.scope===scope&&queued.epoch===epoch&&queued.payloadKey===payloadKey?queued:null;
  const last=result?.scope===scope&&result.epoch===epoch?result.item:null;
@@ -36,7 +37,7 @@ export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{}
    const [source,presets,cvs,primary,secondary]=await Promise.all([api(path('')),api('presets?profile='+encodeURIComponent(person)),api('cv/versions?profile='+encodeURIComponent(person)),api('google/status?profile='+encodeURIComponent(person)+'&mailbox=primary').catch(accountError),api('google/status?profile='+encodeURIComponent(person)+'&mailbox=secondary').catch(accountError)]);
    if(!valid()||request!==operation.current)return;
    const templates=rows(presets),versions=rows(cvs);setStored({scope,epoch,data:{source,presets:templates,cvs:versions,accounts:{primary,secondary}}});
-   setForm({scope,epoch,value:{presetId:templates.find(x=>x.isDefault||x.is_default)?.id||'',cvVersionId:versions.find(x=>x.isDefault||x.is_default)?.id||'',mailbox:'primary',recipient:source.publishedRecipients?.length===1?source.publishedRecipients[0]:''}});
+   setForm({scope,epoch,value:{presetId:(application?templates.find(x=>x.name===gpApplication.templateName):templates.find(x=>x.isDefault||x.is_default))?.id||'',cvVersionId:(application?versions.find(x=>x.id===gpApplication.cvVersionId):versions.find(x=>x.isDefault||x.is_default))?.id||'',mailbox:'primary',recipient:source.publishedRecipients?.length===1?source.publishedRecipients[0]:''}});
   }catch(e){if(valid()&&request===operation.current)setError(message(e.message));}
   finally{if(valid()){lock.current=false;setBusy('');}}
  }
@@ -70,7 +71,7 @@ export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{}
    await checkedAccount(expected,fixed.mailbox);if(!fresh())return;
    if(kind==='dispatch'){await dispatch(fixedQueue);return;}
    const isQueue=kind==='queue'||kind==='send';
-   const response=await api(path(isQueue?'queue':'preview'),{method:'POST',body:JSON.stringify({...fixed,...(isQueue?{confirmReviewed:true,reviewHash:fixedPreview.reviewHash}:{})})});
+   const response=await api(path(isQueue?'queue':'preview'),{method:'POST',body:JSON.stringify({...fixed,...(application?{application}:{}),...(isQueue?{confirmReviewed:true,reviewHash:fixedPreview.reviewHash}:{})})});
    if(!fresh())return;
    if(kind==='preview'){
     if(email(response.sender)!==email(expected)||response.recipients?.length!==1||email(response.recipients[0].recipient)!==email(fixed.recipient)||(response.mailbox&&response.mailbox!==fixed.mailbox)||(response.opportunityId&&response.opportunityId!==oppId)||!response.reviewHash)throw Error('application_changed_review_required');
@@ -91,6 +92,7 @@ export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{}
  }
  async function downloadCV(){if(!selection.cvVersionId||lock.current)return;lock.current=true;setBusy('cv');const request=++operation.current;try{const response=await apiResponse('cv/export?profile='+encodeURIComponent(person)+'&id='+encodeURIComponent(selection.cvVersionId)+'&format=docx'),blob=await response.blob();if(!valid()||request!==operation.current)return;const href=URL.createObjectURL(blob),link=document.createElement('a');link.href=href;link.download=person+'-application-cv.docx';link.click();setTimeout(()=>URL.revokeObjectURL(href),1000);}catch(e){if(valid())setError(message(e.message));}finally{if(valid()){lock.current=false;setBusy('');}}}
  return <section className="opportunity-mail panel" aria-label="مکاتبه دربارهٔ همین فرصت" dir="rtl">
+ {application&&<p className="notice">این درخواست از بستهٔ اختصاصی همین کلینیک و شواهد رزومه ساخته می‌شود. متن نهایی و موضوع انتخاب‌شده را در پیش‌نمایش بررسی کنید. برای تغییر نوع نامه، موضوع یا نسخهٔ رزومه، پروندهٔ همین کلینیک را دوباره باز کنید.{data&&!selection.presetId&&<span> قالب A/B/C مرتبط در حساب پیدا نشد؛ از پروندهٔ کلینیک «افزودن قالب‌ها» را بزنید.</span>}</p>}
   <div className="section-head"><h3><Mail size={19}/> درخواست برای همین فرصت</h3><button type="button" className="icon" onClick={onClose} aria-label="بستن مکاتبه"><X size={18}/></button></div>
   <p><MixedText>{data?.source?.title||opportunity?.title||'فرصت انتخاب‌شده'}</MixedText></p>
   <div className="opportunity-mail-actions">{sourceURL&&<a href={sourceURL} target="_blank" rel="noreferrer">اصل آگهی و روش درخواست <ExternalLink size={14}/></a>}<button type="button" className="text-button" onClick={onOpenSettings}>قالب، رزومه یا اتصال حساب</button><button type="button" className="text-button" disabled={!!busy} onClick={load}><RefreshCw size={14}/> بررسی دوباره</button></div>
@@ -99,8 +101,8 @@ export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{}
    {data.source.trust!=='official'&&<p className="notice">این منبع رسمی تأیید نشده است؛ هویت مرکز و محتوای درخواست را مستقل بررسی کنید.</p>}
    {!data.source.publishedRecipients?.length?<p className="notice">{reasons.published_recipient_missing}</p>:<>
     <div className="opportunity-mail-fields two-col">
-     <label>قالب ایمیل<select value={selection.presetId} disabled={!!busy||!!queue} onChange={e=>change('presetId',e.target.value)}><option value="">قالب را انتخاب کنید</option>{data.presets.map(x=><option key={x.id} value={x.id}>{x.name||x.subject||'قالب'}{x.isDefault?' · پیش‌فرض':''}</option>)}</select></label>
-     <label>نسخهٔ رزومهٔ پیوست<select value={selection.cvVersionId} disabled={!!busy||!!queue} onChange={e=>change('cvVersionId',e.target.value)}><option value="">رزومه را انتخاب کنید</option>{data.cvs.map(x=><option key={x.id} value={x.id}>{x.name||'رزومه'}{x.isDefault?' · پیش‌فرض':''}</option>)}</select></label>
+     <label>قالب ایمیل<select value={selection.presetId} disabled={!!busy||!!queue||!!application} onChange={e=>change('presetId',e.target.value)}><option value="">قالب را انتخاب کنید</option>{data.presets.map(x=><option key={x.id} value={x.id}>{x.name||x.subject||'قالب'}{x.isDefault?' · پیش‌فرض':''}</option>)}</select></label>
+     <label>نسخهٔ رزومهٔ پیوست<select value={selection.cvVersionId} disabled={!!busy||!!queue||!!application} onChange={e=>change('cvVersionId',e.target.value)}><option value="">رزومه را انتخاب کنید</option>{data.cvs.map(x=><option key={x.id} value={x.id}>{x.name||'رزومه'}{x.isDefault?' · پیش‌فرض':''}</option>)}</select></label>
      <label>صندوق فرستنده<select value={selection.mailbox} disabled={!!busy||!!queue} onChange={e=>change('mailbox',e.target.value)}><option value="primary">{googleAccountLabel(person,'primary',data?.accounts?.primary?.email)}</option>{<option value="secondary">{googleAccountLabel(person,'secondary',data?.accounts?.secondary?.email)}</option>}</select></label>
      <label>گیرندهٔ عمومی مرتبط با این فرصت<select dir="ltr" value={selection.recipient} disabled={!!busy||!!queue} onChange={e=>change('recipient',e.target.value)}><option value="">انتخاب گیرنده</option>{data.source.publishedRecipients.map(x=><option key={x} value={x}>{x}</option>)}</select></label>
     </div>

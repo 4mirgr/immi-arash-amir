@@ -3,12 +3,14 @@ import registry from './source-registry.json' with {type:'json'};
 import {ITALY_SOURCE_DEFINITIONS,normalizeItalySourceRecords} from './italy-source-adapters.mjs';
 import {AU_SOURCE_DEFINITIONS,normalizeAuSourceRecords} from './au-source-adapters.mjs';
 import {GP_EXPANDED_SOURCE_DEFINITIONS,normalizeExpandedGpSourceRecords} from './gp-expanded-sources.mjs';
+import {GP_REVIEWED_SOURCE_DEFINITIONS,normalizeReviewedGpSourceRecords,ReviewedGpSourceError} from './gp-reviewed-source-adapter.mjs';
+import {robotsAllows} from './public-page-worker.mjs';
 import {RURAL_SOURCE_DEFINITIONS,normalizeRuralSourceRecords} from './rural-source-adapters.mjs';
 import {sourceAutomationStatus} from './source-automation.mjs';
 import {plainJobText,pageUpDate} from './job-opportunities.mjs';
 import {upsertOpportunityBatch} from './opportunity-store.mjs';
 import {enqueuePublicPages} from './public-page-store.mjs';
-export const SOURCE_REGISTRY=Object.freeze([...registry,...RURAL_SOURCE_DEFINITIONS,...ITALY_SOURCE_DEFINITIONS,...AU_SOURCE_DEFINITIONS,...GP_EXPANDED_SOURCE_DEFINITIONS].map(source=>Object.freeze({...source,allowedHosts:Object.freeze([...source.allowedHosts])})));
+export const SOURCE_REGISTRY=Object.freeze([...registry,...RURAL_SOURCE_DEFINITIONS,...ITALY_SOURCE_DEFINITIONS,...AU_SOURCE_DEFINITIONS,...GP_EXPANDED_SOURCE_DEFINITIONS,...GP_REVIEWED_SOURCE_DEFINITIONS].map(source=>Object.freeze({...source,allowedHosts:Object.freeze([...source.allowedHosts])})));
 const ACTIVE=SOURCE_REGISTRY.filter(s=>s.executable);
 const MAX_BYTES=3000000, MAX_CALLS=3, MAX_RECORDS=100, PER_SOURCE=40;
 const SUCCESS_COOLDOWN=3*60*60*1000, FAILURE_COOLDOWN=6*60*60*1000;
@@ -118,14 +120,26 @@ async function rss(source,body){
 }
 export async function normalizeSourceRecords(input,body){
  const source=canonicalSource(input);if(typeof body!=='string'||new TextEncoder().encode(body).length>MAX_BYTES)fail('source_response_too_large');
- const records=source.adapter.startsWith('gp_')?await normalizeExpandedGpSourceRecords(source,body):source.adapter.startsWith('italy_')?await normalizeItalySourceRecords(source,body):source.adapter.startsWith('au_')?await normalizeAuSourceRecords(source,body):source.adapter.startsWith('rural_')?await normalizeRuralSourceRecords(source,body):source.adapter==='bologna_rss'?await rss(source,body):source.adapter==='nt_public_search'?ntPublicSearch(source,body):source.adapter==='careerpages_public_html'?await careerpages(source,body):source.adapter==='smartrecruiters_university'?smartrecruiters(source,body):pageup(source,body);
+ const records=source.adapter==='gp_reviewed_html'?normalizeReviewedGpSourceRecords(source,body):source.adapter.startsWith('gp_')?await normalizeExpandedGpSourceRecords(source,body):source.adapter.startsWith('italy_')?await normalizeItalySourceRecords(source,body):source.adapter.startsWith('au_')?await normalizeAuSourceRecords(source,body):source.adapter.startsWith('rural_')?await normalizeRuralSourceRecords(source,body):source.adapter==='bologna_rss'?await rss(source,body):source.adapter==='nt_public_search'?ntPublicSearch(source,body):source.adapter==='careerpages_public_html'?await careerpages(source,body):source.adapter==='smartrecruiters_university'?smartrecruiters(source,body):pageup(source,body);
  for(const row of records)validateSourceUrl(row.url,source);
  return records;
 }
-async function boundedText(response){
- if(Number(response.headers.get('content-length')||0)>MAX_BYTES)fail('source_response_too_large');
+async function boundedText(response,limit=MAX_BYTES){
+ if(Number(response.headers.get('content-length')||0)>limit)fail('source_response_too_large');
  const reader=response.body?.getReader();if(!reader)fail('invalid_source_response');let bytes=0,text='';const decoder=new TextDecoder();
- try{while(true){const part=await reader.read();if(part.done)break;bytes+=part.value.byteLength;if(bytes>MAX_BYTES){await reader.cancel();fail('source_response_too_large');}text+=decoder.decode(part.value,{stream:true});}return text+decoder.decode();}finally{reader.releaseLock();}
+ try{while(true){const part=await reader.read();if(part.done)break;bytes+=part.value.byteLength;if(bytes>limit){await reader.cancel();fail('source_response_too_large');}text+=decoder.decode(part.value,{stream:true});}return text+decoder.decode();}finally{reader.releaseLock();}
+}
+async function reviewedRobots(source,fetcher){
+ const url=new URL(source.feedUrl);let response;try{response=await fetcher(url.origin+'/robots.txt',{headers:{'User-Agent':'MasirUniversityDiscovery/1.0',Accept:'text/plain'},redirect:'manual',signal:AbortSignal.timeout(8000)});}catch{fail('source_robots_unavailable');}
+ if(response.redirected||response.url&&response.url!==url.origin+'/robots.txt'){await response.body?.cancel();fail('source_robots_redirect_rejected');}
+ if(response.status===404){await response.body?.cancel();return;}
+ if(response.status!==200){await response.body?.cancel();fail([401,403].includes(response.status)?'source_robots_blocked':'source_robots_unavailable');}
+ const text=await boundedText(response,64000);if(/<html/i.test(text.slice(0,500)))fail('source_robots_unavailable');
+ const permission=robotsAllows(text,source.feedUrl);if(!permission.allowed)fail('source_robots_blocked');
+ // Honor the same bounded asynchronous publisher delay as the public reader.
+ // Each source lease is 90s; long delays remain outside this collector budget.
+ if(permission.delay>30)fail('source_robots_delay_exceeds_budget');
+ if(permission.delay>0)await new Promise(resolve=>setTimeout(resolve,permission.delay*1000));
 }
 async function collectOne(db,source,fetcher,remaining,now,readPages=false){
  const lock=crypto.randomUUID();
@@ -134,7 +148,8 @@ async function collectOne(db,source,fetcher,remaining,now,readPages=false){
  if(!claim)return {sourceId:source.id,status:'cooldown_or_busy',imported:0};
  try{
   validateSourceUrl(source.feedUrl,source);
-  const headers={Accept:['bologna_rss','rural_ntphn_rss'].includes(source.adapter)?'application/rss+xml, application/xml':(['careerpages_public_html','rural_people_html'].includes(source.adapter)||source.adapter.startsWith('italy_')||source.adapter.startsWith('au_')||source.adapter.startsWith('gp_'))?'text/html':'application/json','User-Agent':'MasirPublicSourceCollector/1.0'};
+  if(source.requiresRobots)await reviewedRobots(source,fetcher);
+  const headers={Accept:['bologna_rss','rural_ntphn_rss'].includes(source.adapter)?'application/rss+xml, application/xml':(['careerpages_public_html','rural_people_html'].includes(source.adapter)||source.adapter.startsWith('italy_')||source.adapter.startsWith('au_')||source.adapter.startsWith('gp_'))?'text/html':'application/json','User-Agent':source.requiresRobots?'MasirUniversityDiscovery/1.0':'MasirPublicSourceCollector/1.0'};
   // Partial snapshots must fetch their next segment even when publisher ETag is unchanged.
   if(source.requestMethod!=='POST'&&!claim.record_cursor&&claim.etag&&claim.etag.length<1000&&!/[\r\n]/.test(claim.etag))headers['If-None-Match']=claim.etag;
   let response;try{response=await fetcher(source.feedUrl,{headers:{...headers,...(source.requestMethod==='POST'?{'Content-Type':'application/json'}:{})},...(source.requestMethod==='POST'?{method:'POST',body:JSON.stringify(source.requestBody)}:{}),redirect:'manual',signal:AbortSignal.timeout(15000)});}catch{fail('source_unavailable');}
@@ -154,7 +169,7 @@ async function collectOne(db,source,fetcher,remaining,now,readPages=false){
   let etag=response.headers.get('etag');if(!etag||etag.length>=1000||/[\r\n]/.test(etag))etag=null;
   await run(db,"UPDATE registered_source_checks SET status='updated',etag=?,last_success_at=?,next_check_at=?,last_error_code=NULL,imported_records=?,record_cursor=?,partial=? WHERE source_id=? AND lock_token=?",etag,now,now+(partial?15*60*1000:SUCCESS_COOLDOWN),selected.length,nextCursor,Number(partial),source.id,lock);
   return {...imported,sourceId:source.id,status:'updated',imported:selected.length,matchingRecords:records.length,partial,nextCursor};
- }catch(error){const code=error instanceof SourceError?error.code:'collector_failed';await run(db,"UPDATE registered_source_checks SET status='failed',last_error_code=?,next_check_at=? WHERE source_id=? AND lock_token=?",code,now+FAILURE_COOLDOWN,source.id,lock);return {sourceId:source.id,status:'failed',error:code,imported:0};}
+ }catch(error){const code=error instanceof SourceError||error instanceof ReviewedGpSourceError?error.code:'collector_failed';await run(db,"UPDATE registered_source_checks SET status='failed',last_error_code=?,next_check_at=? WHERE source_id=? AND lock_token=?",code,now+FAILURE_COOLDOWN,source.id,lock);return {sourceId:source.id,status:'failed',error:code,imported:0};}
  finally{await run(db,'UPDATE registered_source_checks SET lock_token=NULL,lock_until=0 WHERE source_id=? AND lock_token=?',source.id,lock);}
 }
 export async function collectRegisteredSources(env,fetcher=fetch){

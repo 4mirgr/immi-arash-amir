@@ -22,3 +22,9 @@ test('each doctor export includes only their own primary and secondary sending r
  for(const data of [arash,amir]){const text=JSON.stringify(data);assert(!text.includes('NEVER_EXPORT_RAW_MIME'));assert(!text.includes('NEVER_EXPORT_PROVIDER_CREDENTIAL'));assert.equal(data.scheduledApprovalsExcluded,true);assert.equal(data.coverage.automaticCloudBackup,false);}
  assert.equal((await handleOwnerBackupRequest(req(),env,{...context,userId:'a:secondary'})).status,403);
 });
+
+test('GP goal and preparation notes export only the authenticated owner records',async()=>{
+ const {db,env,context}=fixture();db.exec(readFileSync(new URL('../cloud/gp-workflow-schema.sql',import.meta.url),'utf8'));
+ for(const owner of ['a','b']){db.prepare('INSERT INTO gp_workflow_settings VALUES(?,?,?,?)').run(owner,'arash','pesci_readiness','2026-11-05');db.prepare('INSERT INTO gp_opportunity_progress VALUES(?,?,?,?,?,?,?)').run(owner,'opp_'+owner,'arash','clinic_identified','Synthetic '+owner,'','2026-11-05');}
+ const data=await(await handleOwnerBackupRequest(req(),env,context)).json();assert.equal(data.collections.d1.gp_workflow_settings.length,1);assert.equal(data.collections.d1.gp_workflow_settings[0].owner_id,'a');assert.equal(data.collections.d1.gp_opportunity_progress[0].note,'Synthetic a');assert(!JSON.stringify(data).includes('Synthetic b'));
+});

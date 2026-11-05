@@ -24,6 +24,8 @@ import {handleAiAssistantRequest} from './ai-assistant.mjs';
 import {handleMailAutomationRequest} from './mail-automation.mjs';
 import {handleOpportunityMailRequest} from './opportunity-mail.mjs';
 import {handleTelegramWebhook,handleTelegramRequest,dispatchTelegramNotifications} from './telegram-notifications.mjs';
+import {handleGpApplicationPackageRequest} from './gp-application-package.mjs';
+import {handleGpWorkflowRequest} from './gp-workflow.mjs';
 import {handleOwnerBackupRequest} from './owner-backup.mjs';
 import {handleBackupDriveRequest} from './backup-drive.mjs';
 import {handleLinkedInSchedulerRequest,dispatchScheduledLinkedIn} from './linkedin-scheduler.mjs';
@@ -88,6 +90,8 @@ export function createHandler(fetcher = fetch) {
       if (requestedProfile && requestedProfile !== profileId) throw new ApiError(403, 'Profile access denied');
       if(url.pathname==='/api/research/pages')return await handlePublicPagesRequest(request,env,{userId:user.id,profileId})||json({error:'Not found'},404);
       if(url.pathname==='/api/discovery/universities')return await handleUniversityCatalogueRequest(request,env,{userId:user.id,profileId})||json({error:'Not found'},404);
+      if(url.pathname.startsWith('/api/gp-applications/'))return await handleGpApplicationPackageRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
+      if(url.pathname.startsWith('/api/gp-workflow/'))return await handleGpWorkflowRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
       if(url.pathname.startsWith('/api/operations/'))return await handleOperationsRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
       if(url.pathname.startsWith('/api/ai/'))return await handleAiAssistantRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
       if(url.pathname==='/api/mail-automation/scheduler'||url.pathname.startsWith('/api/mail-automation/scheduler/'))return await handleMailSchedulerRequest(request,env,{userId:user.id,profileId,rest},fetcher)||json({error:'Not found'},404);

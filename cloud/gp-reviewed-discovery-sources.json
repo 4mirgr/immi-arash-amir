@@ -1,0 +1,459 @@
+[
+  {
+    "id": "reviewed-hwq-wembley-level1",
+    "name": "Health Workforce Queensland — Wembley Rd Medical Centre GP",
+    "country": "AU",
+    "state": "QLD",
+    "profileScope": "both",
+    "trust": "official",
+    "feedUrl": "https://www.healthworkforce.com.au/job/general-practitioner-logan-qld-10004252-682809",
+    "evidenceUrl": "https://www.healthworkforce.com.au/job/general-practitioner-logan-qld-10004252-682809",
+    "portalUrl": "https://www.wrmc.au/",
+    "allowedHosts": [
+      "www.healthworkforce.com.au"
+    ],
+    "organizationName": "Wembley Rd Medical Centre",
+    "organizationDomain": "wrmc.au",
+    "location": "Logan Central, QLD",
+    "title": "Health Workforce Queensland — Wembley Rd Medical Centre GP",
+    "opportunityType": "job",
+    "kind": "vacancy",
+    "adapter": "gp_reviewed_html",
+    "executable": false,
+    "configurationStatus": "reviewed_candidate_requires_adapter_and_runtime_check",
+    "reviewedAt": "2026-11-05",
+    "readEvidence": {
+      "method": "exa_full_page_and_direct_http",
+      "httpStatus": 200,
+      "currentVacancyConfirmed": false,
+      "closingAt": null
+    },
+    "evidenceQuotes": [
+      {
+        "topic": "level1",
+        "text": "Opportunity for International Medical Graduates requiring Level 1-2 supervision.",
+        "sourceUrl": "https://www.healthworkforce.com.au/job/general-practitioner-logan-qld-10004252-682809"
+      },
+      {
+        "topic": "pesci",
+        "text": "Eligibility for RACGP PESCI assessment.",
+        "sourceUrl": "https://www.healthworkforce.com.au/job/general-practitioner-logan-qld-10004252-682809"
+      },
+      {
+        "topic": "registration",
+        "text": "AMC Certificate.",
+        "sourceUrl": "https://www.healthworkforce.com.au/job/general-practitioner-logan-qld-10004252-682809"
+      }
+    ],
+    "publishedContacts": [
+      {
+        "type": "email",
+        "value": "admin@wrmc.au",
+        "contactRole": "application",
+        "sourceUrl": "https://www.healthworkforce.com.au/job/general-practitioner-logan-qld-10004252-682809",
+        "quote": "Practice: Wembley Rd Medical Centre Contact: Mohamed Samad Phone: 07 3412 8333 (+61734128333) Email: admin@wrmc.au Website: www.wrmc.au"
+      },
+      {
+        "type": "phone",
+        "value": "07 3412 8333",
+        "contactRole": "application",
+        "sourceUrl": "https://www.healthworkforce.com.au/job/general-practitioner-logan-qld-10004252-682809",
+        "quote": "Practice: Wembley Rd Medical Centre Contact: Mohamed Samad Phone: 07 3412 8333 (+61734128333) Email: admin@wrmc.au Website: www.wrmc.au"
+      }
+    ],
+    "requirements": [
+      "MBBS or equivalent qualification.",
+      "AMC Certificate.",
+      "Current or eligible for AHPRA Provisional Registration or Limited Registration.",
+      "Eligibility for RACGP PESCI assessment.",
+      "Current BLS and ACLS certification."
+    ],
+    "limitations": [
+      "Named-employer referral listing, not a confirmed offer or regulatory approval of Level1 supervision.",
+      "AMC Certificate is explicitly stated; an AMC MCQ pass alone must not be silently treated as equivalent. Ask the practice to clarify the requirement.",
+      "No closing date is published in the content read; current vacancy and supervisor capacity require written confirmation.",
+      "Source says Metro Role; MMM/DPA have not been independently verified.",
+      "Mohamed Samad is a published contact; the page does not establish that he is Practice Manager or supervisor."
+    ],
+    "sourceType": "workforce_referral_listing",
+    "contactPerson": {
+      "name": "Mohamed Samad",
+      "role": "published_contact_unspecified"
+    },
+    "practiceManager": null,
+    "clinicWebsiteEvidence": {
+      "url": "https://www.wrmc.au/",
+      "finalUrl": "https://new.wrmc.au/",
+      "httpStatus": 200,
+      "address": "90 Wembley Rd, Logan Central, QLD 4114",
+      "publishedGeneralEmail": "wrmc4114@gmail.com",
+      "applicationEmailSourceIsSeparate": true
+    },
+    "url": "https://www.healthworkforce.com.au/job/general-practitioner-logan-qld-10004252-682809",
+    "directHttpStatus": 200,
+    "collectorUserAgentHttpStatus": 200,
+    "activationAllowed": true
+  },
+  {
+    "id": "reviewed-alba-health-img",
+    "name": "Alba Health — employment and IMG supervision",
+    "country": "AU",
+    "state": "VIC",
+    "profileScope": "both",
+    "trust": "official",
+    "feedUrl": "https://albahealth.com.au/employment/",
+    "evidenceUrl": "https://albahealth.com.au/employment/",
+    "portalUrl": "https://albahealth.com.au/employment/",
+    "allowedHosts": [
+      "albahealth.com.au"
+    ],
+    "organizationName": "Alba Health",
+    "organizationDomain": "albahealth.com.au",
+    "location": "Myrtleford, VIC",
+    "title": "Alba Health — employment and IMG supervision",
+    "opportunityType": "job",
+    "kind": "employment_register",
+    "adapter": "gp_reviewed_html",
+    "executable": false,
+    "configurationStatus": "reviewed_candidate_requires_adapter_and_runtime_check",
+    "reviewedAt": "2026-11-05",
+    "readEvidence": {
+      "method": "exa_full_page_and_direct_http",
+      "httpStatus": 200,
+      "currentVacancyConfirmed": false,
+      "closingAt": null
+    },
+    "evidenceQuotes": [
+      {
+        "topic": "img_supervision",
+        "text": "We can provide support and supervision to eligible International Medical Graduate (IMG) Medical Practitioners who wish to work towards Fellowship of the Royal Australian College of General Practitioners (FRACGP)",
+        "sourceUrl": "https://albahealth.com.au/employment/"
+      }
+    ],
+    "publishedContacts": [
+      {
+        "type": "email",
+        "value": "admin@albahealth.com.au",
+        "contactRole": "application",
+        "sourceUrl": "https://albahealth.com.au/employment/",
+        "quote": "Please contact Principal GP, Justin Donaldson 03 5751 1138 or email admin@albahealth.com.au"
+      },
+      {
+        "type": "phone",
+        "value": "03 5751 1138",
+        "contactRole": "application",
+        "sourceUrl": "https://albahealth.com.au/employment/",
+        "quote": "Please contact Principal GP, Justin Donaldson 03 5751 1138 or email admin@albahealth.com.au"
+      }
+    ],
+    "requirements": [
+      "Eligible IMG status is conditional; exact registration category not stated."
+    ],
+    "limitations": [
+      "Evergreen expression of interest, not a dated vacancy.",
+      "Level1, PESCI support and visa sponsorship are not explicitly confirmed.",
+      "Principal GP name is published but specific supervisor nomination/availability is not established.",
+      "MMM/DPA not independently verified."
+    ],
+    "sourceType": "first_party_employment_register",
+    "contactPerson": {
+      "name": "Justin Donaldson",
+      "role": "Principal GP"
+    },
+    "practiceManager": null,
+    "address": "153-157 Myrtle Street Myrtleford VIC 3737",
+    "url": "https://albahealth.com.au/employment/",
+    "directHttpStatus": 200,
+    "collectorUserAgentHttpStatus": 200,
+    "activationAllowed": true
+  },
+  {
+    "id": "reviewed-ausdocs-img-network",
+    "name": "Ausdocs Group — IMG and registrar careers",
+    "country": "AU",
+    "state": "QLD",
+    "profileScope": "both",
+    "trust": "official",
+    "feedUrl": "https://ausdocsgroup.com.au/work-with-us",
+    "evidenceUrl": "https://ausdocsgroup.com.au/work-with-us",
+    "portalUrl": "https://ausdocsgroup.com.au/work-with-us",
+    "allowedHosts": [
+      "ausdocsgroup.com.au"
+    ],
+    "organizationName": "Ausdocs Group",
+    "organizationDomain": "ausdocsgroup.com.au",
+    "location": "Queensland network",
+    "title": "Ausdocs Group — IMG and registrar careers",
+    "opportunityType": "job",
+    "kind": "employment_register",
+    "adapter": "gp_reviewed_html",
+    "executable": false,
+    "configurationStatus": "reviewed_candidate_requires_adapter_and_runtime_check",
+    "reviewedAt": "2026-11-05",
+    "readEvidence": {
+      "method": "exa_full_page_and_direct_http",
+      "httpStatus": 200,
+      "currentVacancyConfirmed": false,
+      "closingAt": null
+    },
+    "evidenceQuotes": [
+      {
+        "topic": "img",
+        "text": "We have a dedicated team working behind the scenes to support suitable International Medical Graduates (IMGs) to explore options with a number of our clinics.",
+        "sourceUrl": "https://ausdocsgroup.com.au/work-with-us"
+      },
+      {
+        "topic": "mmm_network",
+        "text": "we have accredited training clinics in MMM1 to MMM5 locations.",
+        "sourceUrl": "https://ausdocsgroup.com.au/work-with-us"
+      },
+      {
+        "topic": "conditional_supervision",
+        "text": "This means we carefully assess each candidate’s qualifications, skills, experience and support needs to ensure we can provide the right level of supervision and set both the doctor and the practice up for success.",
+        "sourceUrl": "https://ausdocsgroup.com.au/work-with-us"
+      }
+    ],
+    "publishedContacts": [
+      {
+        "type": "phone",
+        "value": "07 3392 2614",
+        "contactRole": "application",
+        "sourceUrl": "https://ausdocsgroup.com.au/work-with-us",
+        "quote": "Call us on (07) 3392 2614"
+      }
+    ],
+    "requirements": [
+      "Individual qualifications, skills, experience and support needs are assessed by the network."
+    ],
+    "limitations": [
+      "Network enquiry page, not one specific vacancy.",
+      "MMM1–5 is a claim about the network, not verified geography for an individual clinic.",
+      "No explicit Level1 or PESCI commitment; capacity must be confirmed for the named practice.",
+      "No application email was published in the page content read; use the official enquiry form or phone."
+    ],
+    "sourceType": "first_party_network_employment_register",
+    "practiceManager": null,
+    "relatedApplicationUrl": "https://ausdocs-external.applynow.net.au/jobs/AUSDOC01-general-practitioner-international-interest",
+    "url": "https://ausdocsgroup.com.au/work-with-us",
+    "directHttpStatus": 200,
+    "collectorUserAgentHttpStatus": 200,
+    "activationAllowed": true
+  },
+  {
+    "id": "reviewed-ausgp-img-training",
+    "name": "Australian General Practitioners — IMG supervision and training",
+    "country": "AU",
+    "state": "NSW",
+    "profileScope": "both",
+    "trust": "official",
+    "feedUrl": "https://www.ausgp.com.au/teaching-and-training/",
+    "evidenceUrl": "https://www.ausgp.com.au/teaching-and-training/",
+    "portalUrl": "https://www.ausgp.com.au/teaching-and-training/",
+    "allowedHosts": [
+      "www.ausgp.com.au"
+    ],
+    "organizationName": "Australian General Practitioners Pty Ltd",
+    "organizationDomain": "ausgp.com.au",
+    "location": "Rural NSW network",
+    "title": "Australian General Practitioners — IMG supervision and training",
+    "opportunityType": "job",
+    "kind": "employment_register",
+    "adapter": "gp_reviewed_html",
+    "executable": false,
+    "configurationStatus": "reviewed_candidate_requires_adapter_and_runtime_check",
+    "reviewedAt": "2026-11-05",
+    "readEvidence": {
+      "method": "exa_full_page_and_direct_http",
+      "httpStatus": 200,
+      "currentVacancyConfirmed": false,
+      "closingAt": null
+    },
+    "evidenceQuotes": [
+      {
+        "topic": "img_supervision",
+        "text": "AusGP supports the supervision of international medical graduates who have done AMC 1.",
+        "sourceUrl": "https://www.ausgp.com.au/teaching-and-training/"
+      },
+      {
+        "topic": "pesci",
+        "text": "AMC 1 plus PESCI for our practice",
+        "sourceUrl": "https://www.ausgp.com.au/teaching-and-training/"
+      }
+    ],
+    "publishedContacts": [
+      {
+        "type": "email",
+        "value": "enquiries@ausgp.com.au",
+        "contactRole": "organization_general",
+        "sourceUrl": "https://www.ausgp.com.au/teaching-and-training/",
+        "quote": "If You Have Any Questions, Please Contact Us — enquiries@ausgp.com.au"
+      }
+    ],
+    "requirements": [
+      "Employer describes AMC1 plus position-specific PESCI, or AMC1+2 plus position-specific PESCI."
+    ],
+    "limitations": [
+      "Evergreen training/support page, not a current confirmed vacancy.",
+      "Page uses MDRAP and older programme language; these are employer claims, not current regulatory guidance.",
+      "Level1 is not explicitly promised.",
+      "No named practice manager or nominated supervisor was established.",
+      "Current place, programme eligibility, visa support and supervision must be clarified separately."
+    ],
+    "sourceType": "first_party_training_enquiry",
+    "practiceManager": null,
+    "url": "https://www.ausgp.com.au/teaching-and-training/",
+    "directHttpStatus": 200,
+    "collectorUserAgentHttpStatus": 200,
+    "activationAllowed": true
+  },
+  {
+    "id": "reviewed-reliance-post-pesci-img",
+    "name": "Reliance Care Medical Centre — 2026 IMG intake",
+    "country": "AU",
+    "state": "VIC",
+    "profileScope": "both",
+    "trust": "official",
+    "feedUrl": "https://reliancemedical.com.au/announcements/img-recruitment",
+    "evidenceUrl": "https://reliancemedical.com.au/announcements/img-recruitment",
+    "portalUrl": "https://reliancemedical.com.au/announcements/img-recruitment",
+    "allowedHosts": [
+      "reliancemedical.com.au"
+    ],
+    "organizationName": "Reliance Care Medical Centre",
+    "organizationDomain": "reliancemedical.com.au",
+    "location": "Truganina VIC",
+    "title": "Reliance Care Medical Centre — 2026 IMG intake",
+    "opportunityType": "job",
+    "kind": "vacancy",
+    "adapter": "gp_reviewed_html",
+    "executable": false,
+    "configurationStatus": "reviewed_candidate_requires_adapter_and_runtime_check",
+    "reviewedAt": "2026-11-05",
+    "readEvidence": {
+      "method": "exa_full_page_and_direct_http",
+      "httpStatus": 200,
+      "currentVacancyConfirmed": false,
+      "closingAt": null
+    },
+    "evidenceQuotes": [
+      {
+        "topic": "post_pesci_requirement",
+        "text": "Reliance Care Medical Centre is actively recruiting International Medical Graduates (IMGs) who have successfully passed the PESCI interview to join our dynamic team in Truganina.",
+        "sourceUrl": "https://reliancemedical.com.au/announcements/img-recruitment"
+      },
+      {
+        "topic": "registration",
+        "text": "Hold or are eligible for AHPRA registration",
+        "sourceUrl": "https://reliancemedical.com.au/announcements/img-recruitment"
+      }
+    ],
+    "publishedContacts": [
+      {
+        "type": "email",
+        "value": "director@reliancecareandsupport.com.au",
+        "contactRole": "application",
+        "sourceUrl": "https://reliancemedical.com.au/announcements/img-recruitment",
+        "quote": "Email your CV and cover letter to: Director@reliancecareandsupport.com.au"
+      },
+      {
+        "type": "phone",
+        "value": "03 9958 6699",
+        "contactRole": "application",
+        "sourceUrl": "https://reliancemedical.com.au/announcements/img-recruitment",
+        "quote": "Or call us on (03) 9958 6699 for a confidential discussion."
+      }
+    ],
+    "requirements": [
+      "Successfully passed PESCI interview.",
+      "Hold or are eligible for AHPRA registration."
+    ],
+    "limitations": [
+      "Published 22January2026, no closing date seen; current intake status requires confirmation.",
+      "This is not evidence of support to obtain an initial PESCI booking: passed PESCI is explicitly required.",
+      "Level1 supervision and visa sponsorship are not explicitly confirmed.",
+      "Application email uses a different published domain; retain the originating employer page as provenance rather than guessing a same-domain email."
+    ],
+    "sourceType": "first_party_dated_recruitment",
+    "publishedAt": "2026-01-22",
+    "practiceManager": null,
+    "address": "341C Forsyth Road Truganina VIC 3029",
+    "url": "https://reliancemedical.com.au/announcements/img-recruitment",
+    "directHttpStatus": 200,
+    "collectorUserAgentHttpStatus": 200,
+    "activationAllowed": true
+  },
+  {
+    "id": "reviewed-ararat-level1-restriction",
+    "name": "Ararat Medical Centre — current recruitment restrictions",
+    "country": "AU",
+    "state": "VIC",
+    "profileScope": "both",
+    "trust": "official",
+    "feedUrl": "https://www.araratmedicalcentre.com.au/recruitment.html",
+    "evidenceUrl": "https://www.araratmedicalcentre.com.au/recruitment.html",
+    "portalUrl": "https://www.araratmedicalcentre.com.au/recruitment.html",
+    "allowedHosts": [
+      "www.araratmedicalcentre.com.au"
+    ],
+    "organizationName": "Ararat Medical Centre",
+    "organizationDomain": "araratmedicalcentre.com.au",
+    "location": "Ararat VIC",
+    "title": "Ararat Medical Centre — current recruitment restrictions",
+    "opportunityType": "job",
+    "kind": "employment_register",
+    "adapter": "gp_reviewed_html",
+    "executable": false,
+    "configurationStatus": "reviewed_candidate_requires_adapter_and_runtime_check",
+    "reviewedAt": "2026-11-05",
+    "readEvidence": {
+      "method": "exa_full_page_and_direct_http",
+      "httpStatus": 406,
+      "currentVacancyConfirmed": false,
+      "closingAt": null
+    },
+    "evidenceQuotes": [
+      {
+        "topic": "level1_restricted",
+        "text": "We currently do not have any positions for PESCI/Level 1 Supervision.",
+        "sourceUrl": "https://www.araratmedicalcentre.com.au/recruitment.html"
+      },
+      {
+        "topic": "registration",
+        "text": "GP (Positions Available - with General Registration)",
+        "sourceUrl": "https://www.araratmedicalcentre.com.au/recruitment.html"
+      }
+    ],
+    "publishedContacts": [
+      {
+        "type": "email",
+        "value": "jobs@araratmedicalcentre.com.au",
+        "contactRole": "application",
+        "sourceUrl": "https://www.araratmedicalcentre.com.au/recruitment.html",
+        "quote": "jobs@araratmedicalcentre.com.au"
+      },
+      {
+        "type": "phone",
+        "value": "03 5352 2311",
+        "contactRole": "organization_general",
+        "sourceUrl": "https://www.araratmedicalcentre.com.au/recruitment.html",
+        "quote": "Telephone 03 5352 2311"
+      }
+    ],
+    "requirements": [
+      "General Registration for the ordinary GP opening.",
+      "Other advertised registrar positions reference RACGP, ACRRM or RVTS."
+    ],
+    "limitations": [
+      "Explicit negative Level1/PESCI evidence: do not promote as a suitable Level1 opportunity.",
+      "Exa full content read; direct environment HTTP request returned406. Automation is not verified and must remain disabled until a compliant runtime fetch succeeds.",
+      "Page states updated01April2026; that is publisher metadata, not a guarantee that every role remains open."
+    ],
+    "sourceType": "first_party_recruitment_restriction",
+    "practiceManager": null,
+    "address": "55 High Street Ararat VIC 3377",
+    "url": "https://www.araratmedicalcentre.com.au/recruitment.html",
+    "directHttpStatus": 406,
+    "collectorUserAgentHttpStatus": 503,
+    "activationAllowed": false
+  }
+]

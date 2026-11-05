@@ -1,5 +1,6 @@
 // Explicit source-bound applications. Reuse the existing owner-isolated Gmail queue;
 // this router never dispatches transport or publishes a private contact.
+import {getGpApplicationPackage} from './gp-application-package.mjs';
 import {handleGoogleSendRequest} from './google-send.mjs';
 import {googleAccountContext} from './google-account-scope.mjs';
 import {enrichReadPages} from './opportunity-store.mjs';
@@ -33,10 +34,10 @@ export async function handleOpportunityMailRequest(request,env,context,fetcher=f
   if(request.method==='GET'&&!match[2])return json({...sourceView,reading,publishedRecipients:recipients,blockedReason:recipients.length?null:'published_recipient_missing',automaticSending:false});
   if(request.method!=='POST'||!match[2])fail('method_not_allowed',405);
   if(request.headers.has('Origin')&&request.headers.get('Origin')!==url.origin)fail('origin_rejected',403);
-  if(Number(request.headers.get('Content-Length')||0)>4000)fail('payload_too_large',413);
-  const raw=await request.text();if(new TextEncoder().encode(raw).length>4000)fail('payload_too_large',413);
+  if(Number(request.headers.get('Content-Length')||0)>10000)fail('payload_too_large',413);
+  const raw=await request.text();if(new TextEncoder().encode(raw).length>10000)fail('payload_too_large',413);
   let input;try{input=JSON.parse(raw);}catch{fail('invalid_payload');}
-  if(!input||Array.isArray(input)||typeof input!=='object'||Object.keys(input).some(k=>!['presetId','cvVersionId','mailbox','recipient','confirmReviewed','reviewHash'].includes(k)))fail('unexpected_opportunity_mail_field');
+  if(!input||Array.isArray(input)||typeof input!=='object'||Object.keys(input).some(k=>!['presetId','cvVersionId','mailbox','recipient','confirmReviewed','reviewHash','application'].includes(k)))fail('unexpected_opportunity_mail_field');
   if(!UUID.test(input.presetId||'')||!UUID.test(input.cvVersionId||''))fail('preset_and_cv_required');
   if(!recipients.length)fail('published_recipient_missing',409);
   if(typeof input.recipient!=='string'||!recipients.includes(input.recipient.toLowerCase()))fail('recipient_not_published',409);
@@ -45,7 +46,15 @@ export async function handleOpportunityMailRequest(request,env,context,fetcher=f
   const scoped=googleAccountContext(new Request(url.origin+'/api/google/mail/preview?mailbox='+mailbox),context);
   const suffix='&profile_id=eq.'+context.profileId;
   const [presets,cvs]=await Promise.all([context.rest('immi_presets','?select=data&id=eq.'+input.presetId+suffix),context.rest('immi_cv_versions','?select=text,version&id=eq.'+input.cvVersionId+suffix)]);
-  const preset=presets[0],cv=cvs[0];if(!preset)fail('preset_not_found',404);if(!cv||typeof cv.text!=='string')fail('cv_not_found',404);
+  let preset=presets[0];const cv=cvs[0];if(!preset)fail('preset_not_found',404);if(!cv||typeof cv.text!=='string')fail('cv_not_found',404);
+  if(input.application!==undefined){
+   const app=input.application;
+   if(context.profileId!=='arash'||!app||typeof app!=='object'||Array.isArray(app)||Object.keys(app).some(k=>!['variant','subjectIndex','clinicQuote','cvQuote','confirmCvQuote'].includes(k))||!['A','B','C'].includes(app.variant)||!Number.isInteger(app.subjectIndex)||app.subjectIndex<0||app.subjectIndex>2||typeof app.clinicQuote!=='string'||app.clinicQuote.length>1000||typeof app.cvQuote!=='string'||app.cvQuote.length>1200||app.confirmCvQuote!==true)fail('invalid_gp_application');
+   const generated=await getGpApplicationPackage(env,context,row.id,{...app,cvVersionId:input.cvVersionId});
+   if(!generated.readyForReview)fail('gp_application_evidence_required',409);
+   if(preset.data?.name!==generated.templateName)fail('gp_application_template_mismatch',409);
+   preset={...preset,data:{...preset.data,subject:generated.subjects[app.subjectIndex],body:generated.body}};
+  }
   if(typeof preset.data?.subject!=='string'||typeof preset.data?.body!=='string'||/\{\{|\[\[(?:name|clinic|doctor|recipient)/i.test(preset.data.subject+' '+preset.data.body))fail('template_placeholders_require_review',409);
   // Ephemeral adapter binds exactly one server-verified source recipient. It never
   // inserts a clinic, accepts a browser clinic ID, or consults another owner.
