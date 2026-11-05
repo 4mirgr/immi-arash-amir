@@ -1,4 +1,4 @@
-import {getGoogleAccess, GoogleError} from './google-oauth.mjs';
+import {getGoogleAccess, GoogleError, isSecondaryGoogleOwner} from './google-oauth.mjs';
 const CAL='https://www.googleapis.com/calendar/v3/calendars/primary/events';
 const DRIVE='https://www.googleapis.com/drive/v3/files';
 const CAL_SCOPE='https://www.googleapis.com/auth/calendar.events';
@@ -62,6 +62,7 @@ export async function handleGoogleServicesRequest(request,env,context,fetcher=fe
  const url=new URL(request.url),path=url.pathname;
  if(!path.startsWith('/api/google/calendar/')&&!path.startsWith('/api/google/drive/'))return null;
  const owner=contextOwner(context);
+ if(isSecondaryGoogleOwner(owner)&&(context.profileId!=='amir'||path.startsWith('/api/google/drive/')))fail(403,'mailbox_service_not_enabled','Secondary Calendar is available to its owner; general Drive tools use the primary account');
  if(request.method!=='GET'&&request.headers.has('Origin')&&request.headers.get('Origin')!==url.origin)fail(403,'origin_rejected','Origin rejected');
  const isCalendar=path.startsWith('/api/google/calendar/'),access=await getGoogleAccess(env,owner,fetcher),scope=isCalendar?CAL_SCOPE:DRIVE_SCOPE;
  if(!access.scopes.includes(scope))fail(403,'google_permission_required','Approve this Google service permission first');

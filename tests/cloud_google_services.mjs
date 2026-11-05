@@ -4,6 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {handleGoogleServicesRequest as route} from '../cloud/google-services.mjs';
 import {encryptGoogleSecret,GOOGLE_SCOPES} from '../cloud/google-oauth.mjs';
+import {googleAccountContext} from '../cloud/google-account-scope.mjs';
 const origin='https://immi-arash-amir.dr-gerami-md.workers.dev';
 const arash={userId:'arash-services-owner',profileId:'arash'},amir={userId:'amir-services-owner',profileId:'amir'};
 async function fixture(){
@@ -40,4 +41,28 @@ test('Workers-compatible manual transport reaches Google and refuses redirects w
  const workerFetch=async(url,options)=>{if(options.redirect==='error')throw new TypeError('Unsupported Workers redirect mode');assert.equal(options.redirect,'manual');calls++;return Response.json({items:[],nextSyncToken:'worker-compatible'});};
  const response=await route(req('calendar/events'+window),env,arash,workerFetch);assert.equal(response.status,200);assert.equal(calls,1);
  calls=0;await assert.rejects(()=>route(req('drive/files'),env,arash,async(url,options)=>{if(options.redirect==='error')throw new TypeError('Unsupported Workers redirect mode');assert.equal(options.redirect,'manual');calls++;return new Response(null,{status:302,headers:{Location:'https://untrusted.invalid/token-target'}});}),error=>error.code==='provider_redirect_rejected');assert.equal(calls,1);
+});
+
+
+async function secondaryFixture(scopes=GOOGLE_SCOPES.slice(0,6)){
+ const {env,db}=await fixture();env.GOOGLE_SECONDARY_EMAIL='secondary@example.invalid';const secondary={userId:amir.userId+':secondary',profileId:'amir'};
+ await seed(env,db,secondary,'google-amir-secondary',scopes);db.prepare('UPDATE google_accounts SET email=? WHERE owner_id=?').run(env.GOOGLE_SECONDARY_EMAIL,secondary.userId);
+ return {env,db,secondary};
+}
+test('secondary Calendar uses its own token, identical event IDs and sync cursors never cross primary or Arash',async()=>{
+ const {env,db,secondary}=await secondaryFixture();
+ for(const c of [amir,arash])await route(req('calendar/events'+window),env,c,async()=>Response.json({items:[{...event(),summary:c.profileId+' PRIVATE'}],nextSyncToken:c.profileId+'-cursor'}));
+ const request=req('calendar/events'+window+'&mailbox=secondary'),context=googleAccountContext(request,amir);assert.equal(context.userId,secondary.userId);
+ let calls=0;const fetcher=async(url,options)=>{calls++;assert.equal(options.headers.Authorization,'Bearer token-google-amir-secondary');const u=new URL(url);if(calls===1)assert.equal(u.searchParams.has('syncToken'),false);else assert.equal(u.searchParams.get('syncToken'),'secondary-cursor');return Response.json({items:[{...event(),summary:'SECONDARY PRIVATE'}],nextSyncToken:'secondary-cursor'});};
+ const result=await(await route(request,env,context,fetcher)).json();assert.equal(result.events.length,1);assert.equal(result.events[0].title,'SECONDARY PRIVATE');await route(request,env,context,fetcher);
+ assert.equal(db.prepare('select count(*) n from google_calendar_state').get().n,3);assert.equal(db.prepare('select count(*) n from google_calendar_events').get().n,3);
+});
+test('secondary Calendar writes use its ETag and missing grant or scope never falls back; generic Drive stays blocked',async()=>{
+ const {env,db,secondary}=await secondaryFixture();const request=req('calendar/events/event123?mailbox=secondary','PUT',{summary:'Only secondary'},{'If-Match':'"secondary-etag"'}),context=googleAccountContext(request,amir);
+ const result=await route(request,env,context,async(url,options)=>{assert.equal(options.headers.Authorization,'Bearer token-google-amir-secondary');assert.equal(options.headers['If-Match'],'"secondary-etag"');assert.equal(new URL(url).searchParams.get('sendUpdates'),'none');return Response.json(event());});assert.equal(result.status,200);
+ await assert.rejects(()=>route(req('drive/files'),env,secondary,async()=>assert.fail('no Drive provider request')),e=>e.code==='mailbox_service_not_enabled');
+ db.prepare('update google_accounts set scopes_json=? where owner_id=?').run(JSON.stringify(GOOGLE_SCOPES.slice(0,5)),secondary.userId);
+ await assert.rejects(()=>route(req('calendar/events'),env,secondary,async()=>assert.fail('no fallback')),e=>e.code==='google_permission_required');
+ db.prepare('delete from google_accounts where owner_id=?').run(secondary.userId);await assert.rejects(()=>route(req('calendar/events'),env,secondary,async()=>assert.fail('no fallback')),e=>e.code==='not_connected');
+ assert.throws(()=>googleAccountContext(req('calendar/events?mailbox=secondary'),arash),e=>e.code==='mailbox_access_denied');
 });

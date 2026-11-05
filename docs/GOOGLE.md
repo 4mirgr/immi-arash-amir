@@ -78,3 +78,9 @@ diagnostics. Error identifiers remain available in safe HTML if storage fails.
 A missing or incorrect browser-binding cookie still does **not** consume a valid
 pending state. PKCE, state expiry, one-use consumption and owner binding are
 unchanged; diagnostic instrumentation does not relax consent or browser checks.
+
+
+## Amir secondary Calendar (2026-11-05)
+Calendar can now select either of Amir's independently authorized Google slots. Display names are email local parts (`dr.gerami.md` and `amirgr20` as configured fallbacks); names never determine ownership or send routing. Existing mailbox IDs remain primary/secondary.
+
+For secondary Calendar use explicit `purpose=calendar` on Google start, then the same canonical POST launch and callback. Gmail plus Calendar events permissions and previously granted backup Drive permissions must remain approved. Requested service scopes are server-derived and encrypted into OAuth state; a missing permission leaves the stored grant unchanged. Secondary Calendar uses its own owner suffix, Google subject, cache, sync cursor and ETags. General Drive tools still use the primary slot; backup Drive has its separate restricted endpoint. No calendar event is copied between accounts or written by selecting a slot.

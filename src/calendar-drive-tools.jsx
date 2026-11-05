@@ -2,23 +2,36 @@ import React, {useEffect, useRef, useState} from 'react';
 import {Calendar, Download, FileText, RefreshCw, Upload, X} from 'lucide-react';
 import {api, apiResponse} from './api';
 import {DualCalendar} from './dual-calendar';
+import {GoogleConnection,useGoogleConnection} from './google-tools';
+import {googleAccountLabel} from './google-account-labels.mjs';
 
 const types={pdf:'application/pdf',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',txt:'text/plain'};
 function readable(value){const date=new Date(value);return Number.isFinite(date.getTime())?date.toLocaleString('fa-IR'):'';}
 const errorText=e=>e.message||'درخواست سرویس Google انجام نشد.';
 
 export function CalendarDriveTools({person,notify}){
- const editor=useRef(null),current=useRef(person),generation=useRef(0);current.current=person;
- const [status,setStatus]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(''),[events,setEvents]=useState([]),[partial,setPartial]=useState(false),[checked,setChecked]=useState(''),[files,setFiles]=useState([]),[nextPage,setNextPage]=useState(null),[file,setFile]=useState(null);
+ const [selection,setSelection]=useState({owner:person,mailbox:'primary'});
+ const mailbox=person==='amir'&&selection.owner===person&&selection.mailbox==='secondary'?'secondary':'primary';
+ const primary=useGoogleConnection(person,true),secondary=useGoogleConnection(person,person==='amir','secondary');
+ return <CalendarDrivePanel key={person+':'+mailbox} person={person} notify={notify} mailbox={mailbox} primary={primary} calendar={mailbox==='secondary'?secondary:primary} onMailbox={value=>setSelection({owner:person,mailbox:value})}/>;
+}
+function CalendarDrivePanel({person,notify,mailbox,primary,calendar,onMailbox}){
+ const editor=useRef(null),current=useRef(''),generation=useRef(0);
+ const status=calendar.state,primaryStatus=primary.state;
+ const binding=person+':'+mailbox+':'+(status?.email||'')+':'+Boolean(status?.connected)+':'+Boolean(status?.capabilities?.calendar)+':'+(primaryStatus?.email||'')+':'+Boolean(primaryStatus?.connected);current.current=binding;
+ const [error,setError]=useState(''),[busy,setBusy]=useState(''),[events,setEvents]=useState([]),[partial,setPartial]=useState(false),[checked,setChecked]=useState(''),[files,setFiles]=useState([]),[nextPage,setNextPage]=useState(null),[file,setFile]=useState(null);
  const [auZone,setAuZone]=useState('Australia/Sydney'),[invalidStart,setInvalidStart]=useState(false),[invalidEnd,setInvalidEnd]=useState(false);
  const [title,setTitle]=useState(''),[start,setStart]=useState(''),[end,setEnd]=useState(''),[description,setDescription]=useState(''),[editing,setEditing]=useState(null);
- const suffix=`?profile=${encodeURIComponent(person)}`;
- const active=key=>status?.connected&&status?.capabilities?.[key];
- async function perform(key,operation){const who=person,epoch=generation.current;setBusy(key);setError('');try{await operation(()=>current.current===who&&generation.current===epoch);}catch(e){if(current.current===who&&generation.current===epoch)setError(errorText(e));}finally{if(current.current===who&&generation.current===epoch)setBusy('');}}
- async function check(){await perform('status',async valid=>{const result=await api('google/status'+suffix);if(valid())setStatus(result);});}
- useEffect(()=>{generation.current++;setStatus(null);setError('');setBusy('');setEvents([]);setFiles([]);setNextPage(null);setPartial(false);setChecked('');setEditing(null);setTitle('');setStart('');setEnd('');setDescription('');setFile(null);check();return()=>{generation.current++;};},[person]);
+ const primarySuffix=`?profile=${encodeURIComponent(person)}`,suffix=primarySuffix+(mailbox==='secondary'?'&mailbox=secondary':'');
+ const calendarLabel=googleAccountLabel(person,mailbox,status?.email),primaryLabel=googleAccountLabel(person,'primary',primaryStatus?.email);
+ const active=key=>{const account=key==='drive'?primaryStatus:status;return account?.connected&&account?.capabilities?.[key];};
+ async function perform(key,operation){const who=binding,epoch=generation.current;setBusy(key);setError('');try{await operation(()=>current.current===who&&generation.current===epoch);}catch(e){if(current.current===who&&generation.current===epoch)setError(errorText(e));}finally{if(current.current===who&&generation.current===epoch)setBusy('');}}
+ async function check(){await perform('status',async()=>{await Promise.all([calendar.refresh(),...(mailbox==='secondary'?[primary.refresh()]:[])]);});}
+ useEffect(()=>{generation.current++;setError('');setBusy('');setEvents([]);setFiles([]);setNextPage(null);setPartial(false);setChecked('');setEditing(null);setTitle('');setStart('');setEnd('');setDescription('');setFile(null);check();return()=>{generation.current++;};},[person]);
+ const providerKey=binding;
+ useEffect(()=>{generation.current++;setEvents([]);setFiles([]);setNextPage(null);setFile(null);setPartial(false);setChecked('');setBusy('');clearForm();setInvalidStart(false);setInvalidEnd(false);return()=>{generation.current++;};},[providerKey]);
  async function loadEvents(){await perform('calendar',async valid=>{const result=await api('google/calendar/events'+suffix);if(valid()){setEvents(result.events||[]);setPartial(Boolean(result.partial));setChecked(result.checkedAt||'');}});}
- async function loadFiles(page){await perform('files',async valid=>{const result=await api('google/drive/files'+suffix+(page?'&pageToken='+encodeURIComponent(page):''));if(valid()){setFiles(previous=>page?[...previous,...(result.files||[])]:result.files||[]);setNextPage(result.nextPageToken||null);}});}
+ async function loadFiles(page){await perform('files',async valid=>{const result=await api('google/drive/files'+primarySuffix+(page?'&pageToken='+encodeURIComponent(page):''));if(valid()){setFiles(previous=>page?[...previous,...(result.files||[])]:result.files||[]);setNextPage(result.nextPageToken||null);}});}
  function edit(event){setEditing({id:event.id,etag:event.etag});setTitle(event.title||'');setStart(event.start.dateTime);setEnd(event.end.dateTime);setDescription('');if(editor.current)editor.current.open=true;}
  function clearForm(){setEditing(null);setTitle('');setStart('');setEnd('');setDescription('');}
  async function saveEvent(event){event.preventDefault();if(invalidStart||invalidEnd||!title.trim()||!start||!end||new Date(end)<=new Date(start)){setError('عنوان و زمان شروع و پایان معتبر را وارد کنید.');return;}
@@ -27,16 +40,18 @@ export function CalendarDriveTools({person,notify}){
   if(!editing||description.trim())input.description=description;
   await perform('save',async valid=>{await api('google/calendar/events'+(editing?'/'+encodeURIComponent(editing.id):'')+suffix,{method:editing?'PUT':'POST',headers:editing?{'If-Match':editing.etag}:{},body:JSON.stringify(input)});if(valid()){clearForm();notify(editing?'تغییر رویداد در تقویم همین حساب ثبت شد.':'رویداد در تقویم همین حساب ثبت شد؛ دعوت‌نامه‌ای ارسال نشد.');const result=await api('google/calendar/events'+suffix);if(valid()){setEvents(result.events||[]);setPartial(Boolean(result.partial));setChecked(result.checkedAt||'');}}});
  }
- async function download(item){await perform('download',async valid=>{const response=await apiResponse('google/drive/files/'+encodeURIComponent(item.id)+'/download'+suffix);const blob=await response.blob();if(!valid())return;const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=item.name||'google-document';link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);});}
+ async function download(item){await perform('download',async valid=>{const response=await apiResponse('google/drive/files/'+encodeURIComponent(item.id)+'/download'+primarySuffix);const blob=await response.blob();if(!valid())return;const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=item.name||'google-document';link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);});}
  async function upload(){if(!file){setError('یک فایل انتخاب کنید.');return;}const ext=file.name.split('.').pop().toLowerCase(),mime=types[ext];if(!mime||file.size<1||file.size>1000000){setError('فقط PDF، DOCX یا TXT با حجم حداکثر یک میلیون بایت مجاز است.');return;}
-  await perform('upload',async valid=>{const data=new Uint8Array(await file.arrayBuffer());let raw='';for(let offset=0;offset<data.length;offset+=8192)raw+=String.fromCharCode(...data.subarray(offset,offset+8192));const result=await api('google/drive/files'+suffix,{method:'POST',body:JSON.stringify({name:file.name,mimeType:mime,base64:btoa(raw)})});if(valid()){setFiles(previous=>[result.file,...previous.filter(v=>v.id!==result.file.id)]);setFile(null);notify('فایل به Drive همین حساب اضافه شد؛ عمومی یا مشترک نشد.');}});
+  await perform('upload',async valid=>{const data=new Uint8Array(await file.arrayBuffer());if(!valid())return;let raw='';for(let offset=0;offset<data.length;offset+=8192)raw+=String.fromCharCode(...data.subarray(offset,offset+8192));const result=await api('google/drive/files'+primarySuffix,{method:'POST',body:JSON.stringify({name:file.name,mimeType:mime,base64:btoa(raw)})});if(valid()){setFiles(previous=>[result.file,...previous.filter(v=>v.id!==result.file.id)]);setFile(null);notify('فایل به Drive همین حساب اضافه شد؛ عمومی یا مشترک نشد.');}});
  }
  return <section className="calendar-drive-tools" style={{gridColumn:'1 / -1',minWidth:0}} aria-label="تقویم و مدارک">
  <div className="section-head"><div><h3>تقویم و مدارک</h3><p className="section-help">فضای شخصی {person==='arash'?'آرش':'امیر'}{status?.email&&<> · <span dir="ltr" style={{overflowWrap:'anywhere'}}>{status.email}</span></>}</p></div><button type="button" className="secondary" disabled={Boolean(busy)} onClick={check}><RefreshCw size={15}/> بررسی اتصال</button></div>
  {error&&<div className="notice" role="alert">{error}</div>}
  {!status?.connected&&<p className="section-help">{busy==='status'?'در حال بررسی اتصال Google این حساب…':'برای استفاده، Google همین پروفایل را در بخش اتصال حساب متصل کنید و سپس «بررسی اتصال» را بزنید.'}</p>}
+ {person==='amir'&&<label style={{display:'block',maxWidth:420}}>حساب تقویم<select aria-label="انتخاب حساب تقویم" value={mailbox} onChange={event=>onMailbox(event.target.value)}><option value="primary">{googleAccountLabel(person,'primary',primary.state.email)}</option><option value="secondary">{googleAccountLabel(person,'secondary',calendar.mailbox==='secondary'?calendar.state.email:undefined)}</option></select></label>}
+ {mailbox==='secondary'&&!active('calendar')&&<GoogleConnection person={person} connection={calendar} notify={notify} purpose="calendar" onConnected={check}/>}
  <details className="workspace-disclosure glass-panel">
- <summary><span className="section-head" style={{margin:0}}><strong><Calendar size={18} aria-hidden="true"/> برنامه‌های من</strong><small>{active('calendar')?'Google Calendar':'نیاز به مجوز تقویم'}</small></span><span className="section-help" style={{display:'block'}}>برنامه‌های ذخیره‌شده در تقویم Google را ببینید و ویرایش کنید.</span></summary>
+ <summary><span className="section-head" style={{margin:0}}><strong><Calendar size={18} aria-hidden="true"/> برنامه‌های من · <bdi dir="ltr">{calendarLabel}</bdi></strong><small>{active('calendar')?'Google Calendar':'نیاز به مجوز تقویم'}</small></span><span className="section-help" style={{display:'block'}}>برنامه‌های ذخیره‌شده در تقویم Google را ببینید و ویرایش کنید.</span></summary>
  <p className="section-help">۳۰ روز آینده نمایش داده می‌شود. با «به‌روزرسانی تقویم»، تغییرهای انجام‌شده در Google هم دریافت می‌شوند.</p>
  {!active('calendar')&&<div className="notice">برای دیدن و تغییر برنامه‌ها، مجوز Calendar همین حساب را هنگام اتصال Google فعال کنید.</div>}
  <button type="button" className="secondary" disabled={!active('calendar')||Boolean(busy)} onClick={loadEvents}><RefreshCw size={15}/>{busy==='calendar'?'در حال دریافت…':'به‌روزرسانی تقویم'}</button>
@@ -46,7 +61,7 @@ export function CalendarDriveTools({person,notify}){
  </details>
  <details ref={editor} className="workspace-disclosure glass-panel">
  <summary><strong><Calendar size={18} aria-hidden="true"/> {editing?'ویرایش برنامه':'ثبت برنامه'}</strong><span className="section-help" style={{display:'block'}}>زمان دوره، آزمون یا جلسه را در تقویم شخصی ثبت کنید.</span></summary>
- <p className="section-help">پس از زدن دکمهٔ ثبت، برنامه در Google Calendar همین حساب ذخیره می‌شود؛ مهمان یا دعوت‌نامه ندارد.</p>
+ <p className="section-help">برنامه در تقویم <bdi dir="ltr">{calendarLabel}</bdi> ذخیره می‌شود؛ مهمان یا دعوت‌نامه ندارد.</p>
  {!active('calendar')&&<div className="notice">ابتدا Google همین پروفایل را با مجوز Calendar متصل کنید.</div>}
  <form onSubmit={saveEvent}><fieldset disabled={!active('calendar')||Boolean(busy)} style={{border:0,padding:0,margin:0,minWidth:0}}>
  <label htmlFor={'course-title-'+person}>عنوان برنامه</label><input id={'course-title-'+person} required maxLength={300} value={title} onChange={e=>setTitle(e.target.value)}/>
@@ -55,7 +70,7 @@ export function CalendarDriveTools({person,notify}){
  </fieldset><p className="section-help">اگر برنامه هم‌زمان در Google تغییر کرده باشد، ابتدا تقویم را به‌روزرسانی و دوباره ویرایش کنید.</p></form>
  </details>
  <details className="workspace-disclosure glass-panel">
- <summary><strong><FileText size={18} aria-hidden="true"/> مدارک من</strong><span className="section-help" style={{display:'block'}}>مدارک را در Drive همین حساب بارگذاری یا دانلود کنید.</span></summary>
+ <summary><strong><FileText size={18} aria-hidden="true"/> مدارک من · <bdi dir="ltr">{primaryLabel}</bdi></strong><span className="section-help" style={{display:'block'}}>مدارک از Drive حساب <bdi dir="ltr">{primaryLabel}</bdi> خوانده می‌شوند؛ انتخاب تقویم، حساب مدارک را تغییر نمی‌دهد.</span></summary>
  <p className="section-help">فقط فایل‌های مجاز برای این برنامه نمایش داده می‌شوند، نه تمام Drive. دانلود تا ۲ مگابایت و بارگذاری PDF، DOCX یا TXT تا یک مگابایت امکان‌پذیر است.</p>
  {!active('drive')&&<div className="notice">برای استفاده از مدارک، مجوز Drive همین حساب را هنگام اتصال Google فعال کنید.</div>}
  <button type="button" className="secondary" disabled={!active('drive')||Boolean(busy)} onClick={()=>loadFiles()}><RefreshCw size={15}/>{busy==='files'?'در حال دریافت…':'دریافت فایل‌های Drive'}</button>

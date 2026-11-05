@@ -161,7 +161,7 @@ test('backup Drive consent is explicit, secondary-only, retained through canonic
  const response=await handleGoogleRequest(new Request(origin+'/api/google/start?purpose=backup',{method:'POST',headers:{Origin:appOrigin}}),env,secondary),body=await response.json();
  const launch=await handleGoogleLaunch(launchRequest(body.launchTicket),env),url=new URL(launch.headers.get('Location'));
  const scope=url.searchParams.get('scope');assert(scope.includes('gmail.readonly'));assert(scope.includes('gmail.send'));assert(scope.includes('drive.file'));assert(!scope.includes('calendar.events'));
- const pending={url,cookie:launch.headers.get('Set-Cookie').split(';')[0]};assert.equal((await finish(env,pending,google('secondary-amir','secondary@example.invalid'))).status,200);
+ const pending={url,cookie:launch.headers.get('Set-Cookie').split(';')[0]};assert.equal((await finish(env,pending,google('secondary-amir','secondary@example.invalid',{scope:[...GOOGLE_SCOPES.slice(0,5),GOOGLE_SCOPES[6]].join(' ')}))).status,200);
  const status=await(await handleGoogleRequest(req('status'),env,secondary)).json();assert.equal(status.capabilities.backupDrive,true);assert.equal(status.capabilities.drive,false);assert.equal(status.capabilities.calendar,false);
  assert.equal((await getGoogleAccess(env,amir.userId)).subject,'primary-amir');assert.equal((await getGoogleAccess(env,arash.userId)).subject,'primary-arash');
 });
@@ -171,4 +171,29 @@ test('declining backup scope preserves the already connected secondary Gmail gra
  const response=await handleGoogleRequest(req('start?purpose=backup','POST'),env,secondary),body=await response.json();
  const result=await finish(env,{url:new URL(body.authorizationUrl),cookie:response.headers.get('Set-Cookie').split(';')[0]},google('secondary-amir','secondary@example.invalid',{scope:GOOGLE_SCOPES.slice(0,5).join(' ')}));
  assert.equal(result.status,400);assert((await result.text()).includes('backup_permission_missing'));assert.equal((await getGoogleAccess(env,secondary.userId)).accessToken,'synthetic-access-secondary-amir');
+});
+
+
+test('secondary Calendar consent preserves existing backup Drive grant through canonical launch and inverse reconnect',async()=>{
+ const {env,db}=fixture();env.GOOGLE_APP_ORIGINS=appOrigin;env.GOOGLE_SECONDARY_EMAIL='secondary@example.invalid';const secondary={userId:amir.userId+':secondary',profileId:'amir'};
+ const previous=await begin(env,secondary);assert.equal((await finish(env,previous,google('calendar-secondary','secondary@example.invalid',{scope:[...GOOGLE_SCOPES.slice(0,5),GOOGLE_SCOPES[6]].join(' ')}))).status,200);
+ const before=db.prepare('select token_cipher from google_accounts where owner_id=?').get(secondary.userId).token_cipher;
+ for(const context of [amir,arash])await assert.rejects(()=>handleGoogleRequest(req('start?purpose=calendar','POST'),env,context),e=>e.code==='invalid_purpose');
+ const response=await handleGoogleRequest(new Request(origin+'/api/google/start?purpose=calendar',{method:'POST',headers:{Origin:appOrigin}}),env,secondary),body=await response.json();
+ const launch=await handleGoogleLaunch(launchRequest(body.launchTicket),env),url=new URL(launch.headers.get('Location')),scopes=url.searchParams.get('scope').split(' ');
+ assert(scopes.includes(GOOGLE_SCOPES[5]));assert(scopes.includes(GOOGLE_SCOPES[6]));assert(scopes.includes(GOOGLE_SCOPES[3]));assert(scopes.includes(GOOGLE_SCOPES[4]));
+ const callback=await finish(env,{url,cookie:launch.headers.get('Set-Cookie').split(';')[0]},google('calendar-secondary','secondary@example.invalid',{scope:GOOGLE_SCOPES.slice(0,6).join(' ')}));
+ assert.equal(callback.status,400);assert.match(await callback.text(),/calendar_permission_missing/);assert.equal(db.prepare('select token_cipher from google_accounts where owner_id=?').get(secondary.userId).token_cipher,before);
+ const renewed=await handleGoogleRequest(req('start?purpose=calendar','POST'),env,secondary),payload=await renewed.json();
+ assert.equal((await finish(env,{url:new URL(payload.authorizationUrl),cookie:renewed.headers.get('Set-Cookie').split(';')[0]},google('calendar-secondary','secondary@example.invalid'))).status,200);
+ const status=await(await handleGoogleRequest(req('status'),env,secondary)).json();assert.equal(status.capabilities.calendar,true);assert.equal(status.capabilities.backupDrive,true);assert.equal(status.capabilities.drive,false);
+ const backup=await handleGoogleRequest(req('start?purpose=backup','POST'),env,secondary),again=new URL((await backup.json()).authorizationUrl);assert(again.searchParams.get('scope').includes('calendar.events'));
+});
+test('new secondary Calendar permission is explicit and incomplete grant leaves Gmail untouched',async()=>{
+ const {env,db}=fixture();env.GOOGLE_SECONDARY_EMAIL='secondary@example.invalid';const secondary={userId:amir.userId+':secondary',profileId:'amir'};
+ const p=await begin(env,secondary);await finish(env,p,google('secondary-calendar','secondary@example.invalid',{scope:GOOGLE_SCOPES.slice(0,5).join(' ')}));
+ const old=db.prepare('select token_cipher from google_accounts where owner_id=?').get(secondary.userId).token_cipher;
+ const response=await handleGoogleRequest(req('start?purpose=calendar','POST'),env,secondary),body=await response.json(),url=new URL(body.authorizationUrl);
+ assert(url.searchParams.get('scope').includes('calendar.events'));assert(!url.searchParams.get('scope').includes('drive.file'));
+ const fail=await finish(env,{url,cookie:response.headers.get('Set-Cookie').split(';')[0]},google('secondary-calendar','secondary@example.invalid',{scope:GOOGLE_SCOPES.slice(0,5).join(' ')}));assert.equal(fail.status,400);assert.equal(db.prepare('select token_cipher from google_accounts where owner_id=?').get(secondary.userId).token_cipher,old);
 });

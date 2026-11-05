@@ -1,3 +1,4 @@
+import {googleAccountLabel} from './google-account-labels.mjs';
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -658,7 +659,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                   <h3>پیش‌نویس مکاتبه</h3>
                   <span className="tag">{mailConnection.state.connected ? "Gmail همین حساب متصل است" : "Gmail متصل نیست"}</span>
                 </div>
-                {person === "amir" && <label>صندوق فرستندهٔ همین پیش‌نویس<select value={composeMailbox} onChange={e=>{setComposeMailbox(e.target.value);setReplyContext(null);if(e.target.value==='secondary')secondaryGoogleConnection.refresh();}}><option value="primary">Google اصلی</option><option value="secondary">Google دوم</option></select></label>}
+                {person === "amir" && <label>صندوق فرستندهٔ همین پیش‌نویس<select value={composeMailbox} onChange={e=>{setComposeMailbox(e.target.value);setReplyContext(null);if(e.target.value==='secondary')secondaryGoogleConnection.refresh();}}><option value="primary">{googleAccountLabel(person,'primary',googleConnection.state.email)}</option><option value="secondary">{googleAccountLabel(person,'secondary',secondaryGoogleConnection.state.email)}</option></select></label>}
                 {replyContext && <div className="notice">پاسخ به پیام همین صندوق: <span dir="ltr">{replyContext.to}</span><button className="text-button" onClick={()=>setReplyContext(null)}>حذف زمینهٔ پاسخ</button><small>این مرحله فقط متن پیش‌نویس را آماده می‌کند؛ ارسال هنوز انجام نمی‌شود.</small></div>}
                 <label>مخاطبان انتخاب‌شده</label>
                 <div className="recipient-list">

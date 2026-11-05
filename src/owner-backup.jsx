@@ -1,3 +1,4 @@
+import {googleAccountLabel} from './google-account-labels.mjs';
 import React,{useLayoutEffect,useRef,useState} from 'react';
 import {Download,ShieldCheck,FileCheck2,CloudUpload,RefreshCw,ExternalLink} from 'lucide-react';
 import {api} from './api';
@@ -79,8 +80,8 @@ export function OwnerBackup({person,notify=()=>{}}){
   <p className="section-help">حداقل ۱۶ نویسه انتخاب کنید و آن را جدا از فایل، در جای امن نگه دارید. اگر فراموش شود، سایت نمی‌تواند آن را بازیابی کند.</p>
   <label htmlFor={'backup-confirm-'+owner}>تکرار گذرواژه برای ساخت فایل جدید</label>
   <input id={'backup-confirm-'+owner} type="password" autoComplete="off" maxLength={512} value={confirm} disabled={!!state.busy} onChange={event=>change('confirm',event.target.value)}/>
-  {owner==='amir'&&<details className="workspace-disclosure neon-cyan" open><summary><CloudUpload size={16}/> ذخیرهٔ رمزگذاری‌شده در Drive ایمیل دوم</summary>
-   <p className="section-help">با انتخاب شما، Drive ایمیل دوم امیر مقصد این نسخه است. فقط اطلاعات مجاز همین پنل، پس از رمزگذاری در مرورگر، منتقل می‌شود؛ گذرواژه برای سرور یا Google فرستاده نمی‌شود.</p>
+  {owner==='amir'&&<details className="workspace-disclosure neon-cyan" open><summary><CloudUpload size={16}/> ذخیرهٔ رمزگذاری‌شده در Drive {googleAccountLabel(owner,'secondary',secondary.state.email)}</summary>
+   <p className="section-help">با انتخاب شما، Drive حساب {googleAccountLabel(owner,'secondary',secondary.state.email)} مقصد این نسخه است. فقط اطلاعات مجاز همین پنل، پس از رمزگذاری در مرورگر، منتقل می‌شود؛ گذرواژه برای سرور یا Google فرستاده نمی‌شود.</p>
    <GoogleConnection person="amir" connection={secondary} notify={notify} purpose="backup" onConnected={refreshDrive}/>
    <div className="form-actions"><button type="button" className="secondary" disabled={!!state.busy||driveState.loading} onClick={refreshDrive}><RefreshCw size={15}/> بررسی مقصد پشتیبان</button><span className={'status '+(driveState.record?.backupDrive?'':'amber')}>{driveState.loading?'در حال بررسی…':driveState.record?.backupDrive?'مجوز Drive آماده است':'مجوز جداگانهٔ Drive لازم است'}</span></div>
    {driveState.record?.email&&<p className="google-mailbox" dir="ltr">{driveState.record.email}</p>}
@@ -105,7 +106,7 @@ export function OwnerBackup({person,notify=()=>{}}){
    <p className="section-help">خروجی سقف حجم و تعداد دارد؛ اگر بخشی محدود شود، در خلاصهٔ فایل نشان داده می‌شود. پس از بازیابی مستقل، اتصال سرویس‌هایی مانند Google ممکن است دوباره به رضایت شما نیاز داشته باشد.</p>
   </details>
   <details className="workspace-disclosure"><summary>پشتیبان خودکار سرور هنوز چه کاری نیاز دارد؟</summary>
-   <p>مقصد پیشنهادی، Drive ایمیل دوم امیر است؛ اتصال مقصد و ذخیرهٔ دستیِ رمزگذاری‌شده با نسخه‌برداری خودکار سرور تفاوت دارد. برای حالت خودکار، خروجی کامل، حفاظت از کلید بازیابی و برنامهٔ منظم تهیهٔ نسخه هنوز باید آماده شوند.</p>
+   <p>مقصد انتخاب‌شده، Drive حساب amirgr20 است؛ اتصال مقصد و ذخیرهٔ دستیِ رمزگذاری‌شده با نسخه‌برداری خودکار سرور تفاوت دارد. برای حالت خودکار، خروجی کامل، حفاظت از کلید بازیابی و برنامهٔ منظم تهیهٔ نسخه هنوز باید آماده شوند.</p>
    <p className="section-help">سپس باید روی یک نسخهٔ جدا و آزمایشی امتحان کنیم که اطلاعات واقعاً برمی‌گردند و دو حساب جدا می‌مانند. این کار با بررسی فایل در مرورگر فرق دارد و نباید روی اطلاعات اصلی سایت انجام شود.</p>
   </details>
   {state.error&&<p className="notice" role="alert"><MixedText>{state.error}</MixedText></p>}{state.summary&&<Summary record={state.summary}/>}
