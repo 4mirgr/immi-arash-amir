@@ -1463,6 +1463,12 @@ footer > span:last-child {
 .access-card input {
   width: 100%;
 }
+.access-card { min-width: 0; box-sizing: border-box; }
+.access-card .notice, .access-card .recovery-identity { overflow-wrap: anywhere; }
+.access-card .recovery-identity { margin: 0; padding: 12px; border: 1px solid #315969; border-radius: 12px; background: #11313a80; color: #b7f7ed; text-align: center; }
+.access-card .recovery-link { display: flex; align-items: center; justify-content: center; gap: 8px; color: #9de7ef; padding: 12px; border: 1px solid #36616c; border-radius: 12px; background: #14313c60; }
+.access-card .recovery-link:hover { border-color: #7edce9; box-shadow: 0 0 14px #59d5e321; }
+.access-card button { white-space: normal; }
 button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
