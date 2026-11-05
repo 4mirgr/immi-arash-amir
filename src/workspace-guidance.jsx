@@ -1,0 +1,31 @@
+import {useEffect} from 'react';
+import {UI_TRANSLATIONS} from './ui-translations.mjs';
+const descriptions=[
+ ['پیش‌نویس مکاتبه','متن پیام را بنویسید یا از قالب‌های ذخیره‌شده انتخاب کنید؛ ارسال در مرحلهٔ جدا انجام می‌شود.','Write a message or choose a saved template. Sending is a separate action.'],
+ ['پیش‌نویس‌های این پروفایل','پیام‌هایی که برای این حساب ذخیره کرده‌اید؛ این فهرست نشان‌دهندهٔ ارسال ایمیل نیست.','Saved drafts for this account; these have not necessarily been sent.'],
+ ['پروفایل و رزومهٔ حرفه‌ای','اطلاعات حرفه‌ای خودتان را مرور کنید و فایل رزومه را دریافت کنید.','Review your professional information and download your CV.'],
+ ['گام‌های ارتقای رزومه','پیشنهادهای آموزشی و حرفه‌ای را ببینید؛ انجام واقعی و مدرک هر مورد جدا بررسی می‌شود.','Explore development suggestions. Completion and certificates require separate verification.'],
+ ['نسخه‌ها و قالب‌های رزومه','نسخهٔ رزومه ذخیره کنید، فایلش را بگیرید و نسخهٔ پیش‌فرض درخواست‌ها را مشخص کنید.','Save CV versions, download files and choose your default application CV.'],
+ ['قالب‌های شخصی مکاتبه','موضوع و متن پیام‌های پرکاربرد را با نام دلخواه ذخیره و دوباره استفاده کنید.','Name and save reusable email subjects and messages.'],
+ ['سیاست مکاتبات','ترجیح مکاتبه را مشخص کنید؛ متن، گیرنده و مجوز ارسال هر پیام همچنان بررسی می‌شوند.','Choose your outreach preference. Each message still needs a valid recipient, content and send authorization.'],
+ ['صف ارسال همین حساب','پیام‌های آماده و نتیجهٔ ارسال آن‌ها را فقط برای صندوق فعلی ببینید.','Review queued messages and delivery results for the selected mailbox.'],
+ ['بازبینی و صف ارسال Gmail','گیرنده، متن و پیوست را پیش از ارسال واقعی از Gmail خودتان بررسی کنید.','Check recipients, message and attachment before sending through your Gmail.'],
+ ['مکاتبات مرتبط با پروژه','ایمیل‌های کاری و تحصیلی مرتبط را ببینید، جست‌وجو کنید و برایشان پاسخ آماده کنید.','Find relevant work and study emails and prepare replies.'],
+ ['پروندهٔ برنامه‌ریزی و موارد باز','اطلاعاتی مانند پایان دوره، زبان و بورد را ثبت کنید تا برنامه به شرایط واقعی شما نزدیک‌تر شود.','Record training, language and board details to make planning more relevant to your situation.'],
+ ['سناریوهای بورد','دو حالت قبولی و عدم قبولی بورد را جدا بررسی کنید؛ نتیجه هنوز از پیش فرض نمی‌شود.','Compare plans with and without board certification; no outcome is assumed.'],
+ ['راه ارتباطی دانشگاهی گزارش‌شده','ایمیل دانشگاهی ثبت‌شدهٔ شما را نشان می‌دهد؛ به‌تنهایی مجوز سرویس یا نمایندگی دانشگاه نیست.','Shows your reported university email; this alone does not grant API access or university representation.'],
+ ['جمع‌بندی پروندهٔ شما','پیش‌نیازها، ابهام‌ها و قدم‌های بعدی مسیر خودتان را یک‌جا مرور کنید.','Review your prerequisites, unknowns and next steps in one place.'],
+ ['نمودارها و وضعیت دسترسی زنده','منشأ هر آمار و محدودیت دسترسی LinkedIn را کنار نمودار ببینید.','See each metric’s source and LinkedIn access limits alongside its chart.'],
+ ['متن فعلی و مقصد تغییر','بخش موردنظر پروفایل LinkedIn را انتخاب و متن پیشنهادی را برای کپی آماده کنید.','Choose a LinkedIn profile section and prepare suggested text to copy.'],
+ ['کارهای مهم برای رشد حرفه‌ای','کارهای پیشنهادی رشد پروفایل را انتخاب و پیشرفت خودتان را ثبت کنید.','Choose profile-development tasks and track your progress.'],
+ ['آماده‌سازی محتوای پست','متن پست را آماده کنید و پیش از انتشار، محتوا و حساب مقصد را بررسی کنید.','Draft a post and review its content and destination account before publishing.'],
+ ['صف محتوا و کارهای انتشار','پست‌های آماده و زمان انتشار انتخابی خودتان را مدیریت کنید.','Manage prepared posts and your chosen publication schedule.'],
+ ['ثبت ارتباط هدف به‌صورت خصوصی','افراد یا مراکز مرتبط را برای پیگیری شخصی ذخیره کنید؛ پیامی خودکار فرستاده نمی‌شود.','Save relevant people or organizations for private follow-up; no message is sent automatically.'],
+ ['فهرست پیگیری شبکه‌سازی','ارتباطات هدف، یادداشت‌ها و پیگیری‌های همین حساب را ببینید.','Review this account’s networking targets, notes and follow-ups.'],
+ ['واردکردن خروجی رسمی ارتباطات خودتان','فایل خروجی LinkedIn خودتان را وارد کنید؛ این کار اتصال زنده به شبکه نیست.','Import your own LinkedIn export; this is not a live connection-graph sync.'],
+ ['ثبت آمار قابل مشاهده در LinkedIn','آماری را که خودتان در LinkedIn می‌بینید ثبت کنید؛ منشأ دستی آن مشخص می‌ماند.','Record metrics visible in your LinkedIn account; they remain labelled as manual entries.'],
+ ['آخرین آمار و تغییر ثبت‌شده','روند داده‌های ثبت‌شده را ببینید؛ نبود داده به معنی آمار صفر نیست.','Review recorded trends. Missing data does not mean zero activity.'],
+ ['کتابخانهٔ تمرین گفت‌وگوی بالینی PESCI','کیس انتخاب کنید، ارائه را تمرین کنید و پاسخ خودتان را مرور کنید؛ این آزمون رسمی نیست.','Choose a case, practise a presentation and review your response; this is not an official exam.'],
+ ['پاسخ و خودبازبینی خصوصی','پاسخ تمرین و نکته‌هایی را که باید بهتر کنید برای خودتان ذخیره کنید.','Save your practice response and improvement notes privately.'],
+];
+export function WorkspaceGuidance(){useEffect(()=>{let queued=false;const source=new WeakMap();function apply(){queued=false;const en=document.documentElement.lang==='en';for(const heading of document.querySelectorAll('.page h3')){if(heading.closest('.inbox-message,.email-template-row,.message-details'))continue;const label=heading.textContent.replace(/\s+/g,' ').trim();const known=descriptions.find(row=>row[0]===label||UI_TRANSLATIONS[row[0]]===label)||source.get(heading);if(!known)continue;source.set(heading,known);const help=known[en?2:1];if(heading.getAttribute('data-section-help')!==help){heading.setAttribute('data-section-help',help);heading.setAttribute('aria-description',help);}}}function schedule(){if(!queued){queued=true;queueMicrotask(apply);}}const observer=new MutationObserver(schedule);observer.observe(document.querySelector('.page')||document.body,{subtree:true,childList:true,characterData:true});const locale=new MutationObserver(schedule);locale.observe(document.documentElement,{attributes:true,attributeFilter:['lang']});apply();return()=>{observer.disconnect();locale.disconnect();};},[]);return null;}

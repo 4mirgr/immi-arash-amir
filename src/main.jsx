@@ -50,7 +50,11 @@ import { MixedText } from "./mixed-text";
 import { TextSizeControl } from "./text-size-control";
 import {ArashHome,ArashNavigation,WorkspaceFold,ARASH_TONES} from "./arash-workspace";
 import {EmailTemplateSettings} from "./email-template-settings";
-import sourceRegistry from "../library/sources.json";
+import {AmirHome,AmirNavigation,AMIR_TONES} from "./amir-workspace";
+import {LanguageControl} from "./language-control";
+import {WorkspaceGuidance} from "./workspace-guidance";
+import {SourceMonitor} from "./source-monitor";
+
 function deferredPanel(load,name){const Component=React.lazy(()=>load().then(module=>({default:module[name]})));return function DeferredPanel(props){return <React.Suspense fallback={<section className="panel" role="status">در حال آماده‌سازی این بخش…</section>}><Component {...props}/></React.Suspense>;};}
 const AutomationHub=deferredPanel(()=>import("./automation-hub"),"AutomationHub");
 const LinkedInWorkspace=deferredPanel(()=>import("./linkedin-workspace"),"LinkedInWorkspace");
@@ -104,6 +108,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
     [policy, setPolicy] = useState("auto_after_connection"),
     [loading, setLoading] = useState(false),
     [page, setPage] = useState(1);
+  const [automationTab,setAutomationTab]=useState("operations");
   const googleConnection = useGoogleConnection(person, cloud);
   const secondaryGoogleConnection = useGoogleConnection(person, cloud && person === "amir", "secondary");
   const [composeMailbox,setComposeMailbox] = useState("primary");
@@ -318,7 +323,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
     ],
   ];
   return (
-    <div className={"app " + (!arash ? "amir" : "arash-workspace neon-"+ARASH_TONES[tab])} data-section={tab}>
+    <div className={"app " + (!arash ? "amir amir-workspace neon-"+AMIR_TONES[tab] : "arash-workspace neon-"+ARASH_TONES[tab])} data-section={tab}>
       <aside className="sidebar">
         <a className="brand" href="#" onClick={(e) => e.preventDefault()}>
           <span className="brand-icon"><img src="/brand-aa-64.png" alt="AA" width="42" height="42" style={{borderRadius:10}}/></span>
@@ -352,21 +357,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
             ? "ورود امن · دسترسی محدود به حساب شما"
             : "تعویض نمای آزمایشی · ورود امن هنوز متصل نیست"}
         </div>
-        {arash ? <ArashNavigation items={nav} tab={tab} onNavigate={setTab}/> : <nav>
-          {nav.filter(([id])=>(id!=="study"||person==="amir")&&(id!=="pesci"||person==="arash")).map(([id, title, Icon]) => (
-            <button
-              key={id}
-              onClick={() => setTab(id)}
-              className={tab === id ? "active" : ""}
-            >
-              <Icon size={19} />
-              <span>
-                {!arash && id === "pesci" ? "مسیر تخصص و ارزیابی" : title}
-              </span>
-              {id === "opportunities" && <b>{clinics.length}</b>}
-            </button>
-          ))}
-        </nav>}
+        {arash ? <ArashNavigation items={nav} tab={tab} onNavigate={setTab}/> : <AmirNavigation items={nav} tab={tab} onNavigate={setTab}/>}
         <div className="sidebar-bottom">
           <div className="connection">
             <span className={"dot " + (online ? "green" : "amber")} />
@@ -389,6 +380,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
             <span>{nav.find((n) => n[0] === tab)?.[1]}</span>
           </div>
           <div className="header-actions">
+            <LanguageControl personId={person} />
             <TextSizeControl personId={person} />
             <ThemeControl personId={person} />
             {cloud && (
@@ -411,7 +403,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
             <div className="small-avatar">{arash ? "AE" : "AG"}</div>
           </div>
         </header>
-        <div className="page">
+        <div className="page"><WorkspaceGuidance/>
           <div className="page-heading">
             <div>
               <div className="eyebrow">
@@ -428,9 +420,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                 )}
               </h1>
               <p>
-                {tab === "overview"
-                  ? "از کشف فرصت تا آمادگی حرفه‌ای؛ قدم بعدی را آگاهانه بردارید."
-                  : "داده‌های قابل پیگیری، تصمیم‌های روشن، پیشرفت مستمر."}
+                {({overview:"مسیر کاری یا تحصیلی خودتان را انتخاب کنید و قدم بعدی را پیش ببرید.",opportunities:"آگهی‌ها را فیلتر کنید؛ شرایط، اطلاعات تماس و روش درخواست هر مورد را ببینید.",mail:"ایمیل‌های مرتبط را بخوانید و با قالب و رزومهٔ خودتان پاسخ یا درخواست آماده کنید.",cv:"اطلاعات رزومه را مرور کنید، نسخه ذخیره کنید و فایل مناسب درخواست را بگیرید.",roadmap:"شرایط مسیر را با پروندهٔ خودتان مقایسه کنید و کارهای لازم را مشخص کنید.",study:"فرصت‌های تحصیلی و پژوهشی را با شرایط پذیرش، مهلت و کمک‌هزینه بررسی کنید.",development:"دوره‌ها و رویدادهایی را پیدا کنید که به هدف حرفه‌ای شما کمک می‌کنند.",linkedin:"پروفایل، متن پست‌ها و ارتباطات هدف را مدیریت کنید؛ نوع دسترسی هر بخش مشخص است.",pesci:"کیس بالینی انتخاب کنید و ارائهٔ انگلیسی و خودبازبینی را تمرین کنید.",sources:"ببینید آگهی‌ها و راهنمای مسیر از کدام منابع آمده‌اند و آخرین بررسی چه بوده است.",automation:"وضعیت سرویس‌ها، اعلان تلگرام و ابزارهای کمکی همین حساب را مدیریت کنید.",settings:"حساب‌ها را متصل کنید و قالب‌های ایمیل، رزومهٔ پیش‌فرض و برنامه‌هایتان را تنظیم کنید."})[tab]}
               </p>
             </div>
             <button className="secondary" onClick={refresh}>
@@ -446,187 +436,9 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
             </div>
           )}
           {tab === "overview" && arash && <ArashHome onNavigate={setTab} online={online} googleConnected={googleConnection.state.connected} leadCount={clinics.length} draftCount={drafts.length} hasCV={!!profile?.cvText}/>}
-          {tab === "overview" && !arash && (
-            <>
-              <section className="hero">
-                <div className="hero-copy">
-                  <div className="pill">
-                    {arash ? "STANDARD PATHWAY" : "SPECIALIST PATHWAY"}{" "}
-                    <span>•</span> AUSTRALIA
-                  </div>
-                  <h2>
-                    {arash ? (
-                      <>
-                        آیندهٔ پزشکی شما،
-                        <br />
-                        <em>از همین‌جا شروع می‌شود.</em>
-                      </>
-                    ) : (
-                      <>
-                        تخصص شما،
-                        <br />
-                        <em>افق‌های تازه در استرالیا.</em>
-                      </>
-                    )}
-                  </h2>
-                  <p>
-                    {arash
-                      ? "فرصت‌های کاری را بررسی کنید، رزومه را آماده نگه دارید و برای PESCI تمرین کنید."
-                      : "مسیر ارزیابی تخصص داخلی، فرصت‌های بیمارستانی و شرایط ثبت پزشکی را مستند دنبال کنید."}
-                  </p>
-                  <button
-                    className="primary"
-                    onClick={() => setTab("opportunities")}
-                  >
-                    کاوش فرصت‌ها <ArrowLeft size={17} />
-                  </button>
-                </div>
-                <div className="orbit">
-                  <div className="orbit-ring r1" />
-                  <div className="orbit-ring r2" />
-                  <div className="australia">
-                    AU
-                    <span>
-                      BUILD YOUR
-                      <br />
-                      NEXT CHAPTER
-                    </span>
-                  </div>
-                  <span className="orbit-point p1" />
-                  <span className="orbit-point p2" />
-                  <div className="floating-badge">
-                    <ShieldCheck size={18} />
-                    <span>تصمیم بر پایهٔ منابع رسمی</span>
-                  </div>
-                </div>
-              </section>
-              <div className="stats">
-                <Stat
-                  icon={BriefcaseBusiness}
-                  value={clinics.length.toLocaleString("fa")}
-                  title="مرکز در بانک اطلاعات"
-                  sub="سرنخ تماس؛ آگهی تأییدشده نیست"
-                />
-                <Stat
-                  icon={Mail}
-                  value={drafts.length.toLocaleString("fa")}
-                  title="پیش‌نویس این پروفایل"
-                  sub="پیش‌نویس‌های این حساب؛ ارسال نشده"
-                />
-                <Stat
-                  icon={FileText}
-                  value={profile ? "۱" : "—"}
-                  title="پروفایل حرفه‌ای"
-                  sub={
-                    profile?.cvText
-                      ? "دادهٔ اولیه وارد شده"
-                      : "رزومه هنوز دریافت نشده"
-                  }
-                />
-                <Stat
-                  icon={GraduationCap}
-                  value={arash ? "۱" : "—"}
-                  title={arash ? "ایستگاه تمرینی" : "ارزیابی تخصص"}
-                  sub={arash ? "نمونه آموزشی، غیررسمی" : "نیازمند بررسی RACP"}
-                />
-              </div>
-              <div className="two-col">
-                <section className="panel">
-                  <div className="section-head">
-                    <div>
-                      <span className="eyebrow">YOUR NEXT STEPS</span>
-                      <h3>قدم‌های بعدی شما</h3>
-                    </div>
-                    <span className="tag">شروع مسیر</span>
-                  </div>
-                  <div className="steps">
-                    {(arash
-                      ? [
-                          [
-                            "تأیید اطلاعات حرفه‌ای",
-                            "مدارک، تاریخ‌ها و وضعیت آزمون‌ها",
-                            "cv",
-                          ],
-                          [
-                            "بررسی مراکز و فرصت‌ها",
-                            "فیلتر داده‌ها و ساخت فهرست هدف",
-                            "opportunities",
-                          ],
-                          [
-                            "تمرین ارائهٔ بالینی",
-                            "کتابخانهٔ کیس و خودبازبینی",
-                            "pesci",
-                          ],
-                        ]
-                      : [
-                          [
-                            "تکمیل رزومه تخصصی",
-                            "سوابق داخلی، بورد و برنامهٔ آموزشی",
-                            "cv",
-                          ],
-                          [
-                            "مطالعهٔ مسیر ارزیابی تخصص",
-                            "تفکیک ارزیابی کالج از استخدام",
-                            "roadmap",
-                          ],
-                          [
-                            "بررسی موقعیت‌های بیمارستانی",
-                            "پیگیری شرایط ثبت و سطح شغلی",
-                            "opportunities",
-                          ],
-                        ]
-                    ).map(([a, b, t], i) => (
-                      <button
-                        className="step"
-                        key={a}
-                        onClick={() => setTab(t)}
-                      >
-                        <span className="step-num">{i + 1}</span>
-                        <div>
-                          <strong>{a}</strong>
-                          <small>{b}</small>
-                        </div>
-                        <ChevronLeft size={17} />
-                      </button>
-                    ))}
-                  </div>
-                </section>
-                <section className="panel agents">
-                  <div className="section-head">
-                    <div>
-                      <span className="eyebrow">WORKFLOW HEALTH</span>
-                      <h3>وضعیت دستیارها</h3>
-                    </div>
-                    <Activity size={20} />
-                  </div>
-                  {[
-                    [
-                      "واردسازی بانک مراکز",
-                      online ? "دادهٔ سرور در دسترس" : "منتظر سرور",
-                    ],
-                    ["پایش منابع و فرصت‌ها", data.integrations?.crawler?.connected ? "رصد دوره‌ای منابع عمومی فعال" : "نیازمند آماده‌سازی منبع"],
-                    ["دستیار مکاتبات", googleConnection.state.connected ? "دریافت محدود پیام‌ها آماده" : "نیازمند اتصال Gmail"],
-                    ["هماهنگی تقویم", googleConnection.state.connected ? "دریافت و ویرایش تقویم با واکشی آماده" : "نیازمند اتصال Google"],
-                  ].map(([a, b], i) => (
-                    <div className="agent-row" key={a}>
-                      <span
-                        className={
-                          "dot " + (i === 0 && online ? "green" : "amber")
-                        }
-                      />
-                      <span>{a}</span>
-                      <small>{b}</small>
-                    </div>
-                  ))}
-                  <div className="agent-note">
-                    <ShieldCheck size={16} /> ارسال پیام تابع مجوز و انتخاب‌های همان مالک است؛ منابع عمومی جداگانه پایش می‌شوند.
-                  </div>
-                </section>
-              </div>
-            </>
-          )}
+          {tab === "overview" && !arash && <AmirHome onNavigate={setTab}/>}
           {tab === "opportunities" && <JobOpportunitiesPanel key={person} person={person} notify={notify} onOpenSettings={()=>setTab("settings")} />}
-          {(tab === "opportunities" || (tab === "overview" && !arash)) && (
+          {tab === "opportunities" && (
             <WorkspaceFold enabled={arash} title="بانک مراکز و انتخاب مخاطب" hint="سرنخ‌های تماس واردشده؛ مستقل از آگهی‌های شغلی" tone="amber"><section className="panel opportunities">
               <div className="section-head">
                 <div>
@@ -1057,42 +869,10 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                   </a>
                 ))}
               </div>
-              <h3 className="portal-heading">
-                درگاه‌های استخدام ایالت‌ها و قلمروها
-              </h3>
-              <p className="muted">
-                این لینک‌ها درگاه‌های رسمی هستند؛ دریافت خودکار آگهی برای آن‌ها
-                هنوز تنظیم نشده است.
-              </p>
-              <div className="source-grid">
-                {sourceRegistry.map((source) => (
-                  <a
-                    className="panel source-card"
-                    href={source.portalUrl}
-                    key={source.id}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <span className="tag">{source.state}</span>
-                    <h3 dir="ltr">{source.name}</h3>
-                    <span className="status amber">
-                      خوراک خودکار تنظیم نشده · feed_not_configured
-                    </span>
-                    <p className="muted">
-                      {source.portalCheck.includes("403")
-                        ? "محتوای این درگاه به دلیل پاسخ ۴۰۳ تأیید نشده است."
-                        : "درگاه بررسی شده؛ محتوای آگهی زنده دریافت نمی‌شود."}
-                    </p>
-                    <small>تاریخ بررسی: {source.checkedAt}</small>
-                    <span>
-                      بازکردن درگاه <ExternalLink size={15} />
-                    </span>
-                  </a>
-                ))}
-              </div>
+              <SourceMonitor key={person} person={person} onOpportunities={()=>setTab("opportunities")}/>
             </>
           )}
-          {tab === "automation" && <AutomationHub person={person} notify={notify}/>}
+          {tab === "automation" && <AutomationHub key={person+":"+automationTab} person={person} initialTab={automationTab} onNavigate={setTab} notify={notify}/>}
           {tab === "settings" && (
             <div className="settings-workspace">
               <nav className="settings-shortcuts" aria-label="بخش‌های تنظیمات"><a href="#email-templates">قالب‌های ایمیل</a><a href="#cv-defaults">رزومهٔ پیش‌فرض</a><a href="#service-connections">اتصال حساب‌ها</a><a href="#calendar-documents">تقویم و مدارک</a></nav>
@@ -1164,13 +944,13 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                   <GoogleConnection person={person} connection={googleConnection} notify={notify}/>
                   {person === "amir" && <GoogleConnection person={person} mailbox="secondary" connection={secondaryGoogleConnection} notify={notify}/>}
                   <div className="settings-system-services">{[
-                    ["Telegram", "اعلان موقعیت‌ها و پیگیری‌ها", "telegram"],
-                    ["پایش منابع", "دریافت آگهی و تشخیص تغییر", "crawler"],
-                    ["هوش مصنوعی", "تحلیل درخواست‌محور با سقف مصرف", "ai"],
-                  ].map(([a,b,key])=><div className="integration" key={a}><span className="clinic-icon"><Globe size={20}/></span><div><strong>{a}</strong><small>{b}</small></div><span className={"status "+(data.integrations?.[key]?.connected?"":"amber")}>{data.integrations?.[key]?.connected?(key==="telegram"&&!data.integrations.telegram.enabled?"متصل؛ اعلان خاموش":"آماده"):"نیازمند راه‌اندازی"}</span></div>)}<button className="secondary" onClick={()=>setTab("automation")}>ابزارهای AI، تلگرام و پشتیبان</button></div>
+                    ["تلگرام", "فرصت‌های تازه و یادآوری پیگیری‌ها را در تلگرام خودتان دریافت کنید.", "telegram"],
+                    ["پایش منابع", "سرور منابع کاری و دانشگاهی را دوره‌ای بررسی و آگهی‌های تازه را ثبت می‌کند. فیلترهای نمایش را در بخش فرصت‌ها انتخاب کنید.", "crawler"],
+                    ["هوش مصنوعی", "برای بررسی متن آگهی یا بهترکردن پیش‌نویس، موضوع و متن را خودتان انتخاب کنید. خروجی پیشنهادی است؛ چیزی ارسال نمی‌شود.", "ai"],
+                  ].map(([a,b,key])=><div className="integration" key={a}><span className="clinic-icon"><Globe size={20}/></span><div><strong>{a}</strong><small>{b}</small></div><span className={"status "+(data.integrations?.[key]?.connected?"":"amber")}>{data.integrations?.[key]?.connected?(key==="telegram"&&!data.integrations.telegram.enabled?"متصل؛ اعلان خاموش":"آماده"):"نیازمند راه‌اندازی"}</span></div>)}<div className="settings-tool-actions"><button className="secondary" onClick={()=>{setAutomationTab("telegram");setTab("automation");}}>اتصال تلگرام من</button><button className="secondary" onClick={()=>{setAutomationTab("operations");setTab("automation");}}>وضعیت منابع و جست‌وجو</button><button className="secondary" onClick={()=>{setAutomationTab("ai");setTab("automation");}}>کمک برای بررسی و نوشتن</button><button className="text-button" onClick={()=>{setAutomationTab("backup");setTab("automation");}}>پشتیبان اطلاعات من</button></div></div>
                 </div>
               </section>
-              <details id="calendar-documents" className="settings-calendar-fold"><summary>تقویم دوره‌ها و مدارک شخصی <Calendar size={18}/></summary><CalendarDriveTools key={person+":"+Boolean(googleConnection.state.connected)+":"+(googleConnection.state.email||"")} person={person} notify={notify}/></details>
+              <div id="calendar-documents" className="settings-calendar-wide"><CalendarDriveTools key={person+":"+Boolean(googleConnection.state.connected)+":"+(googleConnection.state.email||"")} person={person} notify={notify}/></div>
             </div>
           )}
           <footer>
@@ -1182,7 +962,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
         </div>
       </main>
       {toast && (
-        <div className="toast" role="status">
+        <div className={"toast "+(/oauth_|خطا|ناموفق|انجام نشد|متصل نشد|failed|required|unavailable|rejected/i.test(String(toast))?"toast-error":"")} role="status">
           <CheckCircle2 size={19} />
           {toast}
           <button onClick={() => setToast("")} aria-label="بستن">

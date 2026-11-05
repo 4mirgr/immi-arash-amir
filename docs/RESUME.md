@@ -30,3 +30,12 @@ Arash UX: src/arash-workspace.jsx owns home/navigation/folds; root .arash-worksp
 Per-opportunity mail: docs/OPPORTUNITY-MAIL.md. New authenticated router precedes generalopportunity routes and uses root ownercontext; mailmodule resolves mailbox itself. Sourceboundephemeralrecipient adapter neverwritesclinicbank. Settingsnamedpreseteditor livesemail-template-settings.jsx; immutable RPCrevisions, ownerguardedhooksinworkspace-tools. SelfhostedlicensedVazirmatnfiles needwoff2binarysupportinscripts/build_worker.mjs.
 
 Contact/discovery engine: read docs/PUBLIC-CONTACT-ENGINE.md selectively. New public enrichment and AI-budget schemas are mandatory ONLY inOPPORTUNITY_DB. Extractor version2 supports flattenedtext. New23source registry includesgp-expanded-sources;3sources/hour ~8hrotation. PublicAIquote selection4attempts/day excludesprivateCV/mail andmustvalidateverbatimsource. Relatedcontacts keepindependentproof; privateCVreadinessAPIonly, neverpersistpublic. Oneclickmailafterpreview/review mustrefusereused/ambiguousqueue andchangedGoogleidentity.
+
+
+## 2026-11-05 — خوانایی و اتصال دامنهٔ جدید
+
+پنل امیر با کارت‌های شیشه‌ای و مسیرهای رنگی، منوهای جمع‌شونده و فونت Vazirmatn بازطراحی شد. تقویم و مدارک تمام‌عرض و سه بخش بازشونده دارد. راهنمای کوتاه بخش‌ها، اتصال شخصی تلگرام و تغییر زبان محلی فارسی/انگلیسی اضافه شدند؛ ترجمهٔ رابط کامل نیست و محتوای خصوصی ترجمه نمی‌شود.
+
+شروع Google از دامنهٔ drgerami-md.ir با بلیت یک‌بارمصرف و POST به مبدأ اصلی اصلاح شد؛ callback و کلیدهای قبلی حفظ می‌شوند. GOOGLE_APP_ORIGINS باید https://drgerami-md.ir باشد. پروکسی gerami-website فقط در دو فایل مختص /aus اصلاح می‌شود. رضایت اتصال ایمیل دوم همچنان باید توسط مالک انجام شود. دامنه ثبت و فعال است؛ خطای همراه اول بدون آزمون همان شبکه حل‌شده اعلام نمی‌شود.
+
+مجوز شبکهٔ کامل LinkedIn و پشتیبان خودکار مستقل/بازیابی روی محیط آزمایشی هنوز تکمیل نیستند؛ خروجی رمزگذاری‌شدهٔ دستی با پشتیبان ابری مستقل تفاوت دارد. هیچ ایمیل یا پست واقعی برای آزمون این تغییر ارسال نشد.

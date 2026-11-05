@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
-import {handleGoogleRequest,handleGoogleCallback,getGoogleAccess,encryptGoogleSecret,decryptGoogleSecret,GOOGLE_SCOPES} from '../cloud/google-oauth.mjs';
+import {handleGoogleRequest,handleGoogleCallback,handleGoogleLaunch,googleStartOriginAllowed,getGoogleAccess,encryptGoogleSecret,decryptGoogleSecret,GOOGLE_SCOPES} from '../cloud/google-oauth.mjs';
 const origin='https://immi-arash-amir.dr-gerami-md.workers.dev';
 const arash={userId:'arash-user',profileId:'arash'},amir={userId:'amir-user',profileId:'amir'};
 function fixture(){
@@ -12,7 +12,7 @@ function fixture(){
  return {env,db};
 }
 const req=(route,method='GET',headers={})=>new Request(origin+'/api/google/'+route,{method,headers:{Origin:origin,...headers}});
-async function begin(env,context){const response=await handleGoogleRequest(req('start','POST'),env,context);const body=await response.json();return {response,url:new URL(body.authorizationUrl),cookie:response.headers.get('Set-Cookie').split(';')[0]};}
+async function begin(env,context){const response=await handleGoogleRequest(req('start','POST'),env,context);const body=await response.json();return {response,body,url:new URL(body.authorizationUrl),cookie:response.headers.get('Set-Cookie').split(';')[0]};}
 function google(subject='google-arash',email='arash@example.invalid',tokenExtra={}){return async(url,options)=>{
  if(url==='https://oauth2.googleapis.com/token')return Response.json({access_token:'synthetic-access-'+subject,refresh_token:'synthetic-refresh-'+subject,expires_in:3600,scope:GOOGLE_SCOPES.join(' '),...tokenExtra});
  if(url==='https://openidconnect.googleapis.com/v1/userinfo')return Response.json({sub:subject,email,email_verified:true});
@@ -100,4 +100,53 @@ test('diagnostic retention is bounded per owner and expired entries are pruned',
  assert.equal(db.prepare('select count(*) as n from google_oauth_diagnostics where owner_id=?').get(arash.userId).n,50);
  assert.equal(db.prepare('select count(*) as n from google_oauth_diagnostics where id=?').get('old').n,0);
  assert.equal(db.prepare('select count(*) as n from google_oauth_states').get().n,1);
+});
+
+const appOrigin='https://drgerami-md.ir';
+async function bridgeStart(env,context=amir){
+ env.GOOGLE_APP_ORIGINS=appOrigin;
+ const response=await handleGoogleRequest(new Request(origin+'/api/google/start',{method:'POST',headers:{Origin:appOrigin,'Content-Type':'application/json'},body:'{}'}),env,context);
+ return {response,body:await response.json()};
+}
+function launchRequest(ticket,from=appOrigin,method='POST'){
+ return new Request(origin+'/api/google/launch',{method,headers:{Origin:from,'Content-Type':'application/x-www-form-urlencoded'},...(method==='POST'?{body:new URLSearchParams({ticket}).toString()}:{})});
+}
+test('canonical bridge requires explicitly allowed app Origin and retains legacy same-origin consent',async()=>{
+ const {env}=fixture();
+ assert.equal(googleStartOriginAllowed(new Request(origin+'/api/google/start',{method:'POST',headers:{Origin:appOrigin}}),env),false);
+ await assert.rejects(()=>handleGoogleRequest(new Request(origin+'/api/google/start',{method:'POST',headers:{Origin:appOrigin}}),env,amir),e=>e.status===403);
+ const p=await bridgeStart(env);assert.equal(p.response.status,200);assert.equal(p.body.launchUrl,origin+'/api/google/launch');assert.match(p.body.launchTicket,/^[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{43}$/);
+ assert.equal(googleStartOriginAllowed(new Request(origin+'/api/google/start',{method:'POST',headers:{Origin:'https://drgerami-md.ir.evil.invalid'}}),env),false);
+ const legacy=await begin(env,arash);assert.equal((await finish(env,legacy)).status,200);
+});
+test('top-level POST launch sets canonical cookie once and callback targets actual app Origin',async()=>{
+ const {env,db}=fixture();const p=await bridgeStart(env);
+ const launch=await handleGoogleLaunch(launchRequest(p.body.launchTicket),env);
+ assert.equal(launch.status,303);assert.equal(launch.headers.get('Referrer-Policy'),'no-referrer');
+ const consent=new URL(launch.headers.get('Location'));assert.equal(consent.origin,'https://accounts.google.com');assert.equal(consent.searchParams.get('redirect_uri'),origin+'/api/google/callback');
+ const cookie=launch.headers.get('Set-Cookie').split(';')[0];assert.match(launch.headers.get('Set-Cookie'),/__Host-immi_google_oauth=.*; Path=\/; HttpOnly; Secure; SameSite=Lax/);
+ const callback=await handleGoogleCallback(new Request(origin+'/api/google/callback?state='+consent.searchParams.get('state')+'&code=synthetic-code',{headers:{Cookie:cookie}}),env,google('google-amir','amir@example.invalid'));
+ assert.equal(callback.status,200);const html=await callback.text();assert.match(callback.headers.get('Content-Security-Policy'),/script-src 'nonce-/);assert.ok(html.includes('postMessage('));assert.ok(html.includes(JSON.stringify(appOrigin)));assert.ok(html.includes(p.body.callbackNonce));
+ for(const value of [p.body.launchTicket,env.GOOGLE_CLIENT_SECRET,env.GOOGLE_TOKEN_KEY,'synthetic-access-google-amir','synthetic-refresh-google-amir'])assert.equal(html.includes(value),false);
+ assert.equal(db.prepare('select google_sub from google_accounts where owner_id=?').get(amir.userId).google_sub,'google-amir');
+ await assert.rejects(()=>handleGoogleLaunch(launchRequest(p.body.launchTicket),env),e=>e.code==='invalid_launch');
+});
+test('bridge refuses transferable GET links, forged/absent origins, token changes and expiry without consuming real launch',async()=>{
+ const {env,db}=fixture();const p=await bridgeStart(env);
+ await assert.rejects(()=>handleGoogleLaunch(launchRequest(p.body.launchTicket,appOrigin,'GET'),env),e=>e.code==='invalid_launch');
+ for(const from of ['https://evil.invalid',origin,'null'])await assert.rejects(()=>handleGoogleLaunch(launchRequest(p.body.launchTicket,from),env),e=>['origin_rejected','invalid_launch'].includes(e.code));
+ const noOrigin=new Request(origin+'/api/google/launch',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({ticket:p.body.launchTicket})});
+ await assert.rejects(()=>handleGoogleLaunch(noOrigin,env),e=>e.code==='origin_rejected');
+ const [state,secret]=p.body.launchTicket.split('.');const tampered=state+'.'+(secret[0]==='x'?'y':'x')+secret.slice(1);
+ await assert.rejects(()=>handleGoogleLaunch(launchRequest(tampered),env),e=>e.code==='invalid_launch');
+ assert.equal((await handleGoogleLaunch(launchRequest(p.body.launchTicket),env)).status,303);
+ const expired=await bridgeStart(env);db.prepare('update google_oauth_states set expires_at=0').run();await assert.rejects(()=>handleGoogleLaunch(launchRequest(expired.body.launchTicket),env),e=>e.code==='invalid_launch');
+});
+test('secondary bridge does not replace either existing primary grant and keeps mailbox checks',async()=>{
+ const {env,db}=fixture();env.GOOGLE_SECONDARY_EMAIL='secondary@example.invalid';
+ await link(env,arash,'arash-primary','arash@example.invalid');await link(env,amir,'amir-primary','amir@example.invalid');
+ const secondary={userId:amir.userId+':secondary',profileId:'amir'},p=await bridgeStart(env,secondary),launch=await handleGoogleLaunch(launchRequest(p.body.launchTicket),env),consent=new URL(launch.headers.get('Location'));
+ assert.equal(consent.searchParams.get('login_hint'),'secondary@example.invalid');assert.equal(consent.searchParams.get('scope').includes('calendar.events'),false);
+ const callback=await handleGoogleCallback(new Request(origin+'/api/google/callback?state='+consent.searchParams.get('state')+'&code=synthetic-code',{headers:{Cookie:launch.headers.get('Set-Cookie').split(';')[0]}}),env,google('amir-secondary','secondary@example.invalid'));
+ assert.equal(callback.status,200);assert.equal((await getGoogleAccess(env,arash.userId)).subject,'arash-primary');assert.equal((await getGoogleAccess(env,amir.userId)).subject,'amir-primary');assert.equal((await getGoogleAccess(env,secondary.userId)).subject,'amir-secondary');assert.equal(db.prepare('select count(*) as n from google_accounts').get().n,3);
 });

@@ -1,5 +1,5 @@
 import {createDocx} from './docx.mjs';
-import {GoogleError,handleGoogleCallback,handleGoogleRequest,googleStatus} from './google-oauth.mjs';
+import {GoogleError,handleGoogleCallback,handleGoogleLaunch,googleStartOriginAllowed,handleGoogleRequest,googleStatus} from './google-oauth.mjs';
 import {handleGoogleMailRequest,getOwnedMailReplyContext} from './google-mail.mjs';
 import {handleGoogleSendRequest} from './google-send.mjs';
 import {handleGoogleServicesRequest} from './google-services.mjs';
@@ -59,13 +59,14 @@ export function createHandler(fetcher = fetch) {
     if (!url.pathname.startsWith('/api/')) return env.ASSETS ? env.ASSETS.fetch(request) : new Response('Not found', {status:404});
     try {
       if(url.pathname==='/api/telegram/webhook')return await handleTelegramWebhook(request,env,fetcher);
+      if(url.pathname==='/api/google/launch')return await handleGoogleLaunch(request,env);
       if(url.pathname==='/api/google/callback')return await handleGoogleCallback(request,env,fetcher);
       if(url.pathname==='/api/linkedin/callback')return await handleLinkedInOAuthCallback(request,env,fetcher);
       if (request.method === 'GET' && url.pathname === '/api/health') return json({ok:true, mode:'cloud_auth', authenticationRequired:true, integrationsStatus:'per_account_status_required'});
       const cfg = config(env);
       if (request.method === 'GET' && url.pathname === '/api/public-config') return json({mode:'cloud',authRequired:true,supabaseUrl:cfg.url,publishableKey:cfg.key});
       if (!['GET', 'POST', 'PUT'].includes(request.method)) throw new ApiError(405, 'Method not allowed');
-      if (request.method !== 'GET' && request.headers.has('Origin') && request.headers.get('Origin') !== url.origin) throw new ApiError(403, 'Origin rejected');
+      if (request.method !== 'GET' && request.headers.has('Origin') && request.headers.get('Origin') !== url.origin && !(url.pathname==='/api/google/start'&&googleStartOriginAllowed(request,env))) throw new ApiError(403, 'Origin rejected');
       const authorization = request.headers.get('Authorization');
       if (!authorization || !/^Bearer [^\s]+$/.test(authorization)) throw new ApiError(401, 'Sign in required');
       const headers = {apikey:cfg.key,Authorization:authorization,'Content-Type':'application/json'};

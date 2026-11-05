@@ -6,7 +6,8 @@ import {backupSummary,decryptOwnerBackup,encryptOwnerExport,MAX_BACKUP_FILE_BYTE
 const validOwner=value=>['amir','arash'].includes(value)?value:null;
 const labels={amir:'امیر',arash:'آرش'};
 const date=value=>new Date(value).toLocaleString('fa-IR',{timeZone:'Asia/Tehran'});
-function Summary({record}){return <div className="notice"><strong>خلاصهٔ فایلِ بررسی‌شده</strong><p>{labels[record.profileId]} · {record.tableCount.toLocaleString('fa-IR')} جدول · {record.rowCount.toLocaleString('fa-IR')} ردیف · {date(record.createdAt)}</p>{record.truncatedTables.length>0?<p role="status">خروجی محدود است و همهٔ ردیف‌های این جدول‌ها را ندارد: <MixedText>{record.truncatedTables.join('، ')}</MixedText></p>:<p>در این خروجی جدول بریده‌شده گزارش نشده است؛ این به معنی پشتیبان کامل همهٔ سرویس‌ها نیست.</p>}<p>این بررسی فقط رمزگشایی و کنترل قالب/مالک است؛ هیچ داده‌ای در سایت یا دیتابیس بازیابی نشده است.</p></div>;}
+function Summary({record}){return <div className="notice"><strong>خلاصهٔ نسخهٔ پشتیبان</strong><p>{labels[record.profileId]} · {record.tableCount.toLocaleString('fa-IR')} بخش از اطلاعات · {record.rowCount.toLocaleString('fa-IR')} مورد · {date(record.createdAt)}</p>{record.truncatedTables.length>0?<p role="status">بخشی از اطلاعات به‌دلیل سقف خروجی داخل این فایل نیست؛ این نسخه کامل نیست.</p>:<p>در این خروجی محدودشدن تعداد موارد گزارش نشده؛ با این حال فایل، پشتیبان همهٔ سرویس‌ها و مدارک شما نیست.</p>}<p className="section-help">اطلاعات سایت تغییری نکرده است. بررسی فایل روی دستگاه، داده‌ها را به سایت برنمی‌گرداند.</p>{record.truncatedTables.length>0&&<details className="workspace-disclosure"><summary>بخش‌هایی که خروجی آن‌ها محدود شده است</summary><p><MixedText>{record.truncatedTables.join('، ')}</MixedText></p></details>}</div>;}
+
 export function OwnerBackup({person,notify=()=>{}}){
  const owner=validOwner(typeof person==='string'?person:person?.id),identity=useRef({owner,epoch:0});
  if(identity.current.owner!==owner)identity.current={owner,epoch:identity.current.epoch+1};
@@ -42,11 +43,33 @@ export function OwnerBackup({person,notify=()=>{}}){
   }catch(error){if(current(who,epoch,seq))setOperation({owner:who,busy:'',error:error.message||'بررسی فایل انجام نشد.',summary:null});}
  }
  if(!owner)return null;
- return <section className="panel" aria-label="پشتیبان رمزگذاری‌شدهٔ همین کاربر"><div className="section-head"><div><h3><ShieldCheck size={19}/> پشتیبان خصوصی همین کاربر</h3><small>فضای اختصاصی {labels[owner]}</small></div></div>
-  <p>دادهٔ مجاز همین حساب ابتدا دریافت و در مرورگر شما رمزگذاری می‌شود. گذرواژه، فایل رمزگشایی‌شده و محتوای بررسی محلی برای سرور ارسال نمی‌شوند.</p>
-  <div className="notice">این خروجی محدود، پشتیبان کامل همهٔ سرویس‌ها نیست. متن پیام‌های دریافتی Gmail، توکن‌ها و اعتبارنامه‌های اتصال را ندارد؛ پیش‌نویس‌های مکاتبات ذخیره‌شده می‌توانند داخل آن باشند. برای اتصال دوبارهٔ ارائه‌دهندگان رضایت مستقل لازم است.</div>
-  <div className="two-col"><div><label htmlFor={'backup-password-'+owner}>گذرواژهٔ پشتیبان؛ حداقل ۱۶ نویسه</label><input id={'backup-password-'+owner} type="password" autoComplete="off" maxLength={512} value={password} disabled={!!state.busy} onChange={event=>change('password',event.target.value)}/><label htmlFor={'backup-confirm-'+owner}>تکرار گذرواژه برای ساخت فایل جدید</label><input id={'backup-confirm-'+owner} type="password" autoComplete="off" maxLength={512} value={confirm} disabled={!!state.busy} onChange={event=>change('confirm',event.target.value)}/><button className="primary" type="button" disabled={!!state.busy||!password||!confirm} onClick={download}><Download size={16}/>{state.busy==='download'?'در حال ساخت فایل…':'دریافت پشتیبان رمزگذاری‌شده'}</button><p className="muted">گذرواژه را در مدیر رمز امن نگه دارید. سایت آن را ذخیره نمی‌کند و امکان بازیابی گذرواژهٔ فراموش‌شده ندارد.</p></div>
-  <div><h4>بررسی محلی فایل قبلی؛ بدون بازیابی</h4><label htmlFor={'backup-file-'+owner}>فایل <bdi dir="ltr">.json.encrypted</bdi></label><input ref={input} id={'backup-file-'+owner} type="file" accept=".encrypted,application/octet-stream" disabled={!!state.busy} onChange={event=>setChosen({owner,file:event.target.files?.[0]||null})}/><p className="muted">گذرواژهٔ همان فایل را در کادر گذرواژه وارد کنید؛ برای بررسی، تکرار آن لازم نیست. فایل متعلق به پروفایل دیگر پذیرفته نمی‌شود.</p><button className="secondary" type="button" disabled={!!state.busy||!password||!file} onClick={verify}><FileCheck2 size={16}/>{state.busy==='verify'?'در حال بررسی…':'رمزگشایی و بررسی فقط در مرورگر'}</button></div></div>
+ return <section className="panel" aria-label="پشتیبان رمزگذاری‌شدهٔ همین کاربر">
+  <div className="section-head"><div><h3><ShieldCheck size={19}/> نسخهٔ پشتیبان خصوصی</h3><p className="section-help">فایل رمزدار از اطلاعات مجاز {labels[owner]}؛ روی دستگاه خودتان نگه دارید.</p></div></div>
+  <p className="section-help">فایل در مرورگر شما رمزگذاری می‌شود. گذرواژه برای سرور ارسال یا در حساب ذخیره نمی‌شود.</p>
+  <label htmlFor={'backup-password-'+owner}>گذرواژهٔ فایل؛ برای ساخت یا بررسی نسخه</label>
+  <input id={'backup-password-'+owner} type="password" autoComplete="off" maxLength={512} value={password} disabled={!!state.busy} onChange={event=>change('password',event.target.value)}/>
+  <p className="section-help">حداقل ۱۶ نویسه انتخاب کنید و آن را جدا از فایل، در جای امن نگه دارید. اگر فراموش شود، سایت نمی‌تواند آن را بازیابی کند.</p>
+  <details className="workspace-disclosure" open><summary>دریافت فایل پشتیبان روی دستگاه</summary>
+   <label htmlFor={'backup-confirm-'+owner}>تکرار گذرواژه برای ساخت فایل جدید</label>
+   <input id={'backup-confirm-'+owner} type="password" autoComplete="off" maxLength={512} value={confirm} disabled={!!state.busy} onChange={event=>change('confirm',event.target.value)}/>
+   <button className="primary" type="button" disabled={!!state.busy||!password||!confirm} onClick={download}><Download size={16}/>{state.busy==='download'?'در حال آماده‌کردن فایل…':'دریافت فایل رمزگذاری‌شده'}</button>
+   <p className="section-help">این فایل خودکار به جای دیگری فرستاده نمی‌شود. نگه‌داشتن یک کپی جداگانه به عهدهٔ شماست.</p>
+  </details>
+  <details className="workspace-disclosure"><summary>بررسی فایل قبلی، بدون تغییر اطلاعات سایت</summary>
+   <p className="section-help">گذرواژهٔ همان فایل را در کادر بالای این بخش وارد کنید، سپس فایل را انتخاب کنید. برای بررسی، تکرار گذرواژه لازم نیست.</p>
+   <label htmlFor={'backup-file-'+owner}>فایل پشتیبان با پسوند <bdi dir="ltr">.json.encrypted</bdi></label>
+   <input ref={input} id={'backup-file-'+owner} type="file" accept=".encrypted,application/octet-stream" disabled={!!state.busy} onChange={event=>setChosen({owner,file:event.target.files?.[0]||null})}/>
+   <button className="secondary" type="button" disabled={!!state.busy||!password||!file} onClick={verify}><FileCheck2 size={16}/>{state.busy==='verify'?'در حال بررسی فایل…':'بررسی فایل فقط در همین مرورگر'}</button>
+   <p className="section-help">فایل برای سرور ارسال نمی‌شود. فقط بازشدن با گذرواژه، قالب فایل و پروفایل ثبت‌شدهٔ آن بررسی می‌شود؛ اطلاعات از فایل به سایت برگردانده نمی‌شود.</p>
+  </details>
+  <details className="workspace-disclosure"><summary>این فایل چه چیزهایی دارد و چه چیزهایی ندارد؟</summary>
+   <p>بخش‌های انتخاب‌شده از اطلاعات همین حساب و پیش‌نویس‌های ذخیره‌شده می‌توانند داخل فایل باشند. متن پیام‌های دریافتی Gmail، رمزها و توکن‌های اتصال، همهٔ فایل‌های Drive و تمام داده‌های سرویس‌های بیرونی داخل این خروجی نیستند.</p>
+   <p className="section-help">خروجی سقف حجم و تعداد دارد؛ اگر بخشی محدود شود، در خلاصهٔ فایل نشان داده می‌شود. پس از بازیابی مستقل، اتصال سرویس‌هایی مانند Google ممکن است دوباره به رضایت شما نیاز داشته باشد.</p>
+  </details>
+  <details className="workspace-disclosure"><summary>پشتیبان خودکار سرور هنوز چه کاری نیاز دارد؟</summary>
+   <p>پشتیبان خودکار در یک مقصد جداگانه هنوز راه‌اندازی کامل نشده است. باید محل نگه‌داری نسخه‌ها، حفاظت از کلید رمز و برنامهٔ منظم تهیهٔ نسخه مشخص شود.</p>
+   <p className="section-help">سپس باید روی یک نسخهٔ جدا و آزمایشی امتحان کنیم که اطلاعات واقعاً برمی‌گردند و دو حساب جدا می‌مانند. این کار با بررسی فایل در مرورگر فرق دارد و نباید روی اطلاعات اصلی سایت انجام شود.</p>
+  </details>
   {state.error&&<p className="notice" role="alert"><MixedText>{state.error}</MixedText></p>}{state.summary&&<Summary record={state.summary}/>}
  </section>;
 }
