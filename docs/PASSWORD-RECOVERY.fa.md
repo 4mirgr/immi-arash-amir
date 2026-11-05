@@ -6,7 +6,7 @@
 
 ## تنظیم انتشار
 
-- در Supabase همین پروژه (`waxpjylnvwqdlktayyww`)، فهرست Authentication → URL Configuration → Redirect URLs باید `https://drgerami-md.ir/aus/` را داشته باشد. نشانی canonical قبلی Worker حفظ شود. این تنظیم از ابزار مدیریتی فعلی قابل ویرایش نیست؛ افزودن نشانی از مالک درخواست شد. Site URL قبلی می‌تواند باعث برگشت به Worker شود که همین فرم را نیز دارد.
+- در Supabase همین پروژه (`waxpjylnvwqdlktayyww`)، فهرست Authentication → URL Configuration → Redirect URLs باید `https://drgerami-md.ir/aus/` را داشته باشد. نشانی canonical قبلی Worker حفظ شود. این تنظیم از ابزار مدیریتی فعلی قابل ویرایش نیست؛ مالک در ۱۴۰۵/۰۸/۱۵ افزودن و ذخیرهٔ نشانی را تأیید کرد. Site URL قبلی می‌تواند باعث برگشت به Worker شود که همین فرم را نیز دارد.
 - درخواست مستقیم Supabase Auth: POST `/auth/v1/recover?redirect_to=...` با ایمیل؛ implicit callback با fragment `type=recovery`؛ GET `/auth/v1/user` برای اعتبارسنجی؛ PUT همان مسیر با فقط `password`؛ پس از موفقیت POST `/auth/v1/logout` و ورود مجدد دستی.
 - Gateway دامنهٔ اصلی در مخزن `gerami-website` فقط recover به مسیر دقیق `/aus/` و GET/PUT محدود user را به پروژهٔ ثابت Supabase می‌فرستد؛ تغییر ایمیل/metadata از این مسیر پذیرفته نمی‌شود. Origin، محدودیت حجم، no-store و منع redirect سرور حفظ شوند.
 - Access token و خطاهای callback پیش از استفاده از نشانی پاک می‌شوند؛ refresh token بازیابی دور ریخته می‌شود. هیچ توکنی در localStorage/sessionStorage/cookie یا APIهای workspace ثبت نمی‌شود. callback هرگز مستقیماً پنل را باز نمی‌کند. پس از تغییر رمز، تلاش برای ابطال refresh sessionها انجام می‌شود؛ اعتبار access tokenهای از قبل صادرشده به سیاست و عمر توکن Supabase وابسته است.
