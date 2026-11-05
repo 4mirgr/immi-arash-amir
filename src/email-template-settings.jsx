@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { Check, FileText, Plus, RefreshCw, Save } from "lucide-react";
+import { Check, FileText, Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 import { MixedText } from "./mixed-text";
 import { useEmailPresets } from "./workspace-tools";
+import "./email-template-settings.css";
 
 export function EmailTemplateSettings(props) {
   return <OwnedEmailTemplateSettings key={props.person} {...props} />;
@@ -11,6 +12,7 @@ function OwnedEmailTemplateSettings({ person, notify }) {
   const templates = useEmailPresets(person, notify);
   const [editor, setEditor] = useState({ name: "", subject: "", body: "" });
   const [selectedId, setSelectedId] = useState("");
+  const [deleteId, setDeleteId] = useState("");
   const selected = templates.presets.find(item => item.id === selectedId);
   const currentDefault = templates.presets.find(item => item.isDefault || item.is_default);
   const disabled = templates.loading || templates.busy;
@@ -29,6 +31,12 @@ function OwnedEmailTemplateSettings({ person, notify }) {
   function reset() {
     setSelectedId("");
     setEditor({ name: "", subject: "", body: "" });
+  }
+  async function remove(item) {
+    if (await templates.remove(item.id) && templates.isCurrent()) {
+      setDeleteId("");
+      if (selectedId === item.id) reset();
+    }
   }
   return <section className="panel email-template-settings settings-card-wide" aria-label={`قالب‌های ایمیل ${ownerName}`}>
     <div className="section-head">
@@ -60,7 +68,8 @@ function OwnedEmailTemplateSettings({ person, notify }) {
           <div className="email-template-title"><FileText size={17} /><strong><MixedText>{item.name}</MixedText></strong><small>نسخهٔ {item.revision}</small>{(item.isDefault || item.is_default) && <span className="status">پیش‌فرض</span>}</div>
           <p dir="auto" className="email-template-subject"><MixedText>{item.subject}</MixedText></p>
           <details><summary>نمایش متن این نسخه</summary><p dir="auto" className="email-template-preview" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}><MixedText>{item.body}</MixedText></p></details>
-          <div className="form-actions"><button type="button" className="secondary" disabled={disabled} onClick={() => choose(item.id)}>ویرایش در فرم</button>{!(item.isDefault || item.is_default) && <button type="button" className="text-button" disabled={disabled} onClick={() => templates.setDefault(item.id)}><Check size={14} /> تعیین پیش‌فرض</button>}</div>
+          <div className="form-actions"><button type="button" className="secondary template-edit-action" disabled={disabled} onClick={() => choose(item.id)}>ویرایش در فرم</button>{!(item.isDefault || item.is_default) && <button type="button" className="text-button" disabled={disabled} onClick={() => templates.setDefault(item.id)}><Check size={14} /> تعیین پیش‌فرض</button>}<button type="button" className="template-delete-action" disabled={disabled} aria-expanded={deleteId === item.id} aria-label={`حذف قالب ${item.name}، نسخهٔ ${item.revision}`} onClick={() => setDeleteId(deleteId === item.id ? "" : item.id)}><Trash2 size={15} /> حذف</button></div>
+          {deleteId === item.id && <div className="template-delete-confirm" role="group" aria-label="تأیید حذف نسخهٔ قالب"><p>نسخهٔ {item.revision} از «<MixedText>{item.name}</MixedText>» حذف شود؟ این کار برگشت‌پذیر نیست؛ نسخه‌های دیگر و پیام‌های از قبل آماده‌شده تغییر نمی‌کنند.{(item.isDefault || item.is_default) && " این قالب پیش‌فرض است؛ بعد از حذف، باید پیش‌فرض تازه‌ای انتخاب کنید."}</p><div className="form-actions"><button type="button" className="template-delete-action" disabled={disabled} onClick={() => remove(item)}><Trash2 size={15} /> بله، این نسخه حذف شود</button><button type="button" className="secondary" disabled={disabled} onClick={() => setDeleteId("")}>انصراف</button></div></div>}
         </article>)}</div>
       </div>
     </div>

@@ -1,0 +1,43 @@
+/* Keep opportunity controls together; supporting research follows the results. */
+.opportunity-workspace{min-width:0;--opportunity-accent:#41d5d9}
+.opportunity-workspace .opportunity-control-panel{padding:20px;border:1px solid color-mix(in srgb,var(--opportunity-accent) 36%,transparent);border-radius:18px;background:color-mix(in srgb,var(--panel,#102030) 88%,transparent);box-shadow:inset 0 1px 0 #ffffff0b,0 0 24px #41d5d907;margin-block:20px 24px}
+.opportunity-workspace .opportunity-control-panel>h4{margin:0 0 16px;font-size:.98rem;color:var(--opportunity-accent)}
+.opportunity-workspace .opportunity-search-controls{display:grid;grid-template-columns:minmax(240px,2fr) repeat(3,minmax(130px,1fr)) auto;align-items:center;gap:12px;margin:0}
+.opportunity-workspace .opportunity-search-controls .inbox-search{width:100%;min-width:0;max-width:none;height:44px}
+.opportunity-workspace .opportunity-search-controls input{min-width:0;width:100%}
+.opportunity-workspace .opportunity-search-controls select,.opportunity-workspace .opportunity-search-controls button{width:100%;min-height:44px;margin:0}
+.opportunity-workspace .opportunity-secondary-controls{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-block:16px}
+.opportunity-workspace .opportunity-sort-control{display:grid;gap:8px;min-width:220px;flex:1;max-width:380px;font-size:.86rem}
+.opportunity-workspace .opportunity-sort-control select{width:100%;min-height:44px}
+.opportunity-workspace .opportunity-clinical-controls{display:grid;grid-template-columns:minmax(160px,1fr) minmax(220px,1fr);align-items:end;gap:12px;flex:2;margin:0}
+.opportunity-workspace .opportunity-clinical-controls>label:not(.checkline){display:grid;gap:8px;font-size:.86rem}
+.opportunity-workspace .opportunity-clinical-controls>small{grid-column:1/-1;font-size:.8rem}
+.opportunity-workspace .opportunity-check-controls{display:flex;flex-wrap:wrap;gap:12px;margin-block:16px}
+.opportunity-workspace .opportunity-check-controls .checkline,.opportunity-workspace .opportunity-types-control .checkline{padding:9px 12px;border:1px solid color-mix(in srgb,var(--opportunity-accent) 20%,transparent);border-radius:11px;background:#41d5d905;min-height:40px;align-items:center;font-size:.83rem}
+.opportunity-workspace .opportunity-types-control{border:1px solid color-mix(in srgb,var(--opportunity-accent) 25%,transparent);border-radius:13px;padding:14px;margin:14px 0 0;min-width:0}
+.opportunity-workspace .opportunity-types-control legend{padding-inline:8px;font-size:.85rem}
+.opportunity-workspace .opportunity-results-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-block:6px 16px;border-bottom:1px solid #6ea2ba24}
+.opportunity-workspace .opportunity-results-heading h4,.opportunity-workspace .opportunity-results-heading p{margin:0}
+.opportunity-workspace .opportunity-result-group{margin-block:22px}
+.opportunity-workspace .opportunity-result-group>.section-head{padding-inline:4px;margin-bottom:12px}
+.opportunity-workspace .opportunity-result-card{display:block;min-width:0;width:100%;padding:22px;margin-block:14px;border-radius:17px;border:1px solid #66b6c333;background:color-mix(in srgb,var(--panel,#102030) 94%,transparent)}
+.opportunity-workspace .opportunity-result-heading{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-bottom:14px}
+.opportunity-workspace .opportunity-result-heading h4{font-size:1rem;line-height:1.8}
+.opportunity-workspace .opportunity-result-badges{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:7px;max-width:100%}
+.opportunity-workspace .opportunity-result-badges .status{white-space:normal;max-width:100%;font-size:.74rem;line-height:1.7}
+.opportunity-workspace .opportunity-result-dates{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:13px 15px;border:1px solid #6ea2ba20;border-radius:12px;margin:16px 0;background:#6ea2ba05}
+.opportunity-workspace .opportunity-result-dates dt{font-size:.75rem;color:var(--muted,#90a3bb);margin-bottom:5px}
+.opportunity-workspace .opportunity-result-dates dd{font-size:.81rem;margin:0;overflow-wrap:anywhere;line-height:1.8}
+.opportunity-workspace .opportunity-result-card>.form-actions{gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid #6ea2ba20;align-items:stretch}
+.opportunity-workspace .opportunity-result-card>.form-actions>button,.opportunity-workspace .opportunity-result-card>.form-actions>a{min-height:42px;justify-content:center}
+.opportunity-workspace .opportunity-supporting-panels{display:grid;gap:14px;margin-top:26px}
+.opportunity-workspace .opportunity-supporting-panels>details{margin:0}
+@media(max-width:1250px){.opportunity-workspace .opportunity-search-controls{grid-template-columns:repeat(3,minmax(0,1fr))}.opportunity-workspace .opportunity-search-controls .inbox-search{grid-column:span 2}.opportunity-workspace .opportunity-search-controls>button{grid-column:auto}}
+@media(max-width:760px){.opportunity-workspace .opportunity-control-panel{padding:15px}.opportunity-workspace .opportunity-search-controls{grid-template-columns:repeat(2,minmax(0,1fr))}.opportunity-workspace .opportunity-search-controls .inbox-search{grid-column:1/-1}.opportunity-workspace .opportunity-secondary-controls{display:grid;grid-template-columns:1fr;align-items:stretch}.opportunity-workspace .opportunity-clinical-controls{grid-template-columns:1fr;min-width:0}.opportunity-workspace .opportunity-sort-control{max-width:none;min-width:0}.opportunity-workspace .opportunity-result-card{padding:16px}.opportunity-workspace .opportunity-result-heading>div{flex-basis:100%!important}.opportunity-workspace .opportunity-result-badges{justify-content:flex-start}.opportunity-workspace .opportunity-result-dates{grid-template-columns:1fr;gap:10px}.opportunity-workspace .opportunity-result-dates>div{display:flex;justify-content:space-between;align-items:start;gap:12px}.opportunity-workspace .opportunity-result-dates dt{flex-shrink:0}.opportunity-workspace .opportunity-result-card>.form-actions>button,.opportunity-workspace .opportunity-result-card>.form-actions>a{flex:1 1 100%}.opportunity-workspace .opportunity-check-controls{gap:8px}.opportunity-workspace .opportunity-check-controls .checkline{flex:1 1 45%}}
+.app .page .opportunity-workspace .opportunity-search-controls label.inbox-search{display:flex;align-items:center;gap:10px;margin:0;min-width:0;height:44px}
+.app .page .opportunity-workspace .opportunity-search-controls label.inbox-search input{margin:0;min-width:0;width:100%;height:44px}
+.app .page .opportunity-workspace .opportunity-search-controls label.inbox-search svg{flex-shrink:0}
+.app .page .opportunity-workspace .opportunity-search-controls select{max-width:none}
+.app .page .opportunity-workspace .opportunity-secondary-controls label,.app .page .opportunity-workspace .opportunity-check-controls .checkline,.app .page .opportunity-workspace .opportunity-types-control .checkline{margin:0}
+.app .page .opportunity-workspace .opportunity-control-panel>.arash-fold{margin-block:12px 0}
+.app .page .opportunity-workspace .opportunity-control-panel .arash-fold-body{padding:14px}

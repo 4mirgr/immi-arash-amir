@@ -1,0 +1,8 @@
+.email-template-settings .template-delete-action{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;padding:8px 12px;border:1px solid #ff637b99;border-radius:10px;background:#ff496614;color:#ff899c;font:inherit;font-size:.82rem;cursor:pointer;transition:background .16s,border-color .16s,box-shadow .16s,color .16s}
+.email-template-settings .template-delete-action:hover:not(:disabled),.email-template-settings .template-delete-action:focus-visible{border-color:#ff5e7a;background:#ff496625;color:#ffa2b1;box-shadow:0 0 16px #ff496630}
+.email-template-settings .template-edit-action:hover:not(:disabled),.email-template-settings .template-edit-action:focus-visible{border-color:#f6d85d;background:#f6d85d18;color:#ffe474;box-shadow:0 0 16px #f6d85d30}
+.email-template-settings .template-delete-action:disabled{opacity:.45;cursor:not-allowed}
+.email-template-settings .template-delete-confirm{padding:12px 14px;margin-top:12px;border:1px solid #ff637b66;border-radius:12px;background:#ff49660a}
+.email-template-settings .template-delete-confirm p{margin:0 0 12px;font-size:.83rem;line-height:1.9;color:inherit}
+html[data-theme="light"] .email-template-settings .template-delete-action{color:#b51a39;background:#fff0f3}
+html[data-theme="light"] .email-template-settings .template-edit-action:hover{color:#7a5800;background:#fff5c9}

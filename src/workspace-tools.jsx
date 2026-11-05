@@ -217,12 +217,16 @@ export function useEmailPresets(person, notify) {
     if (!valid() || !current.presets.some(row => row.id === id)) return Promise.resolve(false);
     return mutate("presets/default", { id }, "قالب پیش‌فرض همین پروفایل ذخیره شد؛ هیچ ایمیلی ارسال نشده است.");
   }
+  function remove(id) {
+    if (!valid() || !current.presets.some(row => row.id === id)) return Promise.resolve(false);
+    return mutate("presets/delete", { id }, "این نسخهٔ قالب حذف شد؛ قالب دیگری خودکار پیش‌فرض نمی‌شود.");
+  }
   function choose(id, callback) {
     if (!valid() || current.loading) return;
     const item = current.presets.find(row => row.id === id);
     if (item) callback(item);
   }
-  return { ...current, load, save, setDefault, choose, isCurrent: valid };
+  return { ...current, load, save, setDefault, remove, choose, isCurrent: valid };
 }
 
 export function Presets(props) {

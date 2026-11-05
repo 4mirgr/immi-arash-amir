@@ -2,7 +2,7 @@ import json
 import tempfile
 import unittest
 from server.app import connect,initialize
-from server.mail import init_schema,save_preset,list_presets,set_default_preset,preview_queue,enqueue,list_queue,suppress
+from server.mail import init_schema,save_preset,list_presets,set_default_preset,delete_preset,preview_queue,enqueue,list_queue,suppress
 
 class MailTests(unittest.TestCase):
     def setUp(self):
@@ -24,6 +24,23 @@ class MailTests(unittest.TestCase):
         self.assertEqual(list_presets(self.db,'amir'),[])
         self.assertTrue(next(p for p in list_presets(self.db,'arash') if p['id']==b['id'])['isDefault'])
         with self.assertRaises(ValueError):set_default_preset(self.db,'amir',a['id'])
+    def test_delete_only_owned_template_version_clears_default_and_preserves_prepared_mail(self):
+        a=save_preset(self.db,'arash',{'name':'Intro','subject':'Original','body':'Original body'})
+        b=save_preset(self.db,'arash',{'name':'Intro','subject':'Later','body':'Later body'})
+        other=save_preset(self.db,'amir',{'name':'Other','subject':'Private','body':'Private body'})
+        set_default_preset(self.db,'arash',a['id'])
+        set_default_preset(self.db,'amir',other['id'])
+        queued=enqueue(self.db,'arash',{'clinicIds':['a'],'presetId':a['id']})['items'][0]
+        with self.assertRaises(ValueError):delete_preset(self.db,'amir',a['id'])
+        result=delete_preset(self.db,'arash',a['id'])
+        self.assertTrue(result['deleted'])
+        self.assertEqual([p['id'] for p in list_presets(self.db,'arash')],[b['id']])
+        self.assertFalse(list_presets(self.db,'arash')[0]['isDefault'])
+        self.assertTrue(list_presets(self.db,'amir')[0]['isDefault'])
+        self.assertEqual(list_queue(self.db,'arash')[0]['subject'],'Original')
+        self.assertEqual(list_queue(self.db,'arash')[0]['id'],queued['id'])
+        with self.assertRaises(ValueError):delete_preset(self.db,'arash',a['id'])
+
     def test_preview_deduplicates_mailboxes_without_writing(self):
         p=preview_queue(self.db,'arash',self.payload)
         self.assertEqual(len(p['recipients']),1)

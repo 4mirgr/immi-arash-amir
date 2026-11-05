@@ -87,6 +87,14 @@ def set_default_preset(db, profile, id):
     return {**item, 'isDefault': True}
 
 
+def delete_preset(db, profile, id):
+    item = _preset(db, profile, id)
+    with db:
+        db.execute('delete from mail_defaults where profile_id=? and preset_id=?', (profile,id))
+        db.execute('delete from mail_presets where profile_id=? and id=?', (profile,id))
+    return {'deleted': True, 'id': item['id'], 'profileId': profile}
+
+
 def suppress(db, profile, email, reason='User suppression'):
     profile = _profile(profile)
     email = _email(email)

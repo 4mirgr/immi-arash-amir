@@ -179,6 +179,15 @@ export function createHandler(fetcher = fetch) {
       }
       if (request.method === 'POST' && url.pathname === '/api/cv/default') return json(await chooseDefault('immi_cv_versions','immi_cv_defaults','version_id',body.id));
       if (request.method === 'POST' && url.pathname === '/api/presets/default') return json(await chooseDefault('immi_presets','immi_preset_defaults','preset_id',body.id));
+      if (request.method === 'POST' && url.pathname === '/api/presets/delete') {
+        if (Object.keys(body).some(key=>key!=='id') || !validId(body.id)) throw new ApiError(400,'Valid preset version ID required');
+        const query='?select=id&user_id=eq.'+encodeURIComponent(user.id)+'&profile_id=eq.'+profileId+'&id=eq.'+body.id;
+        // RLS and the composite FK enforce owner isolation and clear only this
+        // version's default selection. Prepared mail snapshots are independent.
+        const deleted=await rest('immi_presets',query,{method:'DELETE',headers:{Prefer:'return=representation'}});
+        if (!deleted?.length) throw new ApiError(404,'Preset version not found');
+        return json({deleted:true,id:body.id,profileId});
+      }
       if (request.method === 'POST' && url.pathname === '/api/presets') {
         if (typeof body.name!=='string'||!body.name.trim()||body.name.trim().length>120||typeof body.subject!=='string'||!body.subject.trim()||body.subject.length>500||/[\r\n]/.test(body.subject)||typeof body.body!=='string'||!body.body.trim()||body.body.length>50000) throw new ApiError(400,'Valid preset name, subject and body required');
         return json(await rest('rpc/immi_save_preset','',{method:'POST',body:JSON.stringify({p_name:body.name.trim(),p_subject:body.subject,p_body:body.body})}),201);

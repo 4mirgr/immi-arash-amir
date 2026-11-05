@@ -439,7 +439,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
           {tab === "overview" && !arash && <AmirHome onNavigate={setTab}/>}
           {tab === "opportunities" && <JobOpportunitiesPanel key={person} person={person} notify={notify} onOpenSettings={()=>setTab("settings")} />}
           {tab === "opportunities" && (
-            <WorkspaceFold enabled={arash} title="بانک مراکز و انتخاب مخاطب" hint="سرنخ‌های تماس واردشده؛ مستقل از آگهی‌های شغلی" tone="amber"><section className="panel opportunities">
+            <WorkspaceFold title="بانک مراکز و انتخاب مخاطب" hint="سرنخ‌های تماس واردشده؛ مستقل از آگهی‌های شغلی" tone="amber"><section className="panel opportunities">
               <div className="section-head">
                 <div>
                   <span className="eyebrow">OPPORTUNITY RADAR</span>

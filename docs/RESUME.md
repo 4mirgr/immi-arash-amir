@@ -39,3 +39,7 @@ Contact/discovery engine: read docs/PUBLIC-CONTACT-ENGINE.md selectively. New pu
 شروع Google از دامنهٔ drgerami-md.ir با بلیت یک‌بارمصرف و POST به مبدأ اصلی اصلاح شد؛ callback و کلیدهای قبلی حفظ می‌شوند. GOOGLE_APP_ORIGINS باید https://drgerami-md.ir باشد. پروکسی gerami-website فقط در دو فایل مختص /aus اصلاح می‌شود. رضایت اتصال ایمیل دوم همچنان باید توسط مالک انجام شود. دامنه ثبت و فعال است؛ خطای همراه اول بدون آزمون همان شبکه حل‌شده اعلام نمی‌شود.
 
 مجوز شبکهٔ کامل LinkedIn و پشتیبان خودکار مستقل/بازیابی روی محیط آزمایشی هنوز تکمیل نیستند؛ خروجی رمزگذاری‌شدهٔ دستی با پشتیبان ابری مستقل تفاوت دارد. هیچ ایمیل یا پست واقعی برای آزمون این تغییر ارسال نشد.
+
+
+### Follow-up 2026-11-05
+Owner reported successful second Gmail connection. Template delete uses owner-bound POST /api/presets/delete and immi_preset_owner_delete migration; own default FK cascades, prepared send snapshots unchanged. Inbox topic and display-count filters remain scoped to owner+Google mailbox; scores are heuristic, not acceptance predictions. Shared glass skin now covers Arash while preserving GP/PESCI navigation. Offsite backup remains planned: see BACKUP-AUTOMATION-PLAN.fa.md; no live schedule/exporter/restore proof.

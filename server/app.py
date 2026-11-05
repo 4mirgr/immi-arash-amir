@@ -85,7 +85,7 @@ class Handler(BaseHTTPRequestHandler):
             payload=json.loads(self.rfile.read(length))
             if not isinstance(payload,dict):raise ValueError('Object required')
             if method=='POST':
-                actions={'/api/cv/versions':lambda:cv.create_version(db,profile,payload),'/api/cv/default':lambda:cv.set_default(db,profile,payload.get('id')),'/api/presets':lambda:mail.save_preset(db,profile,payload),'/api/presets/default':lambda:mail.set_default_preset(db,profile,payload.get('id')),'/api/mail/preview':lambda:mail.preview_queue(db,profile,payload),'/api/mail/queue':lambda:mail.enqueue(db,profile,payload),'/api/mail/suppress':lambda:mail.suppress(db,profile,payload.get('email'),payload.get('reason','User suppression'))}
+                actions={'/api/cv/versions':lambda:cv.create_version(db,profile,payload),'/api/cv/default':lambda:cv.set_default(db,profile,payload.get('id')),'/api/presets':lambda:mail.save_preset(db,profile,payload),'/api/presets/default':lambda:mail.set_default_preset(db,profile,payload.get('id')),'/api/presets/delete':lambda:mail.delete_preset(db,profile,payload.get('id')),'/api/mail/preview':lambda:mail.preview_queue(db,profile,payload),'/api/mail/queue':lambda:mail.enqueue(db,profile,payload),'/api/mail/suppress':lambda:mail.suppress(db,profile,payload.get('email'),payload.get('reason','User suppression'))}
                 if path in actions:return self.send(actions[path](),201)
             if method=='POST' and path=='/api/drafts':return self.send(save_draft(db,payload),201)
             if method=='PUT' and path=='/api/settings':
