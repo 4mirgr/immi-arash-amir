@@ -55,6 +55,7 @@ import {AmirHome,AmirNavigation,AMIR_TONES} from "./amir-workspace";
 import {LanguageControl} from "./language-control";
 import {WorkspaceGuidance} from "./workspace-guidance";
 import {SourceMonitor} from "./source-monitor";
+import {MobileWorkspaceNavigation} from "./mobile-workspace-nav";
 
 function deferredPanel(load,name){const Component=React.lazy(()=>load().then(module=>({default:module[name]})));return function DeferredPanel(props){return <React.Suspense fallback={<section className="panel" role="status">در حال آماده‌سازی این بخش…</section>}><Component {...props}/></React.Suspense>;};}
 const AutomationHub=deferredPanel(()=>import("./automation-hub"),"AutomationHub");
@@ -360,7 +361,8 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
             ? "ورود امن · دسترسی محدود به حساب شما"
             : "تعویض نمای آزمایشی · ورود امن هنوز متصل نیست"}
         </div>
-        {arash ? <ArashNavigation items={nav} tab={tab} onNavigate={setTab}/> : <AmirNavigation items={nav} tab={tab} onNavigate={setTab}/>}
+        <div className="desktop-workspace-navigation">{arash ? <ArashNavigation items={nav} tab={tab} onNavigate={setTab}/> : <AmirNavigation items={nav} tab={tab} onNavigate={setTab}/>}</div>
+        <MobileWorkspaceNavigation key={person} person={person} items={nav} tab={tab} onNavigate={setTab} tones={arash?ARASH_TONES:AMIR_TONES}/>
         <div className="sidebar-bottom">
           <div className="connection">
             <span className={"dot " + (online ? "green" : "amber")} />
@@ -377,7 +379,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
         </div>
       </aside>
       <main>
-        <header>
+        <header className="workspace-toolbar">
           <div className="breadcrumb">
             فضای کاری <ChevronLeft size={14} />
             <span>{nav.find((n) => n[0] === tab)?.[1]}</span>
