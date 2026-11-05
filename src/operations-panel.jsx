@@ -13,7 +13,7 @@ export function OperationsPanel({person,notify=()=>{}}){
  const epoch=owner.current.epoch;const valid=()=>alive.current&&owner.current.person===person&&owner.current.epoch===epoch;
  async function load(){
   const sequence=++loads.current;setError('');
-  const paths=['operations/status','google/status','linkedin/connection','telegram/status',...(person==='amir'?['google/status?mailbox=secondary']:[])];
+  const paths=['operations/status','google/status','linkedin/connection','telegram/status','google/status?mailbox=secondary'];
   const results=await Promise.allSettled(paths.map(path=>api(path+(path.includes('?')?'&':'?')+'profile='+person)));
   if(!valid()||sequence!==loads.current)return;
   setData({person,operations:results[0].status==='fulfilled'?results[0].value:null,google:results[1].status==='fulfilled'?results[1].value:null,linkedin:results[2].status==='fulfilled'?results[2].value:null,telegram:results[3].status==='fulfilled'?results[3].value:null,secondary:results[4]?.status==='fulfilled'?results[4].value:null});
@@ -40,7 +40,7 @@ export function OperationsPanel({person,notify=()=>{}}){
     <p className="section-help">«متصل» یعنی مجوزی در پرونده ثبت است؛ برای تأیید عملکرد هر خدمت، همان عملیات هم باید موفق اجرا شود.</p>
     <div className="cv-details">
      <span>{googleAccountLabel(person,'primary',current.google?.email)}</span><b>{current.google?.connected?'متصل؛ اعتبار مجوز هنگام استفاده بررسی می‌شود':'نیازمند اتصال یا بررسی مجوز'}</b>
-     {person==='amir'&&<><span>{googleAccountLabel(person,'secondary',current.secondary?.email)}</span><b>{current.secondary?.connected?'متصل؛ صندوق و فرستندهٔ مستقل':'منتظر اتصال شخصی یا بررسی مجوز'}</b></>}
+     {<><span>{googleAccountLabel(person,'secondary',current.secondary?.email)}</span><b>{current.secondary?.connected?'متصل؛ صندوق و فرستندهٔ مستقل':'منتظر اتصال شخصی یا بررسی مجوز'}</b></>}
      <span>LinkedIn همین کاربر</span><b>{current.linkedin?.connected?'اتصال پایه برقرار است':'نیازمند اتصال شخصی'}؛ آمار پیشرفته و شبکهٔ کامل مجوز جدا می‌خواهند</b>
      <span>Telegram</span><b>{current.telegram?.connected?(current.telegram.enabled?'متصل و اعلان فعال':'متصل؛ اعلان خاموش'):current.telegram?.webhookRegistered?'دریافت پیام بات آماده است؛ چت شخصی هنوز متصل نشده':'راه‌اندازی دریافت پیام بات و اتصال چت شخصی لازم است'}</b>
      <span>زمان‌بندی‌های منتظر</span><b>{current.operations?`${current.operations.pending.mail} ایمیل و ${current.operations.pending.linkedin} پست`:'وضعیت دریافت نشده'}</b>
@@ -68,7 +68,7 @@ export function OperationsPanel({person,notify=()=>{}}){
     </>}
    </details>
    <details className="workspace-disclosure"><summary>اقدام‌ها و مدارک باقی‌ماندهٔ همین حساب</summary><ul>
-    {person==='amir'&&!current.secondary?.connected&&<li>اتصال حساب amirgr20 با رضایت صاحب حساب در تنظیمات.</li>}
+    {!current.secondary?.connected&&<li>اتصال <bdi dir="auto">{googleAccountLabel(person,'secondary')}</bdi> با رضایت صاحب همین حساب در تنظیمات.</li>}
     <li>مجوز رسمی آمار پیشرفته و کانکشن‌های LinkedIn؛ ایمیل دانشگاهی به‌تنهایی اختیار نمایندگی سازمان نیست.</li>
     <li><MixedText>{person==='arash'?'بازبینی بالینی کیس‌های PESCI و تأیید مدارک حرفه‌ای.':'تأیید مدارک و شرایط مسیر تخصصی.'}</MixedText> پیشنهاد یا تیک برنامه، دستاورد تأییدشدهٔ رزومه نیست.</li>
    </ul></details>

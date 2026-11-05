@@ -64,5 +64,15 @@ test('secondary Calendar writes use its ETag and missing grant or scope never fa
  db.prepare('update google_accounts set scopes_json=? where owner_id=?').run(JSON.stringify(GOOGLE_SCOPES.slice(0,5)),secondary.userId);
  await assert.rejects(()=>route(req('calendar/events'),env,secondary,async()=>assert.fail('no fallback')),e=>e.code==='google_permission_required');
  db.prepare('delete from google_accounts where owner_id=?').run(secondary.userId);await assert.rejects(()=>route(req('calendar/events'),env,secondary,async()=>assert.fail('no fallback')),e=>e.code==='not_connected');
- assert.throws(()=>googleAccountContext(req('calendar/events?mailbox=secondary'),arash),e=>e.code==='mailbox_access_denied');
+ assert.equal(googleAccountContext(req('calendar/events?mailbox=secondary'),arash).userId,arash.userId+':secondary');
+});
+
+
+test('Arash own secondary Calendar is separate from both doctors primary slots and Amir secondary',async()=>{
+ const {env,db}=await secondaryFixture(),secondary={...arash,userId:arash.userId+':secondary'};await seed(env,db,secondary,'google-arash-secondary');
+ const r=req('calendar/events'+window+'&mailbox=secondary'),context=googleAccountContext(r,arash);assert.equal(context.userId,secondary.userId);
+ const result=await(await route(r,env,context,async(url,options)=>{assert.equal(options.headers.Authorization,'Bearer token-google-arash-secondary');assert.equal(new URL(url).searchParams.has('syncToken'),false);return Response.json({items:[{...event(),summary:'ARASH SECONDARY PRIVATE'}],nextSyncToken:'arash-own-secondary-cursor'});})).json();
+ assert.equal(result.events[0].title,'ARASH SECONDARY PRIVATE');assert.equal(db.prepare('select owner_id from google_calendar_state').get().owner_id,secondary.userId);
+ await assert.rejects(()=>route(req('drive/files?mailbox=secondary'),env,context,async()=>assert.fail('secondary Drive must remain blocked')),e=>e.code==='mailbox_service_not_enabled');
+ db.prepare('delete from google_accounts where owner_id=?').run(secondary.userId);await assert.rejects(()=>route(r,env,context,async()=>assert.fail('must never use another account token')),e=>e.code==='not_connected');
 });

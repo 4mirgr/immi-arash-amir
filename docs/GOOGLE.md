@@ -84,3 +84,12 @@ unchanged; diagnostic instrumentation does not relax consent or browser checks.
 Calendar can now select either of Amir's independently authorized Google slots. Display names are email local parts (`dr.gerami.md` and `amirgr20` as configured fallbacks); names never determine ownership or send routing. Existing mailbox IDs remain primary/secondary.
 
 For secondary Calendar use explicit `purpose=calendar` on Google start, then the same canonical POST launch and callback. Gmail plus Calendar events permissions and previously granted backup Drive permissions must remain approved. Requested service scopes are server-derived and encrypted into OAuth state; a missing permission leaves the stored grant unchanged. Secondary Calendar uses its own owner suffix, Google subject, cache, sync cursor and ETags. General Drive tools still use the primary slot; backup Drive has its separate restricted endpoint. No calendar event is copied between accounts or written by selecting a slot.
+
+
+## 2026-11-05 — تاریخ دوگانه و حساب دوم مستقل برای هر پزشک
+
+تاریخ نتایج Calendar، آخرین دریافت و زمان تغییر فایل Drive، در هر دو پنل شمسی/میلادی است. زمان‌های دارای ساعت یک لحظه را در تهران و منطقهٔ استرالیای انتخاب‌شده نشان می‌دهند؛ رویداد تمام‌روز تاریخ مدنی خود را حفظ می‌کند و پایان انحصاری Google به آخرین روز واقعی نمایش تبدیل می‌شود.
+
+کاربر صریحاً تأکید کرد هیچ اتصال یا دادهٔ Google بین دو پزشک مشترک نباشد. هر پنل اکنون دو slot مستقل primary/secondary دارد. آرش از پنل خودش حساب Google دیگر را با رضایت رسمی انتخاب می‌کند؛ نیاز به تعریف ایمیلش در چت یا متغیر محیطی ندارد. حساب متصل‌شده در تمدید مجوز به ایمیل/subject قبلی مقید است؛ برای تغییر باید همان slot قطع و دوباره متصل شود. یکتایی Google subject، اتصال یک هویت به دو پزشک را رد می‌کند. Gmail، Calendar و پشتیبان دستی رمزگذاری‌شده فقط از اتصال صاحب پنل استفاده می‌کنند. Drive عمومی مدارک همچنان primary است؛ پشتیبان Drive مجوز محدود و مسیر جدا دارد.
+
+آرش هنوز باید اتصال و مجوزهای واقعی حساب جدید خودش را تأیید کند. هیچ ایمیل، تقویم یا پشتیبان واقعی در تست‌ها نوشته نشد. پشتیبان خودکار کامل سرور همچنان فعال نیست.

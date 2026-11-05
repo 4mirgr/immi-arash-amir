@@ -111,8 +111,10 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
     [page, setPage] = useState(1);
   const [automationTab,setAutomationTab]=useState("operations");
   const googleConnection = useGoogleConnection(person, cloud);
-  const secondaryGoogleConnection = useGoogleConnection(person, cloud && person === "amir", "secondary");
-  const [composeMailbox,setComposeMailbox] = useState("primary");
+  const secondaryGoogleConnection = useGoogleConnection(person, cloud, "secondary");
+  const [composeSelection,setComposeSelection] = useState({owner:person,mailbox:"primary"});
+  const composeMailbox=composeSelection.owner===person?composeSelection.mailbox:"primary";
+  const setComposeMailbox=mailbox=>setComposeSelection({owner:person,mailbox});
   const mailConnection = composeMailbox === "secondary" ? secondaryGoogleConnection : googleConnection;
   const [replyContext, setReplyContext] = useState(null);
   const notify = (t) => {
@@ -659,7 +661,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                   <h3>پیش‌نویس مکاتبه</h3>
                   <span className="tag">{mailConnection.state.connected ? "Gmail همین حساب متصل است" : "Gmail متصل نیست"}</span>
                 </div>
-                {person === "amir" && <label>صندوق فرستندهٔ همین پیش‌نویس<select value={composeMailbox} onChange={e=>{setComposeMailbox(e.target.value);setReplyContext(null);if(e.target.value==='secondary')secondaryGoogleConnection.refresh();}}><option value="primary">{googleAccountLabel(person,'primary',googleConnection.state.email)}</option><option value="secondary">{googleAccountLabel(person,'secondary',secondaryGoogleConnection.state.email)}</option></select></label>}
+                {<label>صندوق فرستندهٔ همین پیش‌نویس<select value={composeMailbox} onChange={e=>{setComposeMailbox(e.target.value);setReplyContext(null);if(e.target.value==='secondary')secondaryGoogleConnection.refresh();}}><option value="primary">{googleAccountLabel(person,'primary',googleConnection.state.email)}</option><option value="secondary">{googleAccountLabel(person,'secondary',secondaryGoogleConnection.state.email)}</option></select></label>}
                 {replyContext && <div className="notice">پاسخ به پیام همین صندوق: <span dir="ltr">{replyContext.to}</span><button className="text-button" onClick={()=>setReplyContext(null)}>حذف زمینهٔ پاسخ</button><small>این مرحله فقط متن پیش‌نویس را آماده می‌کند؛ ارسال هنوز انجام نمی‌شود.</small></div>}
                 <label>مخاطبان انتخاب‌شده</label>
                 <div className="recipient-list">
@@ -943,7 +945,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
                 <div className="section-head"><div><h3>اتصال حساب‌ها و سرویس‌ها</h3><p className="muted">هر اتصال فقط متعلق به همین کاربر است.</p></div></div>
                 <div className="settings-connection-grid">
                   <GoogleConnection person={person} connection={googleConnection} notify={notify}/>
-                  {person === "amir" && <GoogleConnection person={person} mailbox="secondary" connection={secondaryGoogleConnection} notify={notify}/>}
+                  <GoogleConnection person={person} mailbox="secondary" connection={secondaryGoogleConnection} notify={notify}/>
                   <div className="settings-system-services">{[
                     ["تلگرام", "فرصت‌های تازه و یادآوری پیگیری‌ها را در تلگرام خودتان دریافت کنید.", "telegram"],
                     ["پایش منابع", "سرور منابع کاری و دانشگاهی را دوره‌ای بررسی و آگهی‌های تازه را ثبت می‌کند. فیلترهای نمایش را در بخش فرصت‌ها انتخاب کنید.", "crawler"],

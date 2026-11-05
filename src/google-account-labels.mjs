@@ -3,5 +3,5 @@
 export function googleAccountLabel(person,mailbox='primary',email){
  if(typeof email==='string'&&/^[^\s@<>]{1,64}@[^\s@<>]+$/.test(email))return email.split('@')[0];
  if(person==='amir')return mailbox==='secondary'?'amirgr20':'dr.gerami.md';
- return 'Google آرش';
+ return mailbox==='secondary'?'حساب Google دیگر آرش':'Google آرش';
 }

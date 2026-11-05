@@ -4,15 +4,26 @@ import {api, apiResponse} from './api';
 import {DualCalendar} from './dual-calendar';
 import {GoogleConnection,useGoogleConnection} from './google-tools';
 import {googleAccountLabel} from './google-account-labels.mjs';
+import {dualCalendarInstant,dualCalendarAllDay} from './calendar-result-dates.mjs';
 
 const types={pdf:'application/pdf',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',txt:'text/plain'};
-function readable(value){const date=new Date(value);return Number.isFinite(date.getTime())?date.toLocaleString('fa-IR'):'';}
+function InstantDates({value,zone}){
+ const dates=dualCalendarInstant(value,zone);if(!dates)return <span>زمان قابل نمایش نیست.</span>;
+ return <span style={{display:'grid',gap:3,overflowWrap:'anywhere'}}><span>شمسی · تهران: <bdi dir="ltr">{dates.jalali}</bdi></span><span>میلادی · <bdi dir="ltr">{zone}</bdi>: <bdi dir="ltr">{dates.gregorian}</bdi></span></span>;
+}
+function EventDates({event,zone}){
+ const allDay=Boolean(event.start?.date),range=allDay?dualCalendarAllDay(event.start.date,event.end?.date):null;
+ const first=allDay?range?.start:dualCalendarInstant(event.start?.dateTime,zone),last=allDay?range?.end:dualCalendarInstant(event.end?.dateTime,zone);
+ if(!first||!last)return <small style={{display:'block'}}>زمان رویداد قابل نمایش نیست.</small>;
+ const single=allDay&&range.singleDay;
+ return <small style={{display:'grid',gap:4,marginTop:6,overflowWrap:'anywhere'}}><span>شمسی · {allDay?'تمام روز':'تهران'}: <bdi dir="ltr">{first.jalali}{!single&&<> — {last.jalali}</>}</bdi></span><span>میلادی · {allDay?'تمام روز':<bdi dir="ltr">{zone}</bdi>}: <bdi dir="ltr">{first.gregorian}{!single&&<> — {last.gregorian}</>}</bdi></span></small>;
+}
 const errorText=e=>e.message||'درخواست سرویس Google انجام نشد.';
 
 export function CalendarDriveTools({person,notify}){
  const [selection,setSelection]=useState({owner:person,mailbox:'primary'});
- const mailbox=person==='amir'&&selection.owner===person&&selection.mailbox==='secondary'?'secondary':'primary';
- const primary=useGoogleConnection(person,true),secondary=useGoogleConnection(person,person==='amir','secondary');
+ const mailbox=['amir','arash'].includes(person)&&selection.owner===person&&selection.mailbox==='secondary'?'secondary':'primary';
+ const primary=useGoogleConnection(person,true),secondary=useGoogleConnection(person,['amir','arash'].includes(person),'secondary');
  return <CalendarDrivePanel key={person+':'+mailbox} person={person} notify={notify} mailbox={mailbox} primary={primary} calendar={mailbox==='secondary'?secondary:primary} onMailbox={value=>setSelection({owner:person,mailbox:value})}/>;
 }
 function CalendarDrivePanel({person,notify,mailbox,primary,calendar,onMailbox}){
@@ -48,15 +59,15 @@ function CalendarDrivePanel({person,notify,mailbox,primary,calendar,onMailbox}){
  <div className="section-head"><div><h3>تقویم و مدارک</h3><p className="section-help">فضای شخصی {person==='arash'?'آرش':'امیر'}{status?.email&&<> · <span dir="ltr" style={{overflowWrap:'anywhere'}}>{status.email}</span></>}</p></div><button type="button" className="secondary" disabled={Boolean(busy)} onClick={check}><RefreshCw size={15}/> بررسی اتصال</button></div>
  {error&&<div className="notice" role="alert">{error}</div>}
  {!status?.connected&&<p className="section-help">{busy==='status'?'در حال بررسی اتصال Google این حساب…':'برای استفاده، Google همین پروفایل را در بخش اتصال حساب متصل کنید و سپس «بررسی اتصال» را بزنید.'}</p>}
- {person==='amir'&&<label style={{display:'block',maxWidth:420}}>حساب تقویم<select aria-label="انتخاب حساب تقویم" value={mailbox} onChange={event=>onMailbox(event.target.value)}><option value="primary">{googleAccountLabel(person,'primary',primary.state.email)}</option><option value="secondary">{googleAccountLabel(person,'secondary',calendar.mailbox==='secondary'?calendar.state.email:undefined)}</option></select></label>}
+ {['amir','arash'].includes(person)&&<label style={{display:'block',maxWidth:420}}>حساب تقویم<select aria-label="انتخاب حساب تقویم" value={mailbox} onChange={event=>onMailbox(event.target.value)}><option value="primary">{googleAccountLabel(person,'primary',primary.state.email)}</option><option value="secondary">{googleAccountLabel(person,'secondary',calendar.mailbox==='secondary'?calendar.state.email:undefined)}</option></select></label>}
  {mailbox==='secondary'&&!active('calendar')&&<GoogleConnection person={person} connection={calendar} notify={notify} purpose="calendar" onConnected={check}/>}
  <details className="workspace-disclosure glass-panel">
  <summary><span className="section-head" style={{margin:0}}><strong><Calendar size={18} aria-hidden="true"/> برنامه‌های من · <bdi dir="ltr">{calendarLabel}</bdi></strong><small>{active('calendar')?'Google Calendar':'نیاز به مجوز تقویم'}</small></span><span className="section-help" style={{display:'block'}}>برنامه‌های ذخیره‌شده در تقویم Google را ببینید و ویرایش کنید.</span></summary>
  <p className="section-help">۳۰ روز آینده نمایش داده می‌شود. با «به‌روزرسانی تقویم»، تغییرهای انجام‌شده در Google هم دریافت می‌شوند.</p>
  {!active('calendar')&&<div className="notice">برای دیدن و تغییر برنامه‌ها، مجوز Calendar همین حساب را هنگام اتصال Google فعال کنید.</div>}
  <button type="button" className="secondary" disabled={!active('calendar')||Boolean(busy)} onClick={loadEvents}><RefreshCw size={15}/>{busy==='calendar'?'در حال دریافت…':'به‌روزرسانی تقویم'}</button>
- {checked&&<p className="section-help">آخرین دریافت: {readable(checked)}{events.length===0&&' · برنامه‌ای در این بازه پیدا نشد.'}</p>}
- {events.map(item=><article className="agent-row" key={item.id} style={{flexWrap:'wrap'}}><div style={{flex:'1 1 180px',minWidth:0,overflowWrap:'anywhere'}}><strong dir="auto">{item.title||'بدون عنوان'}</strong><small style={{display:'block'}}>{item.start?.date?'تمام روز: '+item.start.date:readable(item.start?.dateTime)} — {item.end?.date||readable(item.end?.dateTime)}</small></div>{item.start?.dateTime&&item.etag&&<button type="button" className="secondary" disabled={Boolean(busy)} onClick={()=>edit(item)}>ویرایش</button>}</article>)}
+ {checked&&<p className="section-help">آخرین دریافت: <InstantDates value={checked} zone={auZone}/>{events.length===0&&' · برنامه‌ای در این بازه پیدا نشد.'}</p>}
+ {events.map(item=><article className="agent-row" key={item.id} style={{flexWrap:'wrap'}}><div style={{flex:'1 1 180px',minWidth:0,overflowWrap:'anywhere'}}><strong dir="auto">{item.title||'بدون عنوان'}</strong><EventDates event={item} zone={auZone}/></div>{item.start?.dateTime&&item.etag&&<button type="button" className="secondary" disabled={Boolean(busy)} onClick={()=>edit(item)}>ویرایش</button>}</article>)}
  {partial&&<button type="button" className="secondary" disabled={Boolean(busy)} onClick={loadEvents}>دریافت بخش بعدی تقویم</button>}
  </details>
  <details ref={editor} className="workspace-disclosure glass-panel">
@@ -74,7 +85,7 @@ function CalendarDrivePanel({person,notify,mailbox,primary,calendar,onMailbox}){
  <p className="section-help">فقط فایل‌های مجاز برای این برنامه نمایش داده می‌شوند، نه تمام Drive. دانلود تا ۲ مگابایت و بارگذاری PDF، DOCX یا TXT تا یک مگابایت امکان‌پذیر است.</p>
  {!active('drive')&&<div className="notice">برای استفاده از مدارک، مجوز Drive همین حساب را هنگام اتصال Google فعال کنید.</div>}
  <button type="button" className="secondary" disabled={!active('drive')||Boolean(busy)} onClick={()=>loadFiles()}><RefreshCw size={15}/>{busy==='files'?'در حال دریافت…':'دریافت فایل‌های Drive'}</button>
- {files.map(item=><article className="agent-row" key={item.id} style={{flexWrap:'wrap'}}><div style={{flex:'1 1 180px',minWidth:0,overflowWrap:'anywhere'}}><strong dir="auto">{item.name||'بدون نام'}</strong><small style={{display:'block'}}>{item.size?Math.ceil(item.size/1000)+' KB':''} {item.modifiedTime?readable(item.modifiedTime):''}</small></div><button type="button" className="secondary" disabled={Boolean(busy)} onClick={()=>download(item)}><Download size={15}/> دانلود</button></article>)}
+ {files.map(item=><article className="agent-row" key={item.id} style={{flexWrap:'wrap'}}><div style={{flex:'1 1 180px',minWidth:0,overflowWrap:'anywhere'}}><strong dir="auto">{item.name||'بدون نام'}</strong><small style={{display:'block'}}>{item.size?Math.ceil(item.size/1000)+' KB':''}{item.modifiedTime&&<> · آخرین تغییر:<InstantDates value={item.modifiedTime} zone={auZone}/></>}</small></div><button type="button" className="secondary" disabled={Boolean(busy)} onClick={()=>download(item)}><Download size={15}/> دانلود</button></article>)}
  {nextPage&&<button className="secondary" disabled={Boolean(busy)} type="button" onClick={()=>loadFiles(nextPage)}>فایل‌های بیشتر</button>}
  <label htmlFor={'drive-upload-'+person}>انتخاب مدرک برای بارگذاری</label><input id={'drive-upload-'+person} type="file" accept=".pdf,.docx,.txt" onChange={e=>setFile(e.target.files?.[0]||null)} disabled={!active('drive')||Boolean(busy)}/><button type="button" className="primary" disabled={!active('drive')||Boolean(busy)||!file} onClick={upload}><Upload size={15}/>{busy==='upload'?'در حال بارگذاری…':'بارگذاری مدرک'}</button><p className="section-help">فایل عمومی نمی‌شود و خودکار به رزومه یا ایمیل پیوست نخواهد شد.</p>
  </details></section>;

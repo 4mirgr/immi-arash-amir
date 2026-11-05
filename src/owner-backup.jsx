@@ -16,17 +16,17 @@ export function OwnerBackup({person,notify=()=>{}}){
  const [form,setForm]=useState({owner,password:'',confirm:''}),[operation,setOperation]=useState({owner,busy:'',error:'',summary:null}),[chosen,setChosen]=useState({owner,file:null});
  const password=form.owner===owner?form.password:'',confirm=form.owner===owner?form.confirm:'',file=chosen.owner===owner?chosen.file:null,state=operation.owner===owner?operation:{busy:'',error:'',summary:null};
  const input=useRef(null),sequence=useRef(0),mounted=useRef(true);
- const secondary=useGoogleConnection(owner,owner==='amir','secondary');
- const [drive,setDrive]=useState({owner,loading:owner==='amir',error:'',record:null}),[receipt,setReceipt]=useState({owner,file:null});
- const driveSequence=useRef(0),driveState=drive.owner===owner?drive:{loading:owner==='amir',error:'',record:null},uploaded=receipt.owner===owner?receipt.file:null;
+ const secondary=useGoogleConnection(owner,Boolean(owner),'secondary');
+ const [drive,setDrive]=useState({owner,loading:Boolean(owner),error:'',record:null}),[receipt,setReceipt]=useState({owner,file:null});
+ const driveSequence=useRef(0),driveState=drive.owner===owner?drive:{loading:Boolean(owner),error:'',record:null},uploaded=receipt.owner===owner?receipt.file:null;
  async function refreshDrive(){
-  if(owner!=='amir')return;const who=owner,epoch=identity.current.epoch,seq=++driveSequence.current;
+  if(!owner)return;const who=owner,epoch=identity.current.epoch,seq=++driveSequence.current;
   const active=()=>mounted.current&&identity.current.owner===who&&identity.current.epoch===epoch&&driveSequence.current===seq;
   setDrive({owner:who,loading:true,error:'',record:null});
-  try{const result=await api('backup/drive/status?profile=amir');if(active())setDrive({owner:who,loading:false,error:'',record:result});}
+  try{const result=await api('backup/drive/status?profile='+encodeURIComponent(who));if(active())setDrive({owner:who,loading:false,error:'',record:result});}
   catch(error){if(active())setDrive({owner:who,loading:false,error:error.message||'وضعیت مقصد دریافت نشد.',record:null});}
  }
- useLayoutEffect(()=>{setReceipt({owner,file:null});setDrive({owner,loading:owner==='amir',error:'',record:null});refreshDrive();return()=>{driveSequence.current++;};},[owner]);
+ useLayoutEffect(()=>{setReceipt({owner,file:null});setDrive({owner,loading:Boolean(owner),error:'',record:null});refreshDrive();return()=>{driveSequence.current++;};},[owner]);
  useLayoutEffect(()=>{mounted.current=true;setForm({owner,password:'',confirm:''});setChosen({owner,file:null});setOperation({owner,busy:'',error:'',summary:null});if(input.current)input.current.value='';return()=>{mounted.current=false;sequence.current++;};},[owner]);
  const current=(who,epoch,seq)=>mounted.current&&identity.current.owner===who&&identity.current.epoch===epoch&&sequence.current===seq;
  const change=(key,value)=>setForm(previous=>({owner,password:previous.owner===owner?previous.password:'',confirm:previous.owner===owner?previous.confirm:'',[key]:value}));
@@ -45,16 +45,16 @@ export function OwnerBackup({person,notify=()=>{}}){
   }catch(error){if(current(who,epoch,seq))setOperation({owner:who,busy:'',error:error.message||'ساخت پشتیبان انجام نشد.',summary:null});}
  }
  async function upload(){
-  if(owner!=='amir'||state.busy||!driveState.record?.backupDrive)return;
+  if(!owner||state.busy||!driveState.record?.backupDrive)return;
   if(password!==confirm){setOperation({owner,busy:'',error:'دو گذرواژه یکسان نیستند.',summary:null});return;}
   if(password.length<16){setOperation({owner,busy:'',error:'گذرواژهٔ یکتا با حداقل ۱۶ نویسه انتخاب کنید.',summary:null});return;}
   const who=owner,epoch=identity.current.epoch,seq=++sequence.current;setOperation({owner:who,busy:'upload',error:'',summary:null});setReceipt({owner:who,file:null});
   try{
-   const exported=await api('backup/export?profile=amir');if(!current(who,epoch,seq))return;
+   const exported=await api('backup/export?profile='+encodeURIComponent(who));if(!current(who,epoch,seq))return;
    const envelope=await encryptOwnerExport(exported,password,who);if(!current(who,epoch,seq))return;
    // Only authenticated ciphertext leaves this browser. Never send the export,
    // password, selected local file or any other doctor's data to this endpoint.
-   const result=await api('backup/drive/upload?profile=amir',{method:'POST',body:JSON.stringify({envelope})});if(!current(who,epoch,seq))return;
+   const result=await api('backup/drive/upload?profile='+encodeURIComponent(who),{method:'POST',body:JSON.stringify({envelope})});if(!current(who,epoch,seq))return;
    if(result.transportVerified!==true)throw Error('تأیید یکسان‌بودن فایل منتقل‌شده دریافت نشد؛ ذخیرهٔ موفق را نمی‌توان تأیید کرد.');
    setForm({owner:who,password:'',confirm:''});setReceipt({owner:who,file:result.file||{}});setOperation({owner:who,busy:'',error:'',summary:backupSummary(exported,who)});
    notify('نسخهٔ رمزگذاری‌شده در Drive ذخیره و تطبیق فایل بررسی شد؛ زمان‌بندی خودکار هنوز فعال نیست.');refreshDrive();
@@ -80,15 +80,15 @@ export function OwnerBackup({person,notify=()=>{}}){
   <p className="section-help">حداقل ۱۶ نویسه انتخاب کنید و آن را جدا از فایل، در جای امن نگه دارید. اگر فراموش شود، سایت نمی‌تواند آن را بازیابی کند.</p>
   <label htmlFor={'backup-confirm-'+owner}>تکرار گذرواژه برای ساخت فایل جدید</label>
   <input id={'backup-confirm-'+owner} type="password" autoComplete="off" maxLength={512} value={confirm} disabled={!!state.busy} onChange={event=>change('confirm',event.target.value)}/>
-  {owner==='amir'&&<details className="workspace-disclosure neon-cyan" open><summary><CloudUpload size={16}/> ذخیرهٔ رمزگذاری‌شده در Drive {googleAccountLabel(owner,'secondary',secondary.state.email)}</summary>
+  {owner&&<details className="workspace-disclosure neon-cyan" open><summary><CloudUpload size={16}/> ذخیرهٔ رمزگذاری‌شده در Drive {googleAccountLabel(owner,'secondary',secondary.state.email)}</summary>
    <p className="section-help">با انتخاب شما، Drive حساب {googleAccountLabel(owner,'secondary',secondary.state.email)} مقصد این نسخه است. فقط اطلاعات مجاز همین پنل، پس از رمزگذاری در مرورگر، منتقل می‌شود؛ گذرواژه برای سرور یا Google فرستاده نمی‌شود.</p>
-   <GoogleConnection person="amir" connection={secondary} notify={notify} purpose="backup" onConnected={refreshDrive}/>
+   <GoogleConnection person={owner} connection={secondary} notify={notify} purpose="backup" onConnected={refreshDrive}/>
    <div className="form-actions"><button type="button" className="secondary" disabled={!!state.busy||driveState.loading} onClick={refreshDrive}><RefreshCw size={15}/> بررسی مقصد پشتیبان</button><span className={'status '+(driveState.record?.backupDrive?'':'amber')}>{driveState.loading?'در حال بررسی…':driveState.record?.backupDrive?'مجوز Drive آماده است':'مجوز جداگانهٔ Drive لازم است'}</span></div>
    {driveState.record?.email&&<p className="google-mailbox" dir="ltr">{driveState.record.email}</p>}
    {driveState.error&&<p className="notice" role="alert"><MixedText>{driveState.error}</MixedText></p>}
    <button className="primary" type="button" disabled={!!state.busy||!driveState.record?.backupDrive||!password||!confirm} onClick={upload}><CloudUpload size={16}/>{state.busy==='upload'?'در حال رمزگذاری و بررسی انتقال…':'ساخت و ذخیرهٔ نسخهٔ رمزگذاری‌شده در Drive'}</button>
    {uploaded&&<p className="notice" role="status">فایل بارگذاری‌شده دوباره دریافت و یکسان‌بودن بایت‌های آن بررسی شد؛ رمزگشایی یا بازیابی دیتابیس انجام نشده است. گذرواژه را جداگانه نگه دارید.{/^[A-Za-z0-9_-]{10,200}$/.test(uploaded.id||'')&&<a href={'https://drive.google.com/file/d/'+encodeURIComponent(uploaded.id)+'/view'} target="_blank" rel="noreferrer"> مشاهدهٔ فایل در Drive <ExternalLink size={13}/></a>}</p>}
-   <p className="section-help">این دکمه فقط با درخواست شما یک نسخهٔ محدود می‌سازد؛ نسخه‌برداری روزانه، پشتیبان کامل سرور و آزمون بازیابی دیتابیس هنوز فعال نیستند. اطلاعات آرش از این مسیر منتقل نمی‌شود. اتصالِ ایمیل دوم برای Gmail حفظ می‌شود؛ در صفحهٔ Google همان حساب مقصد را انتخاب کنید.</p>
+   <p className="section-help">این دکمه فقط با درخواست شما یک نسخهٔ محدود می‌سازد؛ نسخه‌برداری روزانه، پشتیبان کامل سرور و آزمون بازیابی دیتابیس هنوز فعال نیستند. اطلاعات کاربر دیگر از این مسیر منتقل نمی‌شود. اتصالِ ایمیل دوم برای Gmail حفظ می‌شود؛ در صفحهٔ Google همان حساب مقصد را انتخاب کنید.</p>
   </details>}
   <details className="workspace-disclosure" open><summary>دریافت فایل پشتیبان روی دستگاه</summary>
    <button className="primary" type="button" disabled={!!state.busy||!password||!confirm} onClick={download}><Download size={16}/>{state.busy==='download'?'در حال آماده‌کردن فایل…':'دریافت فایل رمزگذاری‌شده'}</button>
@@ -106,7 +106,7 @@ export function OwnerBackup({person,notify=()=>{}}){
    <p className="section-help">خروجی سقف حجم و تعداد دارد؛ اگر بخشی محدود شود، در خلاصهٔ فایل نشان داده می‌شود. پس از بازیابی مستقل، اتصال سرویس‌هایی مانند Google ممکن است دوباره به رضایت شما نیاز داشته باشد.</p>
   </details>
   <details className="workspace-disclosure"><summary>پشتیبان خودکار سرور هنوز چه کاری نیاز دارد؟</summary>
-   <p>مقصد انتخاب‌شده، Drive حساب amirgr20 است؛ اتصال مقصد و ذخیرهٔ دستیِ رمزگذاری‌شده با نسخه‌برداری خودکار سرور تفاوت دارد. برای حالت خودکار، خروجی کامل، حفاظت از کلید بازیابی و برنامهٔ منظم تهیهٔ نسخه هنوز باید آماده شوند.</p>
+   <p>مقصد این پنل، Drive حساب {googleAccountLabel(owner,'secondary',secondary.state.email)} است؛ اتصال مقصد و ذخیرهٔ دستیِ رمزگذاری‌شده با نسخه‌برداری خودکار سرور تفاوت دارد. برای حالت خودکار، خروجی کامل، حفاظت از کلید بازیابی و برنامهٔ منظم تهیهٔ نسخه هنوز باید آماده شوند.</p>
    <p className="section-help">سپس باید روی یک نسخهٔ جدا و آزمایشی امتحان کنیم که اطلاعات واقعاً برمی‌گردند و دو حساب جدا می‌مانند. این کار با بررسی فایل در مرورگر فرق دارد و نباید روی اطلاعات اصلی سایت انجام شود.</p>
   </details>
   {state.error&&<p className="notice" role="alert"><MixedText>{state.error}</MixedText></p>}{state.summary&&<Summary record={state.summary}/>}

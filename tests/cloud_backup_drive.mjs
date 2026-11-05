@@ -16,3 +16,14 @@ test('shared destination fails closed before uploading any snapshot',async()=>{c
 test('download mismatch is never reported as verified or complete',async()=>{const f=await fixture({tamper:true});await assert.rejects(()=>route(request(),f.env,context,f.fetcher),e=>e.code==='backup_verification_failed');assert.equal(f.calls.some(c=>c.options.method==='DELETE'),false);});
 test('ambiguous upload failure is not blindly retried and details stay private',async()=>{const f=await fixture({network:true});await assert.rejects(()=>route(request(),f.env,context,f.fetcher),e=>e.code==='backup_drive_unavailable'&&!e.message.includes('PRIVATE'));assert.equal(f.calls.filter(c=>new URL(c.url).pathname.startsWith('/upload')).length,1);});
 test('provider redirects never forward credentials and wrong secondary identity blocks access',async()=>{const f=await fixture({redirect:true});await assert.rejects(()=>route(request('status'),f.env,context,f.fetcher),e=>e.code==='backup_drive_redirect_rejected');assert.equal(f.calls.length,1);f.db.prepare('UPDATE google_accounts SET email=? WHERE owner_id=?').run('wrong@example.invalid',context.userId+':secondary');f.calls.length=0;await assert.rejects(()=>route(request(),f.env,context,f.fetcher),e=>e.code==='identity_mailbox_mismatch');assert.equal(f.calls.length,0);});
+
+test('Arash backup uses only his secondary identity and private folder, never Amir destination or a primary fallback',async()=>{
+ const f=await fixture(),arash={userId:'synthetic-arash-owner',profileId:'arash'},id=arash.userId+':secondary';
+ const ownRequest=()=>new Request(origin+'/api/backup/drive/upload?profile=arash',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({envelope})});
+ await assert.rejects(()=>route(ownRequest(),f.env,arash,f.fetcher),e=>e.code==='not_connected');assert.equal(f.calls.length,0);
+ const cipher=await encryptGoogleSecret(f.env,id,{access_token:'ARASH-SECONDARY-ONLY',refresh_token:'synthetic-refresh'});
+ f.db.prepare('INSERT INTO google_accounts VALUES(?,?,?,?,?,?,?,?,?)').run(id,'arash','arash-secondary-sub','arash-extra@example.invalid',JSON.stringify(GOOGLE_SCOPES),cipher,Date.now()+3600000,'connected',Date.now());
+ const actualTokens=[];const ownProvider=async(url,options={})=>{actualTokens.push(options.headers.Authorization);assert.equal(options.headers.Authorization,'Bearer ARASH-SECONDARY-ONLY');return f.fetcher(url,{...options,headers:{...options.headers,Authorization:'Bearer secondary-token'}});};
+ const result=await(await route(ownRequest(),f.env,arash,ownProvider)).json();assert.equal(result.transportVerified,true);assert.match(result.file.name,/^masir-arash-/);assert(actualTokens.length>0);
+ f.db.prepare('DELETE FROM google_accounts WHERE owner_id=?').run(id);const count=actualTokens.length;await assert.rejects(()=>route(ownRequest(),f.env,arash,ownProvider),e=>e.code==='not_connected');assert.equal(actualTokens.length,count);
+});

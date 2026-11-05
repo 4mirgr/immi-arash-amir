@@ -33,7 +33,7 @@ export async function handleMailAutomationRequest(request,env,context,fetcher=fe
   if(request.method!=='GET'&&request.headers.has('Origin')&&request.headers.get('Origin')!==url.origin)throw Error('origin_rejected');
   const db=env.GOOGLE_DB,path=url.pathname.slice(base.length),current=await settings(db,owner);
   if(request.method==='GET'&&path===''){
-   const selected=await profileDefaults(context),mailboxes=[];for(const mailbox of context.profileId==='amir'?['primary','secondary']:['primary']){const state=await googleStatus(env,owner+(mailbox==='secondary'?':secondary':''));mailboxes.push({mailbox,connected:state.connected,email:state.email||null,gmailSend:Boolean(state.capabilities?.gmailSend)});}
+   const selected=await profileDefaults(context),mailboxes=[];for(const mailbox of ['primary','secondary']){const state=await googleStatus(env,owner+(mailbox==='secondary'?':secondary':''),context.profileId);mailboxes.push({mailbox,connected:state.connected,email:state.email||null,gmailSend:Boolean(state.capabilities?.gmailSend)});}
    const candidateTime=Date.now(),candidateNow=new Date(candidateTime).toISOString();
    // Restrict Arash's clinical worklist before pagination; university feeds must not crowd it out.
    const arashClinical=context.profileId==='arash'?" AND country='AU' AND opportunity_type='job' AND (instr(lower(title),'general practitioner')>0 OR instr(lower(title),'general practice')>0 OR instr(lower(title),'rural generalist')>0 OR instr(' '||lower(replace(title,'-',' '))||' ',' gp ')>0 OR instr(lower(title),'medical officer')>0 OR instr(lower(title),'medical practitioner')>0) AND instr(lower(title),'nurs')=0 AND instr(lower(title),'manager')=0 AND instr(lower(title),'reception')=0":"";
@@ -44,7 +44,7 @@ export async function handleMailAutomationRequest(request,env,context,fetcher=fe
   const input=await body(request);
   if(path==='/settings'){
    keys(input,['mode','dailyLimit','mailbox']);const requestedMode=input.mode??current.requestedMode,mailbox=input.mailbox??current.mailbox,dailyLimit=input.dailyLimit??current.dailyLimit;
-   if(!['draft_only','approval_required','automatic'].includes(requestedMode)||!['primary','secondary'].includes(mailbox)||mailbox==='secondary'&&context.profileId!=='amir'||!Number.isInteger(dailyLimit)||dailyLimit<1||dailyLimit>3)throw Error('invalid_automation_settings');
+   if(!['draft_only','approval_required','automatic'].includes(requestedMode)||!['primary','secondary'].includes(mailbox)||!Number.isInteger(dailyLimit)||dailyLimit<1||dailyLimit>3)throw Error('invalid_automation_settings');
    await stmt(db,'INSERT INTO mail_automation_settings(owner_id,requested_mode,mailbox,daily_limit,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(owner_id) DO UPDATE SET requested_mode=excluded.requested_mode,mailbox=excluded.mailbox,daily_limit=excluded.daily_limit,updated_at=excluded.updated_at',owner,requestedMode,mailbox,dailyLimit,now()).run();return json({requestedMode,effectiveMode:requestedMode==='draft_only'?'draft_only':'approval_required',mailbox,dailyLimit,automaticSending:false});
   }
   if(path==='/suppress'){

@@ -27,7 +27,7 @@ async function fixture(){
   throw Error('Unexpected fixture REST call '+table);
  };
  const handle=createHandler(fetcher),call=(profile,path,body)=>handle(new Request(origin+'/api/'+path,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer synthetic-'+profile,'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})}),env);
- return {db,call,writes,providerCalls};
+ return {db,call,writes,providerCalls,env};
 }
 const reply={replyContext:{messageId:'abc1',threadId:'thread1'},subject:'Re: Project reply',body:'Synthetic reply for review only'};
 
@@ -46,8 +46,19 @@ test('queues and recipient derivation are separate even when both Gmail accounts
  }
  assert.equal((await call('amir','google/mail/dispatch?mailbox=secondary',{ids:[ids.primary]})).status,404);assert.equal((await call('amir','google/mail/dispatch?mailbox=primary',{ids:[ids.secondary]})).status,404);assert.deepEqual(providerCalls,[]);
 });
-test('Arash cannot select secondary at status, send, cache or draft routes',async()=>{
- const {call,writes,providerCalls}=await fixture();for(const [path,body]of [['google/status?mailbox=secondary',undefined],['google/mail/messages?mailbox=secondary',undefined],['google/mail/queue?mailbox=secondary',reply],['google/mail/dispatch?mailbox=secondary',{ids:[]}],['drafts',{...reply,clinicIds:[],mailbox:'secondary'}]])assert.equal((await call('arash',path,body)).status,403,path);assert.equal(writes.length,0);assert.deepEqual(providerCalls,[]);
+test('unconnected Arash secondary is available for consent but cannot reuse Amir or a primary grant',async()=>{
+ const {call,writes,providerCalls}=await fixture();const response=await call('arash','google/status?mailbox=secondary');assert.equal(response.status,200);const status=await response.json();assert.equal(status.configured,true);assert.equal(status.connected,false);assert.equal(status.email,null);
+ for(const [path,body]of [['google/mail/messages?mailbox=secondary',undefined],['google/mail/queue?mailbox=secondary',reply],['google/mail/dispatch?mailbox=secondary',{ids:[]}],['drafts',{...reply,clinicIds:[],mailbox:'secondary'}]])assert.equal((await call('arash',path,body)).status,path.startsWith('google/mail/dispatch')?400:409,path); // Empty dispatch is rejected before token lookup.
+ assert.equal((await call('arash','google/status?profile=amir&mailbox=secondary')).status,403);assert.equal(writes.length,0);assert.deepEqual(providerCalls,[]);
+});
+test('authenticated Arash second mailbox replies use his own cached identity and actual application owner',async()=>{
+ const {db,env,call,writes,providerCalls}=await fixture(),id='owner-arash:secondary';
+ const cipher=await encryptGoogleSecret(env,id,{access_token:'arash-second-token',refresh_token:'synthetic-arash-refresh'});
+ db.prepare('INSERT INTO google_accounts VALUES(?,?,?,?,?,?,?,?,?)').run(id,'arash','arash-second-sub','arash-second@example.invalid',JSON.stringify(GOOGLE_SCOPES),cipher,Date.now()+3600000,'connected',Date.now());
+ const message={id:'abc1',threadId:'thread1',direction:'received',from:'arash-target@contact.example.invalid',subject:'Project reply',rfcMessageId:'<arash-target@example.invalid>',extractedEmails:['arash-target@contact.example.invalid']};
+ db.prepare('INSERT INTO google_mail_messages VALUES(?,?,?,?,?,?,?,?)').run(id,'arash-second-sub',message.id,message.threadId,Date.now(),'medium',JSON.stringify(message),Date.now());
+ const own=await(await call('arash','google/status?mailbox=secondary')).json();assert.equal(own.email,'arash-second@example.invalid');assert.equal((await(await call('amir','google/status?mailbox=secondary')).json()).email,'second@example.invalid');
+ const response=await call('arash','drafts',{...reply,clinicIds:[],mailbox:'secondary'});assert.equal(response.status,201);const draft=await response.json();assert.equal(draft.replyContext.googleSubject,'arash-second-sub');assert.equal(draft.replyContext.to,'arash-target@contact.example.invalid');assert.equal(writes[0].user_id,'owner-arash');assert.equal(writes[0].profile_id,'arash');assert(!JSON.stringify(writes).includes('second-sub@contact.example.invalid'));assert.deepEqual(providerCalls,[]);
 });
 test('missing selected secondary connection never falls back to existing primary for draft or reply preview',async()=>{
  const {call,db,writes,providerCalls}=await fixture();db.prepare('DELETE FROM google_accounts WHERE owner_id=?').run('owner-amir:secondary');
