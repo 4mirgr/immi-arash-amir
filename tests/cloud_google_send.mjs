@@ -126,3 +126,36 @@ test('trusted opportunity review identity pin rejects a changed subject before q
  const response=await f.call('queue',payload(),scoped);assert.equal(response.status,409);assert.equal((await response.json()).error,'google_account_changed');
  assert.equal(f.db.prepare('SELECT count(*) n FROM google_send_queue').get().n,0);assert.equal(f.calls.length,0);
 });
+
+function scheduleTable(f){f.db.exec(readFileSync(new URL('../cloud/mail-automation-scheduler-schema.sql',import.meta.url),'utf8'));f.env.MAIL_SCHEDULER_ENABLED='true';}
+function approvalFor(f,item,overrides={}){
+ const at=Date.now(),row=f.db.prepare('SELECT * FROM google_send_queue WHERE id=?').get(item.id);
+ const record={id:crypto.randomUUID(),owner_id:f.arash.userId,profile_id:'arash',job_id:crypto.randomUUID(),queue_id:item.id,queue_digest:'synthetic-digest',mailbox:'primary',google_subject:row.google_subject,sender:row.google_email,recipient:row.recipient,cv_version_id:row.cv_version_id,consent_version:'frozen_mail_v1',send_after:at-1000,expires_at:at+300000,status:'approved',created_at:at,updated_at:at,...overrides};
+ f.db.prepare(`INSERT INTO mail_scheduled_approvals(${Object.keys(record).join(',')}) VALUES(${Object.keys(record).map(()=>'?').join(',')})`).run(...Object.values(record));return record;
+}
+const trusted=(f,approval)=>({...f.arash,rootUserId:f.arash.userId,mailbox:'primary',scheduledApprovalId:approval.id});
+test('manual dispatch cannot consume a scheduled queue, including mixed manual/scheduled batches',async()=>{
+ const f=await fixture(),items=(await(await f.call('queue',{...payload([clinic(1),clinic(2)]),cvVersionId:ownCV})).json()).items;scheduleTable(f);approvalFor(f,items[1],{send_after:Date.now()+60000});
+ const response=await f.call('dispatch',{ids:items.map(i=>i.id)});assert.equal(response.status,409);assert.equal((await response.json()).error,'scheduled_queue_requires_scheduler');assert.equal(f.calls.length,0);assert.equal(f.db.prepare("SELECT count(*) n FROM google_send_queue WHERE status='queued'").get().n,2);
+});
+test('trusted scheduled dispatch requires the exact due sending approval and its owner, mailbox and identity',async()=>{
+ for(const override of [{status:'approved'},{send_after:Date.now()+60000},{expires_at:Date.now()-1000},{owner_id:'other-owner'},{profile_id:'amir'},{mailbox:'secondary'},{google_subject:'another-google-subject'},{recipient:'other@example.invalid'},{cv_version_id:foreignCV},{consent_version:'unreviewed'}]){
+  const f=await fixture(),item=(await(await f.call('queue',{...payload(),cvVersionId:ownCV})).json()).items[0];scheduleTable(f);const approval=approvalFor(f,item,{status:'sending',...override});
+  const response=await f.call('dispatch',{ids:[item.id]},trusted(f,approval));assert.equal(response.status,409);assert.equal(f.calls.length,0);assert.equal(f.db.prepare('SELECT status FROM google_send_queue WHERE id=?').get(item.id).status,'queued');
+ }
+ const f=await fixture(),item=(await(await f.call('queue',{...payload(),cvVersionId:ownCV})).json()).items[0];scheduleTable(f);const approval=approvalFor(f,item,{status:'sending'});
+ const first=await(await f.call('dispatch',{ids:[item.id]},trusted(f,approval))).json();assert.equal(first.items[0].status,'sent');await f.call('dispatch',{ids:[item.id]},trusted(f,approval));assert.equal(f.calls.length,1);
+});
+test('missing approval or disabled scheduler cannot be bypassed with a forged trusted context or payload field',async()=>{
+ const f=await fixture(),item=(await(await f.call('queue',{...payload(),cvVersionId:ownCV})).json()).items[0],fake={id:crypto.randomUUID()};
+ assert.equal((await f.call('dispatch',{ids:[item.id]},trusted(f,fake))).status,503);
+ f.env.MAIL_SCHEDULER_ENABLED='true';assert.equal((await f.call('dispatch',{ids:[item.id]})).status,503);
+ scheduleTable(f);assert.equal((await f.call('dispatch',{ids:[item.id]},trusted(f,fake))).status,409);
+ assert.equal((await f.call('dispatch',{ids:[item.id],scheduledApprovalId:fake.id})).status,400);
+ const approval=approvalFor(f,item,{status:'sending'});f.env.MAIL_SCHEDULER_ENABLED='false';assert.equal((await f.call('dispatch',{ids:[item.id]},trusted(f,approval))).status,409);assert.equal(f.calls.length,0);
+});
+test('the atomic Gmail claim rejects an approval created after manual preflight',async()=>{
+ const f=await fixture(),item=(await(await f.call('queue',{...payload(),cvVersionId:ownCV})).json()).items[0];scheduleTable(f);const original=f.env.GOOGLE_DB;let injected=false;
+ f.env.GOOGLE_DB={...original,prepare(sql){if(!injected&&sql.startsWith("UPDATE google_send_queue SET status='sending'")){injected=true;approvalFor(f,item,{send_after:Date.now()+60000});}return original.prepare(sql);}};
+ const response=await(await f.call('dispatch',{ids:[item.id]})).json();assert.equal(injected,true);assert.equal(response.items[0].status,'not_claimed');assert.equal(f.calls.length,0);assert.equal(f.db.prepare('SELECT status FROM google_send_queue WHERE id=?').get(item.id).status,'queued');
+});

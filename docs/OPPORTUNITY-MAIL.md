@@ -11,3 +11,16 @@ Actual transport requires a separate explicit UI click, calling the existing `/a
 Frontend: `src/opportunity-mail.jsx`; backend: `cloud/opportunity-mail.mjs`; router order precedes the general opportunity API. Tests cover source/history/recipient isolation, preset/CV ownership, changed snapshots, sender reconnects, suppression, quotas and retry/dedup controls.
 
 Settings contain a wide named-preset editor/library and saved CV defaults. Saving the same preset name creates an immutable revision through the existing RPC; selecting the default remains explicit. Website typography uses the same locally hosted Vazirmatn binaries/weights as intMed; see public/fonts/OFL.txt and SOURCE.txt. Font files are public licensed assets, never private attachments.
+
+## Arash inline application flow — 2026-11-10
+Arash lands on opportunities. Each compact row expands its own letter, CV and A/B/C choices; only one row is open. Final preview, sender/recipient selection, send and scheduling stay in that row. Evidence and planning controls are closed disclosures. Amir retains the existing card layout. Owner/filter/row changes discard reviews and confirmations; returning from mail may restore only valid owned draft choices.
+
+The GP GET package exposes `previewBody`/`previewParagraphs` as an explicitly unreviewed suggestion from the currently suggested exact public-source and owned-CV quotes. This never changes canonical readiness, saves a template or authorizes sending. Canonical generation and final mail review remain explicit.
+
+`POST .../mail/schedule` accepts the same reviewed selections and hash as queue, plus `sendAfter` (ISO instant) and `confirmSend:true`. It freezes the exact source edition/evidence digest, message, CV attachment, Gmail identity and published recipient in the existing scheduler tables. Existing different jobs are rejected rather than overwritten. A failed approval must not leave a newly created queue item available for an unintended later send. GET adds `scheduling` with actual source/policy readiness and this opportunity's own approvals. No new schema or secret.
+
+Scheduling uses the existing five-minute cron, up to one send per run and owner quotas; the chosen instant must be within 23.5 hours and authorization expires 30 minutes later. It may block/expire instead of sending if source, membership, sender, evidence or authorization changes. Official executable source IDs use the same static registries as collection; unofficial/unregistered/stale sources remain blocked. No automatic retry of uncertain transport.
+
+The form uses the existing Tehran/Jalali and Australian/Gregorian calendar. If the account is draft-only, an explicit account-level scheduling enable action is offered, with an active-approval check first; opening the panel never changes policy. Every message still needs separate frozen-message approval. Manual dispatch cannot bypass active scheduling: the whole batch is checked before transport and the queue claim repeats the approval condition atomically. Cancellation is owner-bound and does not recall a message already being sent.
+
+Reference namechee.vercel.app was reviewed for visual flow only; no contacts, sent statuses, letters or private data were imported. Browser verification uses synthetic fixtures and mocked transport, never real mail.

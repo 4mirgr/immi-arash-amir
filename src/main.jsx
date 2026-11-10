@@ -90,7 +90,7 @@ const fallbackStation = {
   ],
 };
 function App({ cloud = false, initialPerson = "arash", onSignOut }) {
-  const [tab, setTab] = useState("overview"),
+  const [tab, setTab] = useState(initialPerson === "arash" ? "opportunities" : "overview"),
     [person, setPerson] = useState(initialPerson),
     [data, setData] = useState({ clinics: [], profiles: [], stations: [] }),
     [online, setOnline] = useState(false),
@@ -408,7 +408,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
             <div className="small-avatar">{arash ? "AE" : "AG"}</div>
           </div>
         </header>
-        <div className="page"><WorkspaceGuidance/>
+        <div className={"page"+(arash && tab === "opportunities" ? " arash-opportunity-focus" : "")} >{!(arash && tab === "opportunities") && <WorkspaceGuidance/>}
           <div className="page-heading">
             <div>
               <div className="eyebrow">

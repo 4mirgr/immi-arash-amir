@@ -55,3 +55,8 @@ test('missing Arash secondary sender blocks a frozen schedule despite another va
  f.db.prepare("UPDATE google_accounts SET owner_id='arash-owner' WHERE owner_id=?").run(f.scoped);
  const result=await dispatchScheduledMail(f.env,f.fetcher);assert.equal(result.attempted,0);assert.equal(f.calls.length,0);assert.equal(f.db.prepare('SELECT status FROM mail_scheduled_approvals').get().status,'blocked');
 });
+
+test('official executable reviewed collectors retain the same fresh-source guards for scheduling',async()=>{
+ const f=await fixture();f.pub.prepare("UPDATE opportunity_editions SET source_id='reviewed-hwq-wembley-level1'").run();f.pub.prepare("UPDATE registered_source_checks SET source_id='reviewed-hwq-wembley-level1'").run();
+ assert.equal((await f.approve()).status,201);f.pub.prepare("UPDATE opportunity_editions SET trust='unofficial'").run();f.due();assert.equal((await dispatchScheduledMail(f.env,f.fetcher)).attempted,0);assert.equal(f.calls.length,0);assert.equal(f.db.prepare('SELECT reason FROM mail_scheduled_approvals').get().reason,'source_no_longer_actionable');
+});

@@ -51,6 +51,23 @@ function stmt(db,sql,...args){return db.prepare(sql).bind(...args);}
 async function all(db,sql,...args){return (await stmt(db,sql,...args).all()).results||[];}
 function publicItem(row){return {id:row.id,recipient:row.recipient,sender:row.google_email,subject:row.subject,status:row.status,createdAt:row.created_at,attemptedAt:row.attempted_at||null,gmailMessageId:row.gmail_message_id||null,cvVersionId:row.cv_version_id||null,attachmentName:row.attachment_name||null,replyThreadId:row.reply_thread_id||null};}
 function rootOwner(context){return context.rootUserId||context.userId;}
+async function dispatchScheduleGuard(env,context,rows){
+ const db=dbFor(env),exists=await stmt(db,"SELECT name FROM sqlite_master WHERE type='table' AND name='mail_scheduled_approvals' LIMIT 1").first();
+ const trusted=context.scheduledApprovalId!==undefined;
+ if(!exists){
+  if(trusted||env.MAIL_SCHEDULER_ENABLED==='true')throw new SendError(503,'scheduler_storage_not_configured');
+  return false;
+ }
+ if(trusted&&(!UUID.test(context.scheduledApprovalId)||env.MAIL_SCHEDULER_ENABLED!=='true'))throw new SendError(409,'scheduled_dispatch_not_authorized');
+ for(const row of rows){
+  if(row.status!=='queued')continue;
+  const active=await all(db,"SELECT * FROM mail_scheduled_approvals WHERE queue_id=? AND status IN ('approved','sending') LIMIT 2",row.id);
+  if(!trusted){if(active.length)throw new SendError(409,'scheduled_queue_requires_scheduler');continue;}
+  const approval=active.length===1?active[0]:null,owner=rootOwner(context),mailbox=context.userId===owner?'primary':context.userId===owner+':secondary'?'secondary':null,at=Date.now();
+  if(!approval||approval.id!==context.scheduledApprovalId||approval.owner_id!==owner||approval.profile_id!==context.profileId||approval.mailbox!==mailbox||context.mailbox!==mailbox||approval.status!=='sending'||approval.send_after>at||approval.expires_at<=at||approval.google_subject!==row.google_subject||approval.sender!==row.google_email||approval.recipient!==row.recipient||approval.cv_version_id!==row.cv_version_id||approval.consent_version!=='frozen_mail_v1')throw new SendError(409,'scheduled_dispatch_not_authorized');
+ }
+ return true;
+}
 function validateContext(context){if(!context?.userId||!['arash','amir'].includes(context.profileId)||typeof context.rest!=='function')throw new SendError(403,'workspace_required');}
 async function access(env,userId,fetcher){const value=await getGoogleAccess(env,userId,fetcher);if(!mailbox(value.email)||!value.subject||!value.scopes?.includes('https://www.googleapis.com/auth/gmail.send'))throw new SendError(403,'gmail_send_consent_required');return value;}
 function encodedSubject(subject){
@@ -154,16 +171,22 @@ async function dispatch(env,context,payload,fetcher){
   // Verify all supplied IDs before making any external send request.
   const owned=[];
   for(const id of [...new Set(payload.ids)]){const row=await stmt(db,'SELECT * FROM google_send_queue WHERE owner_id=? AND id=?',context.userId,id).first();if(!row)throw new SendError(404,'queue_item_not_found');owned.push(row);}
+  // Validate the whole batch before any transport. The claim below repeats the
+  // schedule condition atomically so approvals created meanwhile cannot be bypassed.
+  const hasSchedules=await dispatchScheduleGuard(env,context,owned);
   for(const row of owned){
     try{account=await access(env,context.userId,fetcher);}catch{results.push({id:row.id,status:'blocked_google_connection'});continue;}
     if(row.google_subject!==account.subject||row.google_email!==account.email.toLowerCase()){results.push({id:row.id,status:'blocked_account_changed'});continue;}
     if(row.status!=='queued'){results.push(publicItem(row));continue;}
     let rawMime;try{rawMime=await readQueuedMime(env,context.userId,row.raw_mime);}catch{await stmt(db,"UPDATE google_send_queue SET status='failed' WHERE owner_id=? AND id=? AND status='queued'",context.userId,row.id).run();results.push({id:row.id,status:'failed',reason:'attachment_integrity_failed'});continue;}
     const day=now().slice(0,10),attempted=now();
+    const scheduleAt=Date.now(),scheduled=context.scheduledApprovalId!==undefined;
+    const scheduleSQL=!hasSchedules?'':scheduled?` AND EXISTS(SELECT 1 FROM mail_scheduled_approvals a WHERE a.id=? AND a.owner_id=? AND a.profile_id=? AND a.queue_id=google_send_queue.id AND a.mailbox=? AND a.status='sending' AND a.send_after<=? AND a.expires_at>? AND a.google_subject=google_send_queue.google_subject AND a.sender=google_send_queue.google_email AND a.recipient=google_send_queue.recipient AND a.cv_version_id=google_send_queue.cv_version_id AND a.consent_version='frozen_mail_v1') AND NOT EXISTS(SELECT 1 FROM mail_scheduled_approvals other WHERE other.queue_id=google_send_queue.id AND other.status IN ('approved','sending') AND other.id<>?)`:` AND NOT EXISTS(SELECT 1 FROM mail_scheduled_approvals a WHERE a.queue_id=google_send_queue.id AND a.status IN ('approved','sending'))`;
+    const scheduleArgs=hasSchedules&&scheduled?[context.scheduledApprovalId,rootOwner(context),context.profileId,context.mailbox,scheduleAt,scheduleAt,context.scheduledApprovalId]:[];
     const claim=await stmt(db,`UPDATE google_send_queue SET status='sending',attempted_at=?,attempt_day=? WHERE id=? AND owner_id=? AND status='queued' AND google_subject=?
       AND NOT EXISTS(SELECT 1 FROM google_send_suppressions WHERE owner_id=? AND email=google_send_queue.recipient)
       AND NOT EXISTS(SELECT 1 FROM mail_automation_suppressions WHERE owner_id=? AND email=google_send_queue.recipient)
-      AND (SELECT count(*) FROM google_send_queue WHERE owner_id=? AND attempt_day=?)<? RETURNING *`,attempted,day,row.id,context.userId,account.subject,context.userId,rootOwner(context),context.userId,day,LIMIT).first();
+      AND (SELECT count(*) FROM google_send_queue WHERE owner_id=? AND attempt_day=?)<?${scheduleSQL} RETURNING *`,attempted,day,row.id,context.userId,account.subject,context.userId,rootOwner(context),context.userId,day,LIMIT,...scheduleArgs).first();
     if(!claim){results.push({id:row.id,status:'not_claimed',reason:'suppressed_quota_or_concurrent_claim'});continue;}
     let final='delivery_unknown',messageId=null;
     try{

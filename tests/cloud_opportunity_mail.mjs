@@ -119,3 +119,62 @@ test('optional clinic contact remains owner-scoped and changing it invalidates m
  assert.equal((await f.call('preview',payload)).status,409);
  assert.equal(f.privateDb.prepare('SELECT count(*) n FROM google_send_queue').get().n,0);assert.equal(f.calls.length,0);
 });
+
+function schedulingFixture(f,{mode='automatic'}={}){
+ f.privateDb.exec(readFileSync(new URL('../cloud/mail-automation-scheduler-schema.sql',import.meta.url),'utf8'));
+ f.publicDb.exec(readFileSync(new URL('../cloud/source-registry-schema.sql',import.meta.url),'utf8'));
+ f.env.MAIL_SCHEDULER_ENABLED='true';
+ f.publicDb.prepare("UPDATE opportunity_editions SET source_id='tas-pageup-759',closing_at='2099-01-01T00:00:00Z'").run();
+ f.publicDb.prepare("INSERT INTO registered_source_checks(source_id,status,last_success_at) VALUES('tas-pageup-759','updated',?)").run(Date.now());
+ f.privateDb.prepare('INSERT INTO mail_automation_settings VALUES(?,?,?,?,?)').run('arash-owner',mode,'primary',3,new Date().toISOString());
+}
+const after=()=>new Date(Date.now()+300000).toISOString();
+test('reviewed opportunity can be explicitly scheduled in place without dispatch or changing owner policy',async()=>{
+ const f=await fixture();schedulingFixture(f);const info=await(await f.call()).json();assert.equal(info.scheduling.enabled,true);assert.equal(info.scheduling.modeReady,true);assert.equal(info.scheduling.sourceEligible,true);
+ const preview=await(await f.call('preview',f.payload)).json(),sendAfter=after();
+ const response=await f.call('schedule',{...f.payload,confirmReviewed:true,reviewHash:preview.reviewHash,sendAfter,confirmSend:true});assert.equal(response.status,201);const scheduled=await response.json();
+ assert.equal(scheduled.approval.status,'approved');assert.equal(scheduled.approval.sendAfter,sendAfter);assert.equal(scheduled.approval.queueId,scheduled.items[0].id);assert.equal(scheduled.approval.cvVersionId,cvVersionId);assert.equal(scheduled.sent,false);assert.equal(f.calls.length,0);
+ const job=f.privateDb.prepare('SELECT * FROM mail_automation_jobs').get(),snapshot=JSON.parse(job.snapshot_json);assert.equal(snapshot.kind,'opportunity_application_v1');assert.equal(snapshot.body,'Reviewed saved body');assert.equal(snapshot.recipient,f.payload.recipient);assert.equal(job.owner_id,'arash-owner');assert.equal(job.mailbox,'primary');
+ const repeat=await f.call('schedule',{...f.payload,confirmReviewed:true,reviewHash:preview.reviewHash,sendAfter,confirmSend:true});assert.equal(repeat.status,200);assert.equal((await repeat.json()).approval.reused,true);assert.equal(f.privateDb.prepare('SELECT count(*) n FROM mail_scheduled_approvals').get().n,1);
+ const listed=(await(await f.call()).json()).scheduling.approvals;assert.equal(listed.length,1);assert.equal(listed[0].message.body,'Reviewed saved body');assert.equal(listed[0].attachmentName,'cv-arash-v1.docx');
+ assert.equal(f.privateDb.prepare('SELECT requested_mode FROM mail_automation_settings').get().requested_mode,'automatic');
+});
+test('schedule requires enabled transport, mode, time and separate approval before any queue is created',async()=>{
+ for(const scenario of ['mode','disabled','time','confirm']){
+  const f=await fixture();schedulingFixture(f,{mode:scenario==='mode'?'draft_only':'automatic'});if(scenario==='disabled')f.env.MAIL_SCHEDULER_ENABLED='false';
+  const preview=await(await f.call('preview',f.payload)).json();const r=await f.call('schedule',{...f.payload,confirmReviewed:true,reviewHash:preview.reviewHash,sendAfter:scenario==='time'?new Date(Date.now()+2*86400000).toISOString():after(),confirmSend:scenario!=='confirm'});assert(r.status>=400,scenario);
+  assert.equal(f.privateDb.prepare('SELECT count(*) n FROM google_send_queue').get().n,0,scenario);assert.equal(f.privateDb.prepare('SELECT count(*) n FROM mail_scheduled_approvals').get().n,0,scenario);assert.equal(f.calls.length,0);
+ }
+});
+test('enriched selected recipient is frozen for scheduling and later public contact changes stop unattended transport',async()=>{
+ const f=await fixture();schedulingFixture(f);seedRead(f);
+ const payload={...f.payload,recipient:'read-contact@example.invalid'},preview=await(await f.call('preview',payload)).json();
+ const r=await f.call('schedule',{...payload,confirmReviewed:true,reviewHash:preview.reviewHash,sendAfter:after(),confirmSend:true});assert.equal(r.status,201);assert.equal(f.calls.length,0);
+ const {dispatchScheduledMail}=await import('../cloud/mail-automation-scheduler.mjs');
+ f.env.SUPABASE_URL='https://synthetic.supabase.co';f.env.SUPABASE_PUBLISHABLE_KEY='sb_publishable_synthetic';f.env.AUTOMATION_MEMBERSHIP_KEY='m'.repeat(43);
+ f.privateDb.prepare("UPDATE mail_scheduled_approvals SET send_after=?,expires_at=? WHERE status='approved'").run(Date.now()-1000,Date.now()+600000);
+ f.publicDb.prepare("UPDATE public_page_content SET text='Changed application contact: other@example.invalid'").run();
+ const calls=[];const result=await dispatchScheduledMail(f.env,async(url)=>{calls.push(url);if(url.includes('/rpc/immi_automation_owner_active'))return Response.json(true);throw Error('No Google transport allowed after public evidence changed');});
+ assert.equal(result.attempted,0);assert.equal(f.privateDb.prepare('SELECT status FROM mail_scheduled_approvals').get().status,'blocked');assert.equal(f.privateDb.prepare('SELECT reason FROM mail_scheduled_approvals').get().reason,'approved_message_changed');assert(calls.some(x=>x.includes('/rpc/immi_automation_owner_active')));assert(calls.every(x=>!x.includes('gmail')));
+});
+test('existing unrelated jobs are not overwritten by a new inline schedule',async()=>{
+ const f=await fixture();schedulingFixture(f);const at=new Date().toISOString();f.privateDb.prepare('INSERT INTO mail_automation_jobs VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(crypto.randomUUID(),'arash-owner',opp,f.payload.recipient,'primary','draft',JSON.stringify({subject:'Prior draft',body:'Keep this draft'}),null,at,at.slice(0,10),at);
+ const preview=await(await f.call('preview',f.payload)).json();const r=await f.call('schedule',{...f.payload,confirmReviewed:true,reviewHash:preview.reviewHash,sendAfter:after(),confirmSend:true});assert.equal(r.status,409);assert.equal((await r.json()).error,'existing_application_job_requires_review');assert.equal(f.privateDb.prepare('SELECT count(*) n FROM google_send_queue').get().n,0);assert.equal(JSON.parse(f.privateDb.prepare('SELECT snapshot_json FROM mail_automation_jobs').get().snapshot_json).body,'Keep this draft');
+});
+
+test('approval storage failure closes newly created queue and job without dispatch',async()=>{
+ const f=await fixture();schedulingFixture(f);
+ f.privateDb.exec("CREATE TRIGGER reject_test_approval BEFORE INSERT ON mail_scheduled_approvals BEGIN SELECT RAISE(ABORT,'synthetic approval storage failure'); END");
+ const preview=await(await f.call('preview',f.payload)).json();
+ const response=await f.call('schedule',{...f.payload,confirmReviewed:true,reviewHash:preview.reviewHash,sendAfter:after(),confirmSend:true});
+ assert.equal(response.status,500);assert.equal(f.privateDb.prepare('SELECT status FROM google_send_queue').get().status,'failed');assert.equal(f.privateDb.prepare('SELECT status FROM mail_automation_jobs').get().status,'blocked');assert.equal(f.privateDb.prepare('SELECT count(*) n FROM mail_scheduled_approvals').get().n,0);assert.equal(f.calls.length,0);
+});
+test('reviewed enriched recipient dispatches once from own frozen queue with live membership and no private REST',async()=>{
+ const f=await fixture();schedulingFixture(f);seedRead(f);const payload={...f.payload,recipient:'read-contact@example.invalid'},preview=await(await f.call('preview',payload)).json();
+ assert.equal((await f.call('schedule',{...payload,confirmReviewed:true,reviewHash:preview.reviewHash,sendAfter:after(),confirmSend:true})).status,201);
+ f.env.SUPABASE_URL='https://synthetic.supabase.co';f.env.SUPABASE_PUBLISHABLE_KEY='sb_publishable_synthetic';f.env.AUTOMATION_MEMBERSHIP_KEY='m'.repeat(43);
+ f.privateDb.prepare("UPDATE mail_scheduled_approvals SET send_after=?,expires_at=? WHERE status='approved'").run(Date.now()-1000,Date.now()+600000);
+ const {dispatchScheduledMail}=await import('../cloud/mail-automation-scheduler.mjs');let sends=0,memberships=0;
+ const fetcher=async(url,options)=>{if(url.includes('/rpc/immi_automation_owner_active')){memberships++;const input=JSON.parse(options.body);assert.equal(input.p_owner,'arash-owner');assert.equal(input.p_profile,'arash');return Response.json(true);}assert.equal(url,'https://gmail.googleapis.com/gmail/v1/users/me/messages/send');assert.equal(options.headers.Authorization,'Bearer synthetic-token');sends++;return Response.json({id:'synthetic-ack'});};
+ const result=await dispatchScheduledMail(f.env,fetcher);assert.equal(result.status,'sent',JSON.stringify({result,approval:f.privateDb.prepare('SELECT * FROM mail_scheduled_approvals').get()}));assert.equal(sends,1);assert(memberships>=2);assert.equal(f.privateDb.prepare('SELECT status FROM google_send_queue').get().status,'sent');assert.equal((await dispatchScheduledMail(f.env,fetcher)).attempted,0);assert.equal(sends,1);
+});

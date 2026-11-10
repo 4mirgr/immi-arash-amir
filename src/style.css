@@ -1918,3 +1918,13 @@ bdi[dir="ltr"] { direction: ltr; unicode-bidi: isolate; }
 /* Both doctors share the same glass visual system; task routes remain personal. */
 .arash-home{display:grid;gap:22px}.arash-home .arash-start{padding:24px 28px;border:1px solid rgba(var(--neon-rgb),.27);border-radius:16px;background:linear-gradient(115deg,rgba(71,101,180,.09),rgba(44,126,153,.09))}.arash-home .arash-start h2{font-size:clamp(1.2rem,2vw,1.5rem)}.arash-home .arash-route-grid{gap:18px;margin:0}.arash-home .arash-route{padding:24px}.arash-home .arash-workflow{margin:0}.arash-home .arash-fold{margin:0}.arash-workspace .nav-fold summary{font-size:.77rem}
 @media(max-width:760px){.arash-home .arash-start{padding:20px}.arash-home{gap:18px}.arash-home .arash-route{padding:20px}}
+
+/* Keep Arash's application worklist close to the top of the workspace. */
+.arash-opportunity-focus > .page-heading { margin-bottom: 18px; align-items: center; }
+.arash-opportunity-focus > .page-heading .eyebrow { display: none; }
+.arash-opportunity-focus > .page-heading h1 { font-size: 1.45rem; margin-block: 0 6px; }
+.arash-opportunity-focus > .page-heading p { margin: 0; max-width: 58ch; }
+@media (max-width: 600px) {
+ .arash-opportunity-focus > .page-heading { gap: 10px; margin-bottom: 12px; }
+ .arash-opportunity-focus > .page-heading h1 { font-size: 1.2rem; }
+}
