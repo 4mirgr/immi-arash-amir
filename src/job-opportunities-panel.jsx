@@ -60,8 +60,15 @@ export function JobOpportunitiesPanel({person,notify,onOpenSettings}){
  const [country,setCountry]=useState('AU'),[state,setState]=useState('all'),[kind,setKind]=useState('all');
  const [official,setOfficial]=useState(true),[unofficial,setUnofficial]=useState(false),[types,setTypes]=useState(person==='arash'?['job']:TYPES.map(([id])=>id)),[includeClosed,setIncludeClosed]=useState(false);
  const [page,setPage]=useState(0),[total,setTotal]=useState(0),[busy,setBusy]=useState(false),[checking,setChecking]=useState(false),[error,setError]=useState(''),[checkNote,setCheckNote]=useState(''),[expanded,setExpanded]=useState(null);
- const [arashRowKey,setArashRowKey]=useState(null);
+ const [arashRowKey,setArashRowKey]=useState(null),arashPendingFocus=useRef(null);
  const [mailOpportunity,setMailOpportunity]=useState(null),[gpOpportunity,setGpOpportunity]=useState(null),[gpSelection,setGpSelection]=useState(null),[gpGoalMode,setGpGoalMode]=useState('pesci_readiness');
+ useEffect(()=>{
+  const target=arashPendingFocus.current;arashPendingFocus.current=null;
+  if(person!=='arash'||!target)return;
+  const node=document.getElementById(target.id);
+  const destination=target.heading?(node?.querySelector('h4,h3,h2')||node):node;
+  if(destination){if(target.heading)destination.setAttribute('tabindex','-1');destination.focus({preventScroll:true});}
+ },[person,arashRowKey,mailOpportunity?.id,gpOpportunity?.id]);
  useEffect(()=>{if(person!=='arash'&&gpOpportunity){const node=document.getElementById('gp-application-workspace');node?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});node?.focus({preventScroll:true});}},[gpOpportunity?.id]);
  useEffect(()=>{if(person!=='arash'&&mailOpportunity){const node=document.getElementById('opportunity-mail-workspace');node?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});node?.focus({preventScroll:true});}},[mailOpportunity?.id]);
  const [history,setHistory]=useState({}),[historyOpen,setHistoryOpen]=useState(null),[historyBusy,setHistoryBusy]=useState(null),[historyError,setHistoryError]=useState('');
@@ -110,16 +117,18 @@ export function JobOpportunitiesPanel({person,notify,onOpenSettings}){
   const contacts=[...list(item.contactEvidence),...list(enrichmentOf(item).contacts)].filter(c=>c?.type==='email'&&text(c.value));
   const emails=[...new Set(contacts.map(c=>c.value))],location=[text(item.city),text(item.state)].filter(Boolean).join(' · ')||text(item.location)||'مکان اعلام نشده';
   const closed=['closed','source_removed','future'].includes(item.status),panelId='arash-row-'+rowKey.replace(/[^a-zA-Z0-9_-]/g,'-');
-  const toggle=()=>{if(open){closeArashRow();return;}setArashRowKey(rowKey);setGpSelection(null);setMailOpportunity(null);setGpOpportunity(item);};
+  const closeWithFocus=()=>{arashPendingFocus.current={id:panelId+'-toggle'};closeArashRow();};
+  const backToLetter=()=>{arashPendingFocus.current={id:panelId,heading:true};setMailOpportunity(null);setGpOpportunity(item);};
+  const toggle=()=>{if(open){closeWithFocus();return;}setArashRowKey(rowKey);setGpSelection(null);setMailOpportunity(null);setGpOpportunity(item);};
   return <article key={rowKey} className={'arash-opportunity-row'+(open?' is-open':'')+(closed?' is-unavailable':'')}>
-   <button className="arash-opportunity-toggle" type="button" aria-expanded={open} aria-controls={panelId} onClick={toggle}>
+   <button id={panelId+'-toggle'} className="arash-opportunity-toggle" type="button" aria-expanded={open} aria-controls={panelId} onClick={toggle}>
     <div className="arash-opportunity-identity"><strong dir="auto"><MixedText>{organizationName(item)}</MixedText></strong><span className="arash-opportunity-job" dir="auto"><MixedText>{text(item.title)||'آگهی شغلی'}</MixedText></span><span className="arash-opportunity-meta"><span><MapPin size={13}/><MixedText>{location}</MixedText></span>{emails.length?<bdi dir="ltr">{emails[0]}{emails.length>1?' +'+(emails.length-1).toLocaleString('fa-IR'):''}</bdi>:<span>{item.contactDiscovery?.status==='blocked'?'دسترسی تماس محدود':'ایمیل ثبت نشده'}</span>}</span></div>
     <div className="arash-opportunity-row-status"><GpFitStars assessment={item.gpApplicationPriority} compact/><span className={'arash-opportunity-state '+(closed?'is-closed':'')}>{closed?statusLabels[item.status]:item.kind==='employment_register'?'اعلام علاقه‌مندی':item.status==='open'?'مهلت باز':'قابل بررسی'}</span></div>
     <span className="arash-opportunity-open-label"><Mail size={15}/>{open?'بستن':'نامه و ارسال'}<ChevronDown size={17}/></span>
    </button>
-   {open&&<div id={panelId} className="arash-opportunity-inline" role="region" aria-label={'نامه و درخواست برای '+organizationName(item)}>
-    <div className="arash-opportunity-inline-tools"><span>درخواست برای همین آگهی</span>{safeLink(item.url)&&<a href={safeLink(item.url)} target="_blank" rel="noreferrer">اصل آگهی <ExternalLink size={13}/></a>}{mailOpen&&<button type="button" className="text-button" onClick={()=>{setMailOpportunity(null);setGpOpportunity(item);}}>ویرایش نامه و رزومه</button>}</div>
-    {mailOpen?<OpportunityMail key={person+':'+id+':mail'} compact person={person} opportunity={item} gpApplication={gpSelection?.opportunityId===id?gpSelection.application:null} onClose={()=>{setMailOpportunity(null);setGpOpportunity(item);}} notify={notify} onOpenSettings={onOpenSettings}/>:<GpApplicationWorkspace key={person+':'+id+':letter'} compact initialSelection={gpSelection?.opportunityId===id?gpSelection.application:null} person={person} opportunity={item} notify={notify} onClose={closeArashRow} onOpenSettings={onOpenSettings} onGoalChanged={result=>{if(['pesci_readiness','employment'].includes(result?.goalMode))setGpGoalMode(result.goalMode);loadCurrent.current();}} onWorkflowChanged={()=>loadCurrent.current()} onOpenMail={selection=>{setGpSelection({opportunityId:id,application:selection});setMailOpportunity(item);setGpOpportunity(null);}}/>}
+   {open&&<div id={panelId} className="arash-opportunity-inline" role="region" tabIndex={-1} aria-label={'نامه و درخواست برای '+organizationName(item)}>
+    <div className="arash-opportunity-inline-tools"><span>درخواست برای همین آگهی</span>{safeLink(item.url)&&<a href={safeLink(item.url)} target="_blank" rel="noreferrer">اصل آگهی <ExternalLink size={13}/></a>}{mailOpen&&<button type="button" className="text-button" onClick={backToLetter}>ویرایش نامه و رزومه</button>}</div>
+    {mailOpen?<OpportunityMail key={person+':'+id+':mail'} compact person={person} opportunity={item} gpApplication={gpSelection?.opportunityId===id?gpSelection.application:null} onClose={backToLetter} notify={notify} onOpenSettings={onOpenSettings}/>:<GpApplicationWorkspace key={person+':'+id+':letter'} compact initialSelection={gpSelection?.opportunityId===id?gpSelection.application:null} person={person} opportunity={item} notify={notify} onClose={closeWithFocus} onOpenSettings={onOpenSettings} onGoalChanged={result=>{if(['pesci_readiness','employment'].includes(result?.goalMode))setGpGoalMode(result.goalMode);loadCurrent.current();}} onWorkflowChanged={()=>loadCurrent.current()} onOpenMail={selection=>{arashPendingFocus.current={id:panelId,heading:true};setGpSelection({opportunityId:id,application:selection});setMailOpportunity(item);setGpOpportunity(null);}}/>}
     <details className="arash-opportunity-more"><summary>متن آگهی، شرایط و منبع اطلاعات</summary><div className="arash-opportunity-more-body"><p className="section-help">{trustLabel(item)} · آخرین مشاهده: {date(item.lastSeenAt||item.last_seen_at)} · مهلت: {date(item.closingAt||item.closing_at)}</p>{item.kind==='employment_register'&&<p className="notice">این مورد اعلام علاقه‌مندی است؛ جای خالی مشخص تأیید نشده است.</p>}<p dir="auto" className="arash-opportunity-full-text"><MixedText>{text(item.fullText)||text(item.summary)||'متن کامل در منبع آگهی است.'}</MixedText></p><OpportunityEvidence item={item}/>{renderScreening(item)}</div></details>
    </div>}
   </article>;
