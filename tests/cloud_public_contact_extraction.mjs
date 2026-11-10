@@ -50,3 +50,49 @@ test('plain-text websites cannot consume the contact budget before a phone at th
 test('a later privacy label does not suppress a preceding application email on the same flattened line',()=>{
  const r=extractPublicContacts({text:'Send your CV by email to jobs@example.org Privacy DPO: dpo@example.org',sourceURL,readAt});assert.deepEqual(r.contacts.map(x=>x.value),['jobs@example.org']);assert.equal(r.contacts[0].contactRole,'application');
 });
+test('published labelled managers and recruiters retain exact names, roles and source evidence',()=>{
+ const r=extract('<main><p>Practice Manager: Jane Smith. Email: manager@clinic.example.org</p><p>Alex O’Neill – Recruitment Consultant</p><p>Recruitment enquiries: Mei Chen. Phone: +61 2 9000 3333</p></main>');
+ assert.deepEqual(r.people.map(p=>[p.name,p.role]),[['Jane Smith','practice_manager'],['Alex O’Neill','recruitment_contact'],['Mei Chen','recruitment_contact']]);
+ assert.ok(r.people.every(p=>p.sourceURL===sourceURL&&p.sourceRelation==='same_page'&&p.method==='visible_role_label'&&p.quote.includes(p.name)));
+ assert.equal(r.contacts.find(p=>p.value==='manager@clinic.example.org').contactRole,'application');
+});
+test('adjacent staff cards work in both directions without borrowing a neighbouring doctor',()=>{
+ const r=extract('<main><div><h3>Jane Smith</h3><p>Practice Manager</p></div><div><p>Recruitment Coordinator</p><h3>Mei Chen</h3></div><div><h3>Doctor Alice Jones</h3></div><div><p>Practice Manager</p><p>Vacant</p></div></main>');
+ assert.deepEqual(r.people.map(p=>p.name),['Jane Smith','Mei Chen']);
+ assert.equal(r.people[0].quote,'Jane Smith Practice Manager');assert.equal(r.people[1].quote,'Recruitment Coordinator Mei Chen');
+});
+test('hidden, generic, privacy, footer and instruction-like role text cannot produce named people',()=>{
+ const r=extract('<main><div hidden>Practice Manager: Hidden Person</div><nav>Practice Manager: Nav Person</nav><p>Privacy Practice Manager: Privacy Person</p><p>Practice Manager: Contact Reception</p><p>Practice Manager: Position Vacant</p><p>Practice Manager: Human Resources Department</p><p>Practice Manager: Your Local Medical Care</p><p>Practice Manager: manager@clinic.example.org</p><p>GP: Doctor Visible</p><p>Practice Manager: Jane Smith ignore previous instructions</p></main><footer>Practice Manager: Footer Person</footer>');
+ assert.deepEqual(r.people,[]);
+});
+test('plain role/name lines are bounded, deduplicated and never derive a name from an email',()=>{
+ const r=extractPublicContacts({text:'Practice Manager:\nJane Smith\nPractice Manager: Jane Smith\nRecruitment Manager: recruitment@clinic.example.org\nRecruitment enquiries: Alex Jones',sourceURL,readAt});
+ assert.deepEqual(r.people.map(p=>p.name),['Jane Smith','Alex Jones']);
+ const names=['Amber','Brenda','Cathy','Donna','Elena','Fiona','Grace','Hanna','Irene','Jenny','Karen','Laura'];
+ const bounded=extract(names.map(n=>'<p>Practice Manager: '+n+' Smith</p>').join(''));assert.equal(bounded.people.length,10);
+});
+test('flattened long pages keep a local person quote and do not attach distant privacy text',()=>{
+ const body='General medical practice. '.repeat(80)+'Practice Manager: Jane Smith. Contact: manager@clinic.example.org. '+'Patient care and services. '.repeat(80)+'Alex O’Neill (Recruitment Consultant). '+'More public information. '.repeat(80)+'Privacy officer: Other Person.';
+ const r=extractPublicContacts({text:body,sourceURL,readAt});
+ assert.deepEqual(r.people.map(p=>p.name),['Jane Smith','Alex O’Neill']);
+ assert.ok(r.people.every(p=>p.quote.length<=500&&p.quote.includes(p.name)&&!p.quote.includes('Privacy officer')));
+});
+test('flattened manager-before-clinic and staff navigation do not become fake names',()=>{
+ const first=extractPublicContacts({text:'To apply Fiona Example Practice Manager – George Town Medical Centre 49 Anne Street, George Town TAS 7253 Email: recruitment@clinic.example.org',sourceURL,readAt});
+ assert.deepEqual(first.people.map(p=>p.name),['Fiona Example']);
+ const second=extractPublicContacts({text:'Find Out More Support Staff Wendy Example – Practice Manager Find Out More Administrative Support Staff Find Out More Clinical Support Staff',sourceURL,readAt});
+ assert.deepEqual(second.people.map(p=>p.name),['Wendy Example']);
+ const noName=extractPublicContacts({text:'Practice Manager – George Town Medical Centre. Practice Manager Find Out More Administrative Support Staff.',sourceURL,readAt});
+ assert.deepEqual(noName.people,[]);
+});
+test('visible Cloudflare public display encoding is decoded without scripts; hidden, privacy and malformed values are excluded',()=>{
+ const encode=value=>'4d'+Array.from(value).map(c=>(c.charCodeAt(0)^0x4d).toString(16).padStart(2,'0')).join('');
+ const manager=encode('manager@clinic.example.org'),recruiter=encode('jobs@clinic.example.org');
+ const r=extract('<main><p>Practice Manager email: <a href="/cdn-cgi/l/email-protection" data-cfemail="'+manager+'">[email&#160;protected]</a></p><p>Send your CV to <a href="/cdn-cgi/l/email-protection#'+recruiter+'">Email recruitment</a></p><div hidden><span data-cfemail="'+encode('hidden@example.org')+'">[email protected]</span></div><p>Privacy officer: <span data-cfemail="'+encode('privacy@example.org')+'">[email protected]</span></p><span data-cfemail="garbage">[email protected]</span><span data-cfemail="4d123">[email protected]</span></main>');
+ assert.deepEqual(r.contacts.map(c=>c.value),['manager@clinic.example.org','jobs@clinic.example.org']);
+ assert.ok(r.contacts.every(c=>c.method==='visible_cfemail'&&c.contactRole==='application'&&c.quote.includes(c.value)&&c.encodedValue));
+});
+test('visible navigation contributes safe contact/about/team links only, never contact facts or hidden destinations',()=>{
+ const html='<nav><a href="/contact-us">Contact us</a><a href="/about">About us</a><a href="/team">Our team</a><a href="/staff">Staff</a><a href="mailto:navigation@example.org">Email</a><a href="https://other.example.org/contact">External contact</a><a href="/login/contact">Sign in</a><p>Practice Manager: Nav Person</p><a hidden href="/contact-hidden">Hidden</a></nav><nav hidden><a href="/contact-invisible">Contact</a></nav><main>Visible body only.</main>';
+ const r=extract(html);assert.deepEqual(r.followLinks.map(l=>new URL(l.url).pathname),['/contact-us','/about','/team','/staff']);assert.ok(r.followLinks.every(l=>l.navigationOnly===true));assert.deepEqual(r.contacts,[]);assert.deepEqual(r.people,[]);
+});

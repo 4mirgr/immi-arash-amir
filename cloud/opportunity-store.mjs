@@ -180,24 +180,42 @@ function validEnrichment(row,item,profile,ms){
  if(!sourceURL||data.readAt!==row.read_at||data.country&&data.country!==item.country||data.profileId&&data.profileId!==profile)return null;
  const contacts=[];
  for(const contact of Array.isArray(data.contacts)?data.contacts:[]){
-  if(!contact||!['email','phone','website','social'].includes(contact.type)||!['visible_text','visible_link','jsonld_jobposting'].includes(contact.method)||contact.sourceRelation&&contact.sourceRelation!=='same_page'||evidenceUrl(contact.sourceURL)!==sourceURL)continue;
+  if(!contact||!['email','phone','website','social'].includes(contact.type)||!['visible_text','visible_link','visible_cfemail','jsonld_jobposting'].includes(contact.method)||contact.sourceRelation&&contact.sourceRelation!=='same_page'||evidenceUrl(contact.sourceURL)!==sourceURL)continue;
   const value=evidenceText(contact.value,2048),quote=evidenceText(contact.quote);if(!quote)continue;
   if(contact.type==='email'&&(!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value)||value.length>254))continue;
   if(contact.type==='phone'&&(!/^[+\d(][\d+(). xte-]{4,60}$/i.test(value)||!/[0-9]{2}/.test(value)))continue;
   if(['website','social'].includes(contact.type)&&!evidenceUrl(value))continue;
   contacts.push({type:contact.type,value,sourceURL,quote,method:contact.method,contactRole:['application','organization_general','unknown'].includes(contact.contactRole)?contact.contactRole:'unknown',sourceRelation:'same_page',readAt:row.read_at});if(contacts.length>=24)break;
  }
+ const people=[];for(const person of Array.isArray(data.people)?data.people:[]){
+  if(!person||!['practice_manager','recruitment_contact'].includes(person.role)||!['visible_text','visible_label','visible_person_role','visible_role_label'].includes(person.method)||person.sourceRelation&&person.sourceRelation!=='same_page'||evidenceUrl(person.sourceURL)!==sourceURL)continue;
+  const name=evidenceText(person.name,150),quote=evidenceText(person.quote,700);
+  if(!name||name.length<3||!quote.includes(name)||!/[\p{L}]/u.test(name)||/[<>{}@\d]/.test(name)||typeof row.read_text!=='string'||!row.read_text.replace(/\s+/g,' ').includes(name))continue;
+  people.push({name,role:person.role,sourceURL,quote,method:person.method,sourceRelation:'same_page',readAt:row.read_at,identityStatus:'published_named_contact_not_independently_verified'});if(people.length>=10)break;
+ }
  const organizations=[];for(const organization of Array.isArray(data.organizations)?data.organizations:[]){if(!organization||!['visible_label','jsonld_jobposting'].includes(organization.method)||evidenceUrl(organization.sourceURL)!==sourceURL)continue;const name=evidenceText(organization.name||organization.value,300),quote=evidenceText(organization.quote);if(!name||!quote)continue;organizations.push({name,sourceURL,quote,method:organization.method,...(evidenceUrl(organization.url)?{url:evidenceUrl(organization.url)}:{}),identityStatus:'source_statement_not_independently_verified'});if(organizations.length>=6)break;}
  const followLinks=(Array.isArray(data.followLinks)?data.followLinks:[]).map(link=>{const url=officialEvidenceUrl(link?.url||link?.value,sourceURL,pageData);return url?{url,label:evidenceText(link.label||link.text,300),sourceURL}:null;}).filter(Boolean).slice(0,12);
  const publicationDates=(Array.isArray(data.publicationDates)?data.publicationDates:[]).filter(x=>x&&['datePosted','validThrough'].includes(x.field)&&x.method==='jsonld_jobposting'&&evidenceUrl(x.sourceURL)===sourceURL).slice(0,4).map(x=>({field:x.field,value:evidenceText(x.value,100),sourceURL,quote:evidenceText(x.quote),method:x.method}));
  const candidate=data.ai;
  const ai=candidate?.model==='@cf/meta/llama-3.1-8b-instruct-fp8'&&candidate.readAt===row.read_at&&candidate.meaning==='machine_selected_verbatim_quotes_requires_review'&&Number.isFinite(Date.parse(candidate.selectedAt))&&Array.isArray(candidate.quotes)&&candidate.quotes.length>0&&candidate.quotes.length<=3&&candidate.quotes.every(quote=>typeof quote==='string'&&quote.length>=25&&quote.length<=600&&typeof row.read_text==='string'&&row.read_text.includes(quote))?{model:candidate.model,readAt:candidate.readAt,selectedAt:candidate.selectedAt,quotes:candidate.quotes,meaning:candidate.meaning}:null;
- return {sourceURL,readAt:row.read_at,contacts,organizations,followLinks,publicationDates,...(ai?{ai}:{}),limitations:(Array.isArray(data.limitations)?data.limitations:[]).filter(x=>typeof x==='string').slice(0,6).map(x=>x.slice(0,500)),parentPageId:data.parentPageId,parentURL:data.parentURL,depth:data.depth};
+ return {sourceURL,readAt:row.read_at,contacts,people,organizations,followLinks,publicationDates,...(ai?{ai}:{}),limitations:(Array.isArray(data.limitations)?data.limitations:[]).filter(x=>typeof x==='string').slice(0,6).map(x=>x.slice(0,500)),parentPageId:data.parentPageId,parentURL:data.parentURL,depth:data.depth};
+}
+function contactDiscovery(item,queueStates,enrichment,ms){
+ const root=queueStates.find(row=>row.url===item.url&&row.country===item.country),children=root?queueStates.filter(row=>parsePageData(row.data).parentPageId===root.id&&row.country===root.country):[];
+ const related=root?[root,...children]:[],pendingPages=related.filter(row=>['pending','reading'].includes(row.status)||parsePageData(row.data).refreshRequested===true).length;
+ const blocked=related.filter(row=>['robots_blocked','robots_unavailable','access_denied','http_rejected','fetch_failed','http_error','invalid_url','redirect_limit','reading_storage_failed'].includes(row.status)).length;
+ const emailsFound=(enrichment?.contacts||[]).filter(c=>c.type==='email').length,peopleFound=(enrichment?.people||[]).length;
+ const checkedAt=enrichment?.readAt||root?.read_at||null,checked=Date.parse(checkedAt),refreshDue=Number.isFinite(checked)&&ms-checked>=7*24*3600000;
+ let status=!root?'not_queued':root.status==='reading'||root.lease_until>ms?'reading':pendingPages?'queued':emailsFound&&peopleFound?'found':emailsFound||peopleFound?'partial':blocked?'blocked':['read','read_partial'].includes(root.status)?'not_found':'queued';
+ if(refreshDue&&!pendingPages)status='refresh_due';
+ return {status,automatic:true,emailsFound,peopleFound,pendingPages,blockedPages:blocked,checkedAt,sourceUrls:[...new Set([...(enrichment?.contacts||[]),...(enrichment?.people||[])].map(c=>c.sourceURL))].slice(0,10),scope:'registered_public_pages_and_one_hop_same_host',refreshIntervalDays:7};
 }
 export async function enrichReadPages(db,rows,profile,ms,enabled){
  const items=rows.map(row=>publicItem(row,profile,ms));if(!enabled||!items.length)return items;
+ let queueStates=[];try{queueStates=await all(db,"SELECT id,url,country,status,read_at,data,lease_until FROM public_page_queue WHERE (url IN (SELECT value FROM json_each(?)) OR json_extract(data,'$.parentPageId') IN (SELECT id FROM public_page_queue WHERE url IN (SELECT value FROM json_each(?)))) AND (profile_scope='both' OR ?='amir') LIMIT 500",JSON.stringify(items.map(item=>item.url)),JSON.stringify(items.map(item=>item.url)),profile);}catch{/* Missing public queue has no implied running lookup. */}
+ const withDiscovery=item=>({...item,contactDiscovery:contactDiscovery(item,queueStates,null,ms)});
  const readings=await all(db,"SELECT q.id AS page_id,q.url,q.country,q.status,q.read_at,c.read_at AS content_read_at,c.status AS content_status,c.text,e.analysis,e.read_at AS evidence_read_at FROM public_page_queue q JOIN public_page_content c ON c.page_id=q.id LEFT JOIN public_page_evidence e ON e.page_id=q.id AND e.profile_id=? WHERE q.url IN (SELECT value FROM json_each(?)) AND q.status IN ('read','read_partial') AND (q.profile_scope='both' OR ?='amir')",profile,JSON.stringify(items.map(item=>item.url)),profile);
- if(!readings.length)return items;
+ if(!readings.length)return items.map(withDiscovery);
  let enrichments=[];try{enrichments=await all(db,"SELECT x.page_id,x.read_at,x.country,x.data,q.url AS page_url,q.country AS queue_country,q.profile_scope,q.status AS queue_status,q.read_at AS queue_read_at,q.data AS page_data,c.read_at AS content_read_at,c.status AS content_status,c.text AS read_text FROM public_page_enrichment x JOIN public_page_queue q ON q.id=x.page_id JOIN public_page_content c ON c.page_id=x.page_id WHERE (x.page_id IN (SELECT value FROM json_each(?)) OR CASE WHEN json_valid(x.data) THEN json_extract(x.data,'$.parentPageId') END IN (SELECT value FROM json_each(?))) AND (q.profile_scope='both' OR ?='amir') LIMIT 500",JSON.stringify(readings.map(row=>row.page_id)),JSON.stringify(readings.map(row=>row.page_id)),profile);}catch{/* Optional extraction migration/failure never fabricates contact evidence or hides a valid listing. */}
 
  // A current URL can be reused by a later publication. Do not rewrite an older edition
@@ -205,22 +223,23 @@ export async function enrichReadPages(db,rows,profile,ms,enabled){
  const boundaries=await all(db,"SELECT current.id,(SELECT min(next.first_seen_at) FROM opportunity_editions next WHERE next.source_id=current.source_id AND next.external_id=current.external_id AND (next.first_seen_at>current.first_seen_at OR (next.first_seen_at=current.first_seen_at AND next.rowid>current.rowid))) AS next_first_seen FROM opportunity_editions current WHERE current.id IN (SELECT value FROM json_each(?))",JSON.stringify(items.map(item=>item.id)));
  const nextById=new Map(boundaries.map(row=>[row.id,row.next_first_seen]));
  return items.map(item=>{
-  const read=readings.find(r=>r.url===item.url&&r.country===item.country);if(!read)return item;
+  const read=readings.find(r=>r.url===item.url&&r.country===item.country);if(!read)return withDiscovery(item);
   const readTime=Date.parse(read.read_at),firstSeen=Date.parse(item.firstSeenAt),nextSeen=Date.parse(nextById.get(item.id));
-  if(!Number.isFinite(readTime)||!Number.isFinite(firstSeen)||readTime>ms+60000)return {...item,reading:{status:'invalid_reading_timestamp',readAt:null}};
-  if(read.read_at!==read.content_read_at||read.status!==read.content_status||typeof read.text!=='string')return {...item,reading:{status:'content_receipt_mismatch',readAt:read.read_at}};
-  if(readTime<firstSeen)return {...item,reading:{status:'before_current_edition',readAt:read.read_at}};
-  if(Number.isFinite(nextSeen)&&readTime>=nextSeen)return {...item,reading:{status:'after_current_edition',readAt:read.read_at,editionChangedAt:nextById.get(item.id)}};
+  if(!Number.isFinite(readTime)||!Number.isFinite(firstSeen)||readTime>ms+60000)return {...withDiscovery(item),reading:{status:'invalid_reading_timestamp',readAt:null}};
+  if(read.read_at!==read.content_read_at||read.status!==read.content_status||typeof read.text!=='string')return {...withDiscovery(item),reading:{status:'content_receipt_mismatch',readAt:read.read_at}};
+  if(readTime<firstSeen)return {...withDiscovery(item),reading:{status:'before_current_edition',readAt:read.read_at}};
+  if(Number.isFinite(nextSeen)&&readTime>=nextSeen)return {...withDiscovery(item),reading:{status:'after_current_edition',readAt:read.read_at,editionChangedAt:nextById.get(item.id)}};
   let analysis=null;if(read.analysis&&read.evidence_read_at===read.read_at){try{analysis=JSON.parse(read.analysis);}catch{/* Content remains usable; stale/broken evidence never breaks the opportunity list. */}}
   const body={...item,fullText:read.text.slice(0,20000)},screening=screenOpportunity({...item,fullText:read.text},profile);
   const directRow=enrichments.find(row=>row.page_id===read.page_id),direct=directRow?validEnrichment(directRow,item,profile,ms):null;
   let enrichment=null;
   if(direct){
-   const linked=[];for(const row of enrichments){if(row.page_id===read.page_id)continue;const child=validEnrichment(row,item,profile,ms);if(!child||child.parentPageId!==read.page_id||child.parentURL&&![item.url,direct.sourceURL].includes(evidenceUrl(child.parentURL))||child.depth!==1||!officialEvidenceUrl(child.sourceURL,direct.sourceURL,parsePageData(directRow.page_data)))continue;const childAt=Date.parse(child.readAt);if(childAt<firstSeen||Number.isFinite(nextSeen)&&childAt>=nextSeen)continue;for(const contact of child.contacts)linked.push({...contact,sourceRelation:'linked_page',parentURL:item.url,parentPageId:read.page_id});}
+   const linked=[],linkedPeople=[];for(const row of enrichments){if(row.page_id===read.page_id)continue;const child=validEnrichment(row,item,profile,ms);if(!child||child.parentPageId!==read.page_id||child.parentURL&&![item.url,direct.sourceURL].includes(evidenceUrl(child.parentURL))||child.depth!==1||!officialEvidenceUrl(child.sourceURL,direct.sourceURL,parsePageData(directRow.page_data)))continue;const childAt=Date.parse(child.readAt);if(childAt<firstSeen||Number.isFinite(nextSeen)&&childAt>=nextSeen)continue;for(const contact of child.contacts)linked.push({...contact,sourceRelation:'linked_page',parentURL:item.url,parentPageId:read.page_id});for(const person of child.people)linkedPeople.push({...person,sourceRelation:'linked_page',parentURL:item.url,parentPageId:read.page_id});}
    const contacts=[...new Map([...direct.contacts,...linked].map(contact=>[JSON.stringify([contact.type,contact.value,contact.sourceURL]),contact])).values()].slice(0,36);
-   enrichment={...direct,contacts,limitations:[...direct.limitations,'Contact evidence is public source wording, not a verified recipient or organization identity. Linked-page contacts keep their own source and are not advertisement recipients.']};
+   const people=[...new Map([...direct.people,...linkedPeople].map(person=>[JSON.stringify([person.name,person.role,person.sourceURL]),person])).values()].slice(0,20);
+   enrichment={...direct,contacts,people,limitations:[...direct.limitations,'Contact evidence is public source wording, not a verified recipient or organization identity. Linked-page contacts keep their own source and are not advertisement recipients.']};
   }
-  return {...body,screening,gpSignals:gpOpportunitySignals({...item,fullText:read.text}),fit:assessOpportunityFit({...item,fullText:read.text},profile,screening),...(enrichment?{enrichment,contactEvidence:enrichment.contacts}:{}),reading:{status:read.status,readAt:read.read_at,partialReading:read.status==='read_partial',textTruncatedForDisplay:read.text.length>20000,...(enrichment?{enrichment}:{}),summary:typeof analysis?.summary==='string'?analysis.summary.slice(0,1800):'',category:['call','admission','funding','career','development','guidance','navigation','unrelated'].includes(analysis?.category)?analysis.category:null,eligibility:'not_assessed'}};
+  return {...body,contactDiscovery:contactDiscovery(item,queueStates,enrichment,ms),screening,gpSignals:gpOpportunitySignals({...item,fullText:read.text}),fit:assessOpportunityFit({...item,fullText:read.text},profile,screening),...(enrichment?{enrichment,contactEvidence:enrichment.contacts,namedContactEvidence:enrichment.people}:{}),reading:{status:read.status,readAt:read.read_at,partialReading:read.status==='read_partial',textTruncatedForDisplay:read.text.length>20000,...(enrichment?{enrichment}:{}),summary:typeof analysis?.summary==='string'?analysis.summary.slice(0,1800):'',category:['call','admission','funding','career','development','guidance','navigation','unrelated'].includes(analysis?.category)?analysis.category:null,eligibility:'not_assessed'}};
  });
 }
 async function ownProfileReadiness(items,profile,context){

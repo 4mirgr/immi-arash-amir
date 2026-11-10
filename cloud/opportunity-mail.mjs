@@ -46,13 +46,14 @@ export async function handleOpportunityMailRequest(request,env,context,fetcher=f
   const scoped=googleAccountContext(new Request(url.origin+'/api/google/mail/preview?mailbox='+mailbox),context);
   const suffix='&profile_id=eq.'+context.profileId;
   const [presets,cvs]=await Promise.all([context.rest('immi_presets','?select=data&id=eq.'+input.presetId+suffix),context.rest('immi_cv_versions','?select=text,version&id=eq.'+input.cvVersionId+suffix)]);
-  let preset=presets[0];const cv=cvs[0];if(!preset)fail('preset_not_found',404);if(!cv||typeof cv.text!=='string')fail('cv_not_found',404);
+  let preset=presets[0],applicationContactEvidence=null;const cv=cvs[0];if(!preset)fail('preset_not_found',404);if(!cv||typeof cv.text!=='string')fail('cv_not_found',404);
   if(input.application!==undefined){
    const app=input.application;
    if(context.profileId!=='arash'||!app||typeof app!=='object'||Array.isArray(app)||Object.keys(app).some(k=>!['variant','subjectIndex','clinicQuote','cvQuote','confirmCvQuote','connectionId','confirmConnection'].includes(k))||!['A','B','C'].includes(app.variant)||!Number.isInteger(app.subjectIndex)||app.subjectIndex<0||app.subjectIndex>2||typeof app.clinicQuote!=='string'||app.clinicQuote.length>1000||typeof app.cvQuote!=='string'||app.cvQuote.length>1200||app.confirmCvQuote!==true||(app.connectionId!==undefined&&(!UUID.test(app.connectionId)||app.confirmConnection!==true))||(app.confirmConnection!==undefined&&typeof app.confirmConnection!=='boolean'))fail('invalid_gp_application');
    const generated=await getGpApplicationPackage(env,context,row.id,{...app,cvVersionId:input.cvVersionId});
    if(!generated.readyForReview)fail('gp_application_evidence_required',409);
    if(preset.data?.name!==generated.templateName)fail('gp_application_template_mismatch',409);
+   applicationContactEvidence={person:generated.dossier.practiceManager,namedCandidates:generated.namedContactCandidates,checkedAt:generated.contactDiscovery?.checkedAt||null};
    preset={...preset,data:{...preset.data,subject:generated.subjects[app.subjectIndex],body:generated.body}};
   }
   if(typeof preset.data?.subject!=='string'||typeof preset.data?.body!=='string'||/\{\{|\[\[(?:name|clinic|doctor|recipient)/i.test(preset.data.subject+' '+preset.data.body))fail('template_placeholders_require_review',409);
@@ -70,7 +71,7 @@ export async function handleOpportunityMailRequest(request,env,context,fetcher=f
   if(!previewResponse.ok)return json(preview,previewResponse.status);
   const identity=await env.GOOGLE_DB.prepare('SELECT google_sub,email,status FROM google_accounts WHERE owner_id=?').bind(scoped.userId).first();
   if(!identity||identity.status!=='connected'||identity.email.toLowerCase()!==preview.sender.toLowerCase())fail('google_account_changed',409);
-  const reviewHash=await digest({owner:context.userId,googleSubject:identity.google_sub,mailbox,opportunityId:row.id,editionKey:row.edition_key,sourceContent:source,presetId:input.presetId,cvVersionId:input.cvVersionId,recipient,subject:preset.data.subject,body:preset.data.body,cvText:cv.text,cvVersion:cv.version,sender:preview.sender,attachmentName:preview.recipients?.[0]?.attachmentName});
+  const reviewHash=await digest({owner:context.userId,googleSubject:identity.google_sub,mailbox,opportunityId:row.id,editionKey:row.edition_key,sourceContent:source,applicationContactEvidence,presetId:input.presetId,cvVersionId:input.cvVersionId,recipient,subject:preset.data.subject,body:preset.data.body,cvText:cv.text,cvVersion:cv.version,sender:preview.sender,attachmentName:preview.recipients?.[0]?.attachmentName});
   if(match[2]==='preview')return json({...preview,...sourceView,mailbox,presetId:input.presetId,cvVersionId:input.cvVersionId,message:{subject:preset.data.subject,body:preset.data.body},reviewHash,sent:false});
   if(input.confirmReviewed!==true)fail('explicit_review_required',409);
   if(input.reviewHash!==reviewHash)fail('application_changed_review_required',409);

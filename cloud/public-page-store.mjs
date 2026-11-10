@@ -34,13 +34,14 @@ async function linkedReadingRows(row,record){
  const parent=JSON.parse(row.data),sourceURL=record.finalUrl||row.url;
  if((parent.depth||0)>=1||!Array.isArray(record.enrichment?.followLinks))return [];
  const source=new URL(sourceURL),seen=new Set(),rows=[];
- for(const link of record.enrichment.followLinks.slice(0,6)){
+ const rankedLinks=record.enrichment.followLinks.slice(0,6).map((link,index)=>({link,index})).sort((a,b)=>Number(!/(?:contact|team|staff|about|manager)/i.test(a.link.url+' '+a.link.label))-Number(!/(?:contact|team|staff|about|manager)/i.test(b.link.url+' '+b.link.label))||a.index-b.index).map(item=>item.link);
+ for(const link of rankedLinks){
   try{
    const url=new URL(link.url,sourceURL);url.hash='';
    if(url.protocol!=='https:'||url.hostname!==source.hostname||url.username||url.password||url.port||url.href===sourceURL||seen.has(url.href)||!parent.officialBases?.some(base=>url.hostname===base||url.hostname.endsWith('.'+base)))continue;
    if(/\.(?:pdf|docx?|xlsx?|zip|png|jpe?g)(?:$|[?#])/i.test(url.href)||/(?:^|\/)(?:login|logout|signin|sign-in|admin|account|auth|apply|application|candidate)(?:\/|$)/i.test(decodeURIComponent(url.pathname))||!/(?:contact|about|team|staff|career|job|vacanc|recruit|department|school|faculty|medicine|research)/i.test(url.pathname+' '+String(link.label||'')))continue;
    seen.add(url.href);const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(url.href)))].map(v=>v.toString(16).padStart(2,'0')).join('');
-   rows.push({id:'page_'+hash.slice(0,32),url:url.href,country:row.country,profileScope:row.profile_scope,officialBases:parent.officialBases,institutionIds:parent.institutionIds||[],labels:[String(link.label||'Linked public institution page').slice(0,200)],parentPageId:row.id,parentURL:row.url,discoveredFrom:sourceURL,depth:1});
+   rows.push({id:'page_'+hash.slice(0,32),url:url.href,country:row.country,profileScope:row.profile_scope,officialBases:parent.officialBases,institutionIds:parent.institutionIds||[],labels:[...(Array.isArray(parent.labels)?parent.labels:[]).slice(0,4),row.title||'',String(link.label||'Linked public institution page').slice(0,200)].filter(Boolean),contactFollowup:/(?:contact|team|staff|about|manager)/i.test(url.pathname+' '+String(link.label||'')),parentPageId:row.id,parentURL:row.url,discoveredFrom:sourceURL,depth:1});
    if(rows.length>=3)break;
   }catch{/* Invalid or private links do not become crawl targets. */}
  }
@@ -65,6 +66,7 @@ export async function storePublicReading(db,record,now=Date.parse(record.readAt)
   enrichment={...record.enrichment,sourceURL,readAt:record.readAt,parentPageId:metadata.parentPageId||null,parentURL:metadata.parentURL||null,depth:metadata.depth||0};
   enrichment.contacts=(enrichment.contacts||[]).filter(c=>c.sourceURL===sourceURL).slice(0,20);
   enrichment.organizations=(enrichment.organizations||[]).filter(c=>c.sourceURL===sourceURL).slice(0,10);
+  enrichment.people=(Array.isArray(enrichment.people)?enrichment.people:[]).filter(p=>p&&p.sourceURL===sourceURL&&['practice_manager','recruitment_contact'].includes(p.role)&&typeof p.name==='string'&&p.name.length<=150&&typeof p.quote==='string'&&p.quote.length<=700).slice(0,10);
   if(new TextEncoder().encode(JSON.stringify(enrichment)).length>100000)throw Error('enrichment_limit');
   writes.push(stmt(db,'INSERT INTO public_page_enrichment(page_id,read_at,country,data) VALUES(?,?,?,?)',row.id,record.readAt,row.country,JSON.stringify(enrichment)));
   links=await linkedReadingRows(row,record);

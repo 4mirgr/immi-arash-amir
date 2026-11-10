@@ -134,3 +134,15 @@ test('worst two successful AU parent reads with link discovery stay within twent
  const fetcher=async url=>url.endsWith('/robots.txt')?new Response('User-agent: *\nAllow: /'):new Response('<main>General Practitioner: Applications invited. Apply jobs@synthetic.edu.au. Clinical supervision will be discussed. <a href="/contact/team">Contact clinical team</a></main>',{headers:{'Content-Type':'text/html'}});
  const result=await dispatchPublicPageReading(f.env,fetcher);assert.equal(result.processed,2);const readerQueries=f.queries()-start;assert.equal(readerQueries,20);assert(readerQueries+18+5<=50);
 });
+
+test('contact and team pages inherit clinical context and are read before more root GP pages while Italy retains a slot',async()=>{
+ const f=fixture(),r={...row(1,'AU'),url:'https://synthetic.edu.au/gp',officialBases:['synthetic.edu.au'],labels:['General Practitioner Level 1']},at=new Date().toISOString();
+ await enqueuePublicPages(f.env.OPPORTUNITY_DB,[r,{...row(2,'AU'),labels:['General Practitioner']},row(3,'IT')]);
+ const followLinks=[['/jobs/first','Careers'],['/contact','Contact'],['/team','Team'],['/about','About']].map(([path,label])=>({url:'https://synthetic.edu.au'+path,label}));
+ await storePublicReading(f.env.OPPORTUNITY_DB,{...r,status:'read',readAt:at,title:'General Practitioner',text:body,enrichment:{...contactData(r,at),followLinks}});
+ const children=f.db.prepare("SELECT * FROM public_page_queue WHERE json_extract(data,'$.parentPageId')=?").all(r.id);assert.equal(children.length,3);assert(children.every(c=>!c.url.includes('/jobs/first')));assert(children.every(c=>JSON.parse(c.data).labels.includes('General Practitioner Level 1')));assert(children.every(c=>JSON.parse(c.data).contactFollowup===true));
+ // Legacy children may predate inherited labels and the contactFollowup flag.
+ f.db.prepare("UPDATE public_page_queue SET data=json_remove(data,'$.contactFollowup','$.labels') WHERE json_extract(data,'$.parentPageId')=?").run(r.id);
+ const visited=[];const result=await dispatchPublicPageReading(f.env,async url=>{if(url.endsWith('/robots.txt'))return new Response('User-agent: *\nAllow: /');visited.push(url);return new Response('Practice Manager: Jane Smith. General practice contact.',{headers:{'Content-Type':'text/plain'}});});
+ assert.equal(result.processed,2);assert(children.some(c=>c.url===visited[0]));assert.equal(visited[1],row(3,'IT').url);assert.equal(f.db.prepare('SELECT status FROM public_page_queue WHERE id=?').get(row(2,'AU').id).status,'pending');
+});

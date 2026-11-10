@@ -53,7 +53,7 @@ export function assessFiveTier(source,goalMode='pesci_readiness',at=Date.now()){
  const nextSteps=[];
  if(tier===1)nextSteps.push('اصل شرط یا تاریخ آگهی را دوباره بخوانید؛ اگر تغییر کرده، نسخهٔ تازه یا موقعیت مناسب‌تر همان مرکز را پیدا کنید.');
  else{
-  if(!(Array.isArray(item.contactEvidence)?item.contactEvidence:[]).some(c=>c?.type==='email'&&c?.value)||!text(item.practiceManager))nextSteps.push('ایمیل منتشرشده و نام مدیر یا مسئول جذب مرکز را پیدا کنید تا نامه به فرد درست برسد.');
+  if(!(Array.isArray(item.contactEvidence)?item.contactEvidence:[]).some(c=>c?.type==='email'&&c?.value)||!text(item.practiceManager))nextSteps.push('نتیجهٔ جست‌وجوی خودکار ایمیل و نام مسئول را در پرونده ببینید. اگر نامی منتشر نشده باشد، نامه با خطاب Practice Manager آماده می‌شود.');
   if(!known.level1)nextSteps.push('کتبی بپرسید آیا مرکز برای همین سمت، سوپروایزر و ظرفیت واقعی Level 1 دارد.');
   else nextSteps.push('از مرکز بخواهید ظرفیت فعلی سوپروایزر و شرایط نظارت همین سمت را تأیید کند.');
   nextSteps.push('شرح شغل و فرم نظارت SPPA-30 همین سمت را بگیرید و با نیازهای ثبت پزشکی تطبیق دهید.');
