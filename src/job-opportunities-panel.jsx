@@ -7,6 +7,7 @@ import gpSources from '../cloud/gp-discovery-sources.json';
 import {UniversityCatalogue} from './university-catalogue';
 import {ExtractedEvidence} from './extracted-evidence';
 import {OpportunityMail} from './opportunity-mail';
+import {OpportunityBulkMail} from './opportunity-bulk-mail';
 import {GpApplicationWorkspace,GpFitStars} from './gp-application-workspace';
 import './gp-list-integration.css';
 import './job-opportunities-layout.css';
@@ -58,6 +59,8 @@ export function JobOpportunitiesPanel({person,notify,onOpenSettings,workspaceOwn
  const checkpoint=useMemo(()=>readCheckpoint(workspaceOwnerId,person,'opportunities'),[workspaceOwnerId,person]);
  const draftCheckpoint=useRef(checkpoint||{}),restorePending=useRef(Boolean(checkpoint?.openOpportunityId)),checkpointReady=useRef(!checkpoint?.openOpportunityId),lastPerson=useRef(person);
  const [restoredNotice,setRestoredNotice]=useState('');
+ const [bulkSelected,setBulkSelected]=useState([]),[bulkOpen,setBulkOpen]=useState(false),[bulkBusy,setBulkBusy]=useState(false);
+ const bulkIds=useMemo(()=>new Set(bulkSelected.map(item=>item.id)),[bulkSelected]);
  const [items,setItems]=useState([]),[sources,setSources]=useState([]),[automation,setAutomation]=useState(null);
  const [query,setQuery]=useState(''),[submittedQuery,setSubmittedQuery]=useState('');
  const [clinicalFocus,setClinicalFocus]=useState(checkpoint?.clinicalFocus||(person==='arash'?'medical':'all')),[ruralOnly,setRuralOnly]=useState(checkpoint?.ruralOnly??false),[sort,setSort]=useState(checkpoint?.sort||(person==='arash'?'fit':'newest'));
@@ -115,6 +118,7 @@ export function JobOpportunitiesPanel({person,notify,onOpenSettings,workspaceOwn
  function closeArashRow(){if(person!=='arash')return;setArashRowKey(null);setGpOpportunity(null);setMailOpportunity(null);setGpSelection(null);}
  const previousListScope=useRef(null);
  const arashListScope=[person,effectiveCountry,effectiveState,kind,submittedQuery,includeClosed,page,trust,types.join(','),clinicalFocus,ruralOnly,sort].join(':');
+ useEffect(()=>{setBulkSelected([]);setBulkOpen(false);setBulkBusy(false);},[arashListScope]);
  useEffect(()=>{if(previousListScope.current&&previousListScope.current!==arashListScope){restorePending.current=false;checkpointReady.current=true;}previousListScope.current=arashListScope;closeArashRow();},[arashListScope]);
  useEffect(()=>{
   if(person!=='arash'||!arashRowKey)return;
@@ -147,6 +151,11 @@ export function JobOpportunitiesPanel({person,notify,onOpenSettings,workspaceOwn
  async function refreshSources(){const requestedOwner=person;setChecking(true);setCheckNote('');try{const result=await api('opportunities/refresh?'+new URLSearchParams({profile:person,country:effectiveCountry}),{method:'POST',body:'{}'});if(owner.current!==requestedOwner)return;const message=result.status==='failed'?'دریافت تازه ناموفق بود؛ وضعیت هر منبع را بررسی کنید.':result.status==='cooldown'?'منبع هنوز در فاصلهٔ مجاز دریافت است؛ دادهٔ ذخیره‌شده نمایش داده می‌شود.':'درخواست بررسی منابع ثبت شد؛ نتیجه و زمان هر منبع جداگانه نمایش داده می‌شود.';setCheckNote(message);notify?.(message);await loadCurrent.current();}catch(e){if(owner.current===requestedOwner)setCheckNote(e.message||'بررسی منابع انجام نشد.');}finally{if(owner.current===requestedOwner)setChecking(false);}}
  async function toggleHistory(id){if(historyOpen===id){setHistoryOpen(null);return;}setHistoryOpen(id);setHistoryError('');if(history[id])return;const requestedOwner=person;setHistoryBusy(id);try{const data=await api('opportunities/organizations/'+encodeURIComponent(id)+'?'+new URLSearchParams({profile:person,country:effectiveCountry}));if(owner.current!==requestedOwner)return;setHistory(current=>({...current,[id]:list(data?.opportunities||data?.editions||data?.history||(Array.isArray(data)?data:[])).filter(item=>availableTo(item,person))}));}catch(e){if(owner.current===requestedOwner)setHistoryError(e.message||'تاریخچهٔ این مجموعه در دسترس نیست.');}finally{if(owner.current===requestedOwner)setHistoryBusy(null);}}
  async function copyQuestions(item){const prompts=['Could you confirm whether this position is currently accepting applications from international medical graduates?', 'Is visa sponsorship available for the successful applicant?', 'What registration pathway and supervision level does this position require?'];if(person==='arash')prompts.push('Can the position support the relevant PESCI process, and what conditions must be met before an offer is made?');try{await navigator.clipboard.writeText(['Regarding: '+text(item.title),...prompts.map((q,i)=>(i+1)+'. '+q),safeLink(item.url)||''].join('\n'));notify?.('پرسش‌های بررسی شرایط کپی شد؛ پیامی ارسال نشد.');}catch{notify?.('کپی انجام نشد؛ اجازهٔ Clipboard مرورگر را بررسی کنید.');}}
+ const bulkEligible=item=>Boolean(item?.id)&&!['closed','source_removed','future'].includes(item.status);
+ const visibleBulkItems=items.filter(bulkEligible).slice(0,20);
+ const allVisibleBulk=visibleBulkItems.length>0&&visibleBulkItems.every(item=>bulkIds.has(item.id));
+ function toggleBulk(item,checked){if(bulkBusy||!bulkEligible(item))return;setBulkOpen(false);setBulkSelected(current=>checked?(current.some(row=>row.id===item.id)||current.length>=20?current:[...current,item]):current.filter(row=>row.id!==item.id));}
+ function bulkCheckbox(item,isHistory){if(isHistory)return null;return <div className="opportunity-bulk-choice"><label className="checkline"><input type="checkbox" aria-label="انتخاب این آگهی برای ارسال دسته‌ای" checked={bulkIds.has(item.id)} disabled={bulkBusy||!bulkEligible(item)||(!bulkIds.has(item.id)&&bulkSelected.length>=20)} onChange={event=>toggleBulk(item,event.target.checked)}/>ارسال دسته‌ای</label></div>;}
  function renderScreening(item){const screening=item.screening;if(!screening?.applicable)return null;return <details style={{marginTop:12}}><summary>بررسی شرایط از متن آگهی؛ صلاحیت شخصی هنوز ارزیابی نشده</summary><p className="muted">این بررسی فقط متن دریافت‌شده را می‌خواند. «عبارت صریح» تأیید شرایط شما نیست؛ شرط ثبت پزشکی یا PESCI باید جدا بررسی شود.</p>{Object.entries(screening.fields||{}).map(([key,field])=><div className="agent-row" key={key} style={{display:'block'}}><strong><MixedText>{field.label}</MixedText></strong><span className="status amber" style={{marginInlineStart:10}}>{field.status==='restricted'?'شرط یا محدودیت در متن':field.status==='supported'?'عبارت صریح در آگهی':'در متن دریافتی ذکر نشده'}</span>{list(field.excerpts).map((excerpt,i)=><blockquote key={i} dir="auto" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',margin:'10px 0'}}>{text(excerpt.text)}</blockquote>)}</div>)}<p className="muted">متن کامل و ضمیمهٔ شرح شغل ممکن است شرایط دیگری داشته باشد. سطح سوپرویژن، مجوز آزمون و امکان اسپانسرشیپ از عنوان یا نبودن شرط استنباط نمی‌شوند.</p><button type="button" className="secondary" onClick={()=>copyQuestions(item)}>کپی پرسش‌های لازم از این مرکز</button></details>;}
  function renderCompactArashItem(item,isHistory=false){
   const id=text(item.id)||text(item.editionId),rowKey=(isHistory?'history:':'')+id;
@@ -158,6 +167,7 @@ export function JobOpportunitiesPanel({person,notify,onOpenSettings,workspaceOwn
   const backToLetter=()=>{arashPendingFocus.current={id:panelId,heading:true};setMailOpportunity(null);setGpOpportunity(item);};
   const toggle=()=>{if(open){closeWithFocus();return;}setArashRowKey(rowKey);setGpSelection(null);setMailOpportunity(null);setGpOpportunity(item);};
   return <article key={rowKey} className={'arash-opportunity-row'+(open?' is-open':'')+(closed?' is-unavailable':'')}>
+   {bulkCheckbox(item,isHistory)}
    <button id={panelId+'-toggle'} className="arash-opportunity-toggle" type="button" aria-expanded={open} aria-controls={panelId} onClick={toggle}>
     <div className="arash-opportunity-identity"><strong dir="auto"><MixedText>{organizationName(item)}</MixedText></strong><span className="arash-opportunity-job" dir="auto"><MixedText>{text(item.title)||'آگهی شغلی'}</MixedText></span><span className="arash-opportunity-meta"><span><MapPin size={13}/><MixedText>{location}</MixedText></span>{emails.length?<bdi dir="ltr">{emails[0]}{emails.length>1?' +'+(emails.length-1).toLocaleString('fa-IR'):''}</bdi>:<span>{item.contactDiscovery?.status==='blocked'?'دسترسی تماس محدود':'ایمیل ثبت نشده'}</span>}</span></div>
     <div className="arash-opportunity-row-status"><GpFitStars assessment={item.gpApplicationPriority} compact/><span className={'arash-opportunity-state '+(closed?'is-closed':'')}>{item._readingSnapshot?'در حال مطالعه':closed?statusLabels[item.status]:item.kind==='employment_register'?'اعلام علاقه‌مندی':item.status==='open'?'مهلت باز':'قابل بررسی'}</span></div>
@@ -172,6 +182,7 @@ export function JobOpportunitiesPanel({person,notify,onOpenSettings,workspaceOwn
   </article>;
  }
  function renderItem(item,isHistory=false){if(person==='arash')return renderCompactArashItem(item,isHistory);const id=text(item.id)||text(item.editionId),detailKey=(isHistory?'history:':'')+id,type=item.opportunityType||item.opportunity_type||item.type||'job';return <article className={'inbox-message opportunity-result-card '+(person==='arash'?'arash-job-card neon-cyan':'neon-green')} key={detailKey}>
+  {bulkCheckbox(item,isHistory)}
   <div className="section-head opportunity-result-heading"><div style={{minWidth:0,flex:1}}><h4 dir="auto" style={{margin:'0 0 8px',overflowWrap:'anywhere'}}>{text(item.title)||'عنوان اعلام نشده'}</h4><small><MixedText>{organizationName(item)}</MixedText> · {item.country==='IT'?'ایتالیا':text(item.state)||'استرالیا'}</small></div><div className="opportunity-result-badges"><span className="status">{TYPES.find(([key])=>key===type)?.[1]||'نوع نیازمند بررسی'}</span><span className="status amber">{trustLabel(item)}</span><span className="status">{statusLabels[item.status]||'وضعیت نیازمند بررسی'}</span></div></div>
   {item.kind==='employment_register'&&<p className="notice">این مورد بانک متقاضی / اعلام علاقه‌مندی است؛ جای خالی مشخص تأیید نشده است.</p>}
   <dl className="opportunity-result-dates"><div><dt>انتشار</dt><dd>{date(item.publishedAt||item.published_at)}</dd></div><div><dt>مهلت درخواست</dt><dd>{date(item.closingAt||item.closing_at)}</dd></div><div><dt>آخرین مشاهده</dt><dd>{date(item.lastSeenAt||item.last_seen_at)}</dd></div></dl>
@@ -197,14 +208,20 @@ export function JobOpportunitiesPanel({person,notify,onOpenSettings,workspaceOwn
  return <section className={'panel opportunity-workspace '+(arash?'arash-opportunities':'amir-opportunities')} aria-label="فرصت‌های منتشرشده در منابع رسمی و غیررسمی">
   <div className="section-head" style={{flexWrap:'wrap',gap:12}}><div><span className="eyebrow">{arash?'GP • IMG • RURAL':'SOURCE EVIDENCE • OPPORTUNITY HISTORY'}</span><h3><BriefcaseBusiness size={19}/>{arash?'فرصت‌های کاری آرش':'فرصت‌ها و نوبت‌های انتشار هر مجموعه'}</h3></div><button className="secondary" disabled={checking||busy} onClick={refreshSources}><RefreshCw size={15} className={checking?'spin':''}/>{checking?'در حال بررسی…':'بررسی تازهٔ منابع'}</button></div>
   {!arash&&<p className="section-help">ابتدا محدودهٔ جست‌وجو را انتخاب کنید؛ نتایج زیر این بخش نمایش داده می‌شوند. آگهی، پیشنهاد کار قطعی یا تأیید شرایط شما نیست.</p>}
-  <div className="opportunity-control-panel neon-cyan" aria-label="جست‌وجو و تنظیم نمایش فرصت‌ها">
+  <fieldset disabled={bulkBusy} style={{minWidth:0}} className="opportunity-control-panel neon-cyan" aria-label="جست‌وجو و تنظیم نمایش فرصت‌ها">
    {!arash&&<h4>جست‌وجو و تنظیم نمایش</h4>}
    {searchControls}
    <div className="opportunity-secondary-controls">{!arash&&clinicalControls}{sortingControl}</div>
    <details className="arash-fold neon-amber"><summary>{arash?'فیلترهای بیشتر':'فیلترهای بیشتر؛ نوع آگهی و منبع'}</summary><div className="arash-fold-body">{arash&&clinicalControls}{arash&&advancedKind}{trustControls}{opportunityTypes}{arash&&<p className="section-help">جست‌وجو در بانک منابع ثبت‌شده است. ستاره‌ها تناسب با شواهدند، نه احتمال پذیرش. هدف پیگیری: {gpGoalMode==='employment'?'استخدام':'آمادگی PESCI'}.</p>}</div></details>
-  </div>
+  </fieldset>
   {restoredNotice&&<p className="section-help" role="status">{restoredNotice}</p>}{checkNote&&<div className="notice" role="status">{checkNote}</div>}{error&&<div className="notice" role="alert">{error}<button className="text-button" disabled={busy} onClick={load}>دریافت دوباره</button></div>}
   <div className="opportunity-results-heading"><h4>نتایج جست‌وجو</h4><p className="muted" role="status">{busy?'در حال دریافت دادهٔ ذخیره‌شده…':`${total.toLocaleString('fa-IR')} نتیجه با فیلتر فعلی`}{!arash&&' · رتبه‌بندی احتمال پذیرش نیست.'}</p></div>
+  <div className="opportunity-bulk-toolbar" aria-label="انتخاب آگهی‌ها برای ارسال دسته‌ای">
+   <label className="checkline"><input type="checkbox" aria-label="انتخاب موارد این صفحه برای ارسال دسته‌ای" checked={allVisibleBulk} disabled={bulkBusy||!visibleBulkItems.length} onChange={event=>{setBulkOpen(false);setBulkSelected(event.target.checked?visibleBulkItems:[]);}}/>انتخاب موارد این صفحه</label>
+   <p className="section-help">{bulkSelected.length.toLocaleString('fa-IR')} آگهی انتخاب شده · حداکثر ۲۰ آگهی در هر نوبت؛ ایمیل‌های هر آگهی در مرحلهٔ بعد قابل انتخاب‌اند.</p>
+   {bulkSelected.length>0&&<><button type="button" className="text-button" disabled={bulkBusy} onClick={()=>{setBulkSelected([]);setBulkOpen(false);}}>برداشتن انتخاب‌ها</button><button type="button" className="primary" disabled={bulkBusy} onClick={()=>{closeArashRow();setMailOpportunity(null);setBulkOpen(true);}}>نامه و ارسال دسته‌ای ({bulkSelected.length.toLocaleString('fa-IR')})</button></>}
+  </div>
+  {bulkOpen&&bulkSelected.length>0&&<OpportunityBulkMail key={person+':'+bulkSelected.map(item=>item.id).join(',')} person={person} opportunities={bulkSelected} onClose={()=>setBulkOpen(false)} onOpenSettings={onOpenSettings} onBusyChange={setBulkBusy} notify={notify}/>}
   {noSelection&&<div className="notice">برای نمایش نتایج، دست‌کم یک نوع منبع و یک هدف فرصت را انتخاب کنید.</div>}
   {!busy&&!items.length&&!error&&!noSelection&&<div className="empty"><BriefcaseBusiness size={28}/><h3>موردی با این فیلتر ثبت نشده است</h3><p>منابعِ فقط پیوند یا تنظیم‌نشده، آگهی فعال محسوب نمی‌شوند. بانک تماس‌ها مستقل از این فهرست است.</p></div>}
   {arash?<div className="arash-opportunity-list">{retainedOpportunity&&renderItem(retainedOpportunity)}{items.map(item=>renderItem(item))}</div>:<>
@@ -212,7 +229,7 @@ export function JobOpportunitiesPanel({person,notify,onOpenSettings,workspaceOwn
   </>}
   {arash&&groups.some(group=>group.id)&&<details className="arash-opportunity-archive"><summary>آگهی‌های قبلی مراکز</summary>{groups.filter(group=>group.id).map(group=><div key={group.id}><button className="text-button" onClick={()=>{closeArashRow();toggleHistory(group.id);}}>{group.name} · {historyOpen===group.id?'بستن':'دیدن سابقه'}</button>{historyOpen===group.id&&(historyBusy===group.id?<p role="status">در حال دریافت…</p>:historyError?<p role="alert">{historyError}</p>:<div className="arash-opportunity-list">{list(history[group.id]).map(item=>renderItem(item,true))}</div>)}</div>)}</details>}
 
-  {total>limit&&<div className="form-actions" style={{marginTop:18}}><button className="secondary" disabled={busy||page===0} onClick={()=>{closeArashRow();setPage(value=>Math.max(0,value-1));}}><ChevronRight size={15}/>قبلی</button><span className="muted">صفحهٔ {(page+1).toLocaleString('fa-IR')} از {Math.ceil(total/limit).toLocaleString('fa-IR')}</span><button className="secondary" disabled={busy||(page+1)*limit>=total} onClick={()=>{closeArashRow();setPage(value=>value+1);}}>بعدی<ChevronLeft size={15}/></button></div>}
+  {total>limit&&<div className="form-actions" style={{marginTop:18}}><button className="secondary" disabled={bulkBusy||busy||page===0} onClick={()=>{closeArashRow();setPage(value=>Math.max(0,value-1));}}><ChevronRight size={15}/>قبلی</button><span className="muted">صفحهٔ {(page+1).toLocaleString('fa-IR')} از {Math.ceil(total/limit).toLocaleString('fa-IR')}</span><button className="secondary" disabled={bulkBusy||busy||(page+1)*limit>=total} onClick={()=>{closeArashRow();setPage(value=>value+1);}}>بعدی<ChevronLeft size={15}/></button></div>}
   {!arash&&mailOpportunity&&<div id="opportunity-mail-workspace" tabIndex={-1}><OpportunityMail key={person+":"+mailOpportunity.id} person={person} opportunity={mailOpportunity} gpApplication={gpSelection?.opportunityId===mailOpportunity.id?gpSelection.application:null} onClose={()=>setMailOpportunity(null)} notify={notify} onOpenSettings={onOpenSettings}/></div>}
   {!arash&&<div className="opportunity-supporting-panels">
    <details className="arash-fold neon-cyan"><summary>وضعیت جست‌وجوی خودکار و پوشش منابع</summary><div className="arash-fold-body">{automationStatus}{sourceHealth}{coverageNotice}</div></details>
