@@ -1,4 +1,5 @@
 import {extractPublicContacts} from './public-contact-extraction.mjs';
+import {reconcileContactCoverage} from './contact-coverage.mjs';
 import {storePublicReading,PUBLIC_PAGE_REFRESH_MS,PUBLIC_PAGE_RETRY_MS} from './public-page-store.mjs';
 const AGENT='MasirUniversityDiscovery/1.0',MAX_BODY=1000000;
 const sensitive=/(?:^|\/)(?:login|logout|signin|sign-in|admin|wp-admin|account|auth|apply|application|candidate)(?:\/|$)/i;
@@ -69,6 +70,9 @@ export async function readQueuedPage(row,fetcher=fetch,sleep=ms=>new Promise(res
 export async function dispatchPublicPageReading(env,fetcher=fetch,now=Date.now()){
  if(env.PUBLIC_PAGE_READING_ENABLED!=='true'||!env.OPPORTUNITY_DB)return {enabled:false,processed:0};
  const db=env.OPPORTUNITY_DB,receipts=[];
+ // Repair missed historical imports before processing the same bounded queue.
+ // This is registration/refresh bookkeeping, never a fetched-page receipt.
+ const contactCoverage=await reconcileContactCoverage(env,now);
  for(let i=0;i<2;i++){
   // Keep a previous successful status/evidence visible while a refresh holds its lease.
   // Legacy successful rows with available_at=0 still obey the seven-day read_at age.
@@ -89,5 +93,5 @@ export async function dispatchPublicPageReading(env,fetcher=fetch,now=Date.now()
    ]);receipts.push({id:row.id,status:'reading_storage_failed'});
   }
  }
- return {enabled:true,processed:receipts.length,receipts};
+ return {enabled:true,processed:receipts.length,receipts,contactCoverage};
 }

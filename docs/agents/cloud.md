@@ -1,6 +1,8 @@
 # Cloud owner
 Own cloud/, supabase/ and tests/cloud*.mjs. Read docs/DEPLOYMENT.fa.md for current resources, docs/CLOUD.md only for contract changes. Existing project uses Supabase Auth + RLS and Cloudflare Worker; never edit the unrelated intMed project. No service role key in frontend or Worker public config. Private verified-email allowlist is the only enrollment source; no user_metadata authorization. Poll /api/updates cheaply; advance clinic updated_at on upsert. New migrations via Supabase CLI; run Node tests, live rolled-back SQL tests and advisors. Keep actual roster/CV/imports outside git. Build public bundle with npm run build && node scripts/build_worker.mjs. Deploy only explicit public assets, not private/.
 
+All opportunity imports, including legacy/closed editions, require automatic public contact-lookup registration. Keep the atomic queue path in upsertOpportunityBatch and periodic contact-coverage repair; do not restore a one-time or first-N-only lookup. Preserve historical-edition evidence boundaries and the existing per-run free-tier budget.
+
 LinkedIn private modules use GOOGLE_DB with distinct encrypted owner scopes; see docs/LINKEDIN-CONNECT.md only for integration changes. Opportunity v2 + registered sources use OPPORTUNITY_DB; scheduler calls collectRegisteredSources, never private tokens. See docs/SOURCE-COVERAGE.md for actual source coverage.
 
 Roadmap: cloud/roadmap.mjs serves source-reviewed public criteria plus own authenticated profile analysis/actions. roadmap-schema.sql -> GOOGLE_DB, evidence-watch-schema.sql -> OPPORTUNITY_DB. Action IDs hash source action text; no cross-owner progress/CV mutation. Cron also watches max2 fixed evidence URLs with daily cooldown; it never regenerates eligibility conclusions.

@@ -94,6 +94,26 @@ async function prepare(source, raw, now) {
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args);
 const all=async(db,sql,...args)=>(await stmt(db,sql,...args).all()).results||[];
 
+// Every normalized advertisement, including closed historical editions and
+// legacy imports, has a public contact-reading target. This never fetches it.
+export async function opportunityContactPages(items){
+ const pages=new Map();
+ for(const item of items){
+  const url=new URL(item.url);
+  const discoveryVersion=await digest(JSON.stringify([item.title,item.publishedAt||null,item.closingAt||null,item.opportunityType,item.kind||null,item.summary||'',item.fullText||'']));
+  pages.set(item.url,{contactCoverageRequired:true,requiredExtractorVersion:3,contactCoveragePolicy:'all_opportunities_contact_v3',id:'page_'+(await digest(item.url)).slice(0,32),url:item.url,country:item.country,profileScope:item.country==='IT'?'amir':'both',officialBases:[url.hostname.replace(/^www\./,'')],labels:[item.title],institutionIds:[],discoveredFrom:item.sourceUrl?[item.sourceUrl]:[],sourceId:item.sourceId,discoveryVersion});
+ }
+ return [...pages.values()];
+}
+function contactQueueWrites(db,pages){
+ const changed="json_type(excluded.data,'$.discoveryVersion')='text' AND json_extract(excluded.data,'$.discoveryVersion')<>coalesce(json_extract(public_page_queue.data,'$.discoveryVersion'),'')";
+ const sql=`INSERT INTO public_page_queue(id,url,country,profile_scope,data) SELECT json_extract(value,'$.id'),json_extract(value,'$.url'),json_extract(value,'$.country'),json_extract(value,'$.profileScope'),value FROM json_each(?) WHERE 1 ON CONFLICT(url) DO UPDATE SET available_at=CASE WHEN ${changed} THEN 0 ELSE public_page_queue.available_at END,attempts=CASE WHEN ${changed} THEN 0 ELSE public_page_queue.attempts END,data=json_set(json_patch(public_page_queue.data,excluded.data),'$.institutionIds',json((SELECT json_group_array(value) FROM (SELECT value FROM json_each(public_page_queue.data,'$.institutionIds') UNION SELECT value FROM json_each(excluded.data,'$.institutionIds')))),'$.officialBases',json((SELECT json_group_array(value) FROM (SELECT value FROM json_each(public_page_queue.data,'$.officialBases') UNION SELECT value FROM json_each(excluded.data,'$.officialBases')))),'$.refreshRequested',json(CASE WHEN ${changed} THEN 'true' ELSE coalesce(json_extract(public_page_queue.data,'$.refreshRequested'),'false') END)) WHERE public_page_queue.country=excluded.country AND public_page_queue.profile_scope=excluded.profile_scope`;
+ const writes=[];let chunk=[],bytes=2;
+ for(const page of pages){const size=new TextEncoder().encode(JSON.stringify(page)).length+1;if(chunk.length&&bytes+size>400000){writes.push(stmt(db,sql,JSON.stringify(chunk)));chunk=[];bytes=2;}chunk.push(page);bytes+=size;}
+ if(chunk.length)writes.push(stmt(db,sql,JSON.stringify(chunk)));
+ return writes;
+}
+
 export async function upsertOpportunityBatch(db, inputSource, rawRecords, at=Date.now()) {
   const source=sourceConfig(inputSource),now=clock(at);
   if (!db || typeof db.prepare!=='function' || typeof db.batch!=='function') fail(503,'opportunity_storage_not_configured');
@@ -108,6 +128,8 @@ export async function upsertOpportunityBatch(db, inputSource, rawRecords, at=Dat
   const editionRows=[...unique.values()].map(({item})=>item);
   const serialized=JSON.stringify(editionRows);
   if(new TextEncoder().encode(serialized).length>3000000)fail(400,'opportunity_normalized_batch_limit');
+  const hasContactQueue=editionRows.length?Boolean((await all(db,"SELECT name FROM sqlite_master WHERE type='table' AND name='public_page_queue' LIMIT 1"))[0]):false;
+  const contactPages=hasContactQueue?await opportunityContactPages(editionRows):[];
   const organizationRows=organizations.map(org=>({...org,normalizedName:normalized(org.name),data:JSON.stringify(org)}));
   const writes=[];
   if(organizationRows.length)writes.push(stmt(db,`INSERT INTO opportunity_organizations(id,normalized_name,domain,country,state,data,created_at,updated_at)
@@ -118,8 +140,11 @@ export async function upsertOpportunityBatch(db, inputSource, rawRecords, at=Dat
   for(const items of chunks)writes.push(stmt(db,`INSERT INTO opportunity_editions(id,source_id,external_id,organization_id,edition_key,profile_scope,trust,opportunity_type,country,state,title,url,published_at,closing_at,status,data,first_seen_at,last_seen_at)
     SELECT json_extract(value,'$.id'),json_extract(value,'$.sourceId'),json_extract(value,'$.externalId'),json_extract(value,'$.organizationId'),json_extract(value,'$.editionKey'),json_extract(value,'$.profileScope'),json_extract(value,'$.trust'),json_extract(value,'$.opportunityType'),json_extract(value,'$.country'),json_extract(value,'$.state'),json_extract(value,'$.title'),json_extract(value,'$.url'),json_extract(value,'$.publishedAt'),json_extract(value,'$.closingAt'),json_extract(value,'$.status'),value,?,? FROM json_each(?) WHERE 1
     ON CONFLICT(source_id,external_id,edition_key) DO UPDATE SET organization_id=excluded.organization_id,profile_scope=excluded.profile_scope,trust=excluded.trust,country=excluded.country,state=excluded.state,title=excluded.title,url=excluded.url,status=excluded.status,data=excluded.data,last_seen_at=excluded.last_seen_at`,now.iso,now.iso,JSON.stringify(items)));
+  // Queue registration shares the import transaction: a broken queue cannot
+  // leave a successfully imported advertisement silently outside automation.
+  if(contactPages.length)writes.push(...contactQueueWrites(db,contactPages));
   if (writes.length) await db.batch(writes);
-  return {sourceId:source.id,seen:rawRecords.length,accepted:unique.size,inserted:[...unique.keys()].filter(id=>!existing.has(id)).length,updated:[...unique.keys()].filter(id=>existing.has(id)).length,organizationCount:new Set([...unique.values()].map(row=>row.organization.id)).size};
+  return {sourceId:source.id,seen:rawRecords.length,accepted:unique.size,inserted:[...unique.keys()].filter(id=>!existing.has(id)).length,updated:[...unique.keys()].filter(id=>existing.has(id)).length,organizationCount:new Set([...unique.values()].map(row=>row.organization.id)).size,readingQueue:!editionRows.length?'no_records':hasContactQueue?'queued':'storage_not_configured',contactPagesRegistered:contactPages.length};
 }
 
 export const TAS_V2_SOURCE=Object.freeze({id:'tas-pageup-759',name:'Tasmanian Government',country:'AU',state:'TAS',trust:'official',allowedHosts:['careers.pageuppeople.com'],feedUrl:'https://careers.pageuppeople.com/759/cw/en/jobs.json',opportunityType:'job'});
@@ -227,8 +252,8 @@ export async function enrichReadPages(db,rows,profile,ms,enabled){
   const readTime=Date.parse(read.read_at),firstSeen=Date.parse(item.firstSeenAt),nextSeen=Date.parse(nextById.get(item.id));
   if(!Number.isFinite(readTime)||!Number.isFinite(firstSeen)||readTime>ms+60000)return {...withDiscovery(item),reading:{status:'invalid_reading_timestamp',readAt:null}};
   if(read.read_at!==read.content_read_at||read.status!==read.content_status||typeof read.text!=='string')return {...withDiscovery(item),reading:{status:'content_receipt_mismatch',readAt:read.read_at}};
-  if(readTime<firstSeen)return {...withDiscovery(item),reading:{status:'before_current_edition',readAt:read.read_at}};
-  if(Number.isFinite(nextSeen)&&readTime>=nextSeen)return {...withDiscovery(item),reading:{status:'after_current_edition',readAt:read.read_at,editionChangedAt:nextById.get(item.id)}};
+  if(readTime<firstSeen){const visible=withDiscovery(item);return {...visible,contactDiscovery:{...visible.contactDiscovery,status:'historical_edition',editionStatus:'before_current_edition',checkedAt:read.read_at},reading:{status:'before_current_edition',readAt:read.read_at}};}
+  if(Number.isFinite(nextSeen)&&readTime>=nextSeen){const visible=withDiscovery(item);return {...visible,contactDiscovery:{...visible.contactDiscovery,status:'historical_edition',editionStatus:'after_current_edition',checkedAt:read.read_at},reading:{status:'after_current_edition',readAt:read.read_at,editionChangedAt:nextById.get(item.id)}};}
   let analysis=null;if(read.analysis&&read.evidence_read_at===read.read_at){try{analysis=JSON.parse(read.analysis);}catch{/* Content remains usable; stale/broken evidence never breaks the opportunity list. */}}
   const body={...item,fullText:read.text.slice(0,20000)},screening=screenOpportunity({...item,fullText:read.text},profile);
   const directRow=enrichments.find(row=>row.page_id===read.page_id),direct=directRow?validEnrichment(directRow,item,profile,ms):null;

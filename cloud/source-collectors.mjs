@@ -9,7 +9,6 @@ import {RURAL_SOURCE_DEFINITIONS,normalizeRuralSourceRecords} from './rural-sour
 import {sourceAutomationStatus} from './source-automation.mjs';
 import {plainJobText,pageUpDate} from './job-opportunities.mjs';
 import {upsertOpportunityBatch} from './opportunity-store.mjs';
-import {enqueuePublicPages} from './public-page-store.mjs';
 export const SOURCE_REGISTRY=Object.freeze([...registry,...RURAL_SOURCE_DEFINITIONS,...ITALY_SOURCE_DEFINITIONS,...AU_SOURCE_DEFINITIONS,...GP_EXPANDED_SOURCE_DEFINITIONS,...GP_REVIEWED_SOURCE_DEFINITIONS].map(source=>Object.freeze({...source,allowedHosts:Object.freeze([...source.allowedHosts])})));
 const ACTIVE=SOURCE_REGISTRY.filter(s=>s.executable);
 const MAX_BYTES=3000000, MAX_CALLS=3, MAX_RECORDS=100, PER_SOURCE=40;
@@ -141,7 +140,7 @@ async function reviewedRobots(source,fetcher){
  if(permission.delay>30)fail('source_robots_delay_exceeds_budget');
  if(permission.delay>0)await new Promise(resolve=>setTimeout(resolve,permission.delay*1000));
 }
-async function collectOne(db,source,fetcher,remaining,now,readPages=false){
+async function collectOne(db,source,fetcher,remaining,now){
  const lock=crypto.randomUUID();
  await run(db,'INSERT OR IGNORE INTO registered_source_checks(source_id) VALUES(?)',source.id);
  const claim=await first(db,'UPDATE registered_source_checks SET lock_token=?,lock_until=?,last_attempt_at=? WHERE source_id=? AND lock_until<? AND next_check_at<=? RETURNING etag,record_cursor',lock,now+90000,now,source.id,now,now);
@@ -162,10 +161,6 @@ async function collectOne(db,source,fetcher,remaining,now,readPages=false){
   const selected=records.slice(start,start+Math.min(PER_SOURCE,remaining));
   const partial=start+selected.length<records.length, nextCursor=partial?start+selected.length:0;
   const imported=await upsertOpportunityBatch(db,source,selected,now);
-  if(readPages&&selected.length){
-   const queue=await Promise.all(selected.map(async record=>{const bytes=new TextEncoder().encode(record.url),id='page_'+[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,32);const versionText=JSON.stringify([record.title,record.publishedAt||null,record.closingAt||null,record.opportunityType||source.opportunityType,record.kind||null,record.summary||'',record.fullText||record.description||'']);const discoveryVersion=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(versionText)))].map(v=>v.toString(16).padStart(2,'0')).join('');return {id,url:record.url,country:source.country,institutionIds:[],officialBases:[new URL(record.url).hostname.replace(/^www\./,'')],labels:[record.title],discoveredFrom:[source.feedUrl],sourceId:source.id,discoveryVersion};}));
-   try{await enqueuePublicPages(db,queue);imported.readingQueue='queued';}catch{imported.readingQueue='queue_retry_required';}
-  }
   let etag=response.headers.get('etag');if(!etag||etag.length>=1000||/[\r\n]/.test(etag))etag=null;
   await run(db,"UPDATE registered_source_checks SET status='updated',etag=?,last_success_at=?,next_check_at=?,last_error_code=NULL,imported_records=?,record_cursor=?,partial=? WHERE source_id=? AND lock_token=?",etag,now,now+(partial?15*60*1000:SUCCESS_COOLDOWN),selected.length,nextCursor,Number(partial),source.id,lock);
   return {...imported,sourceId:source.id,status:'updated',imported:selected.length,matchingRecords:records.length,partial,nextCursor};
@@ -180,7 +175,7 @@ export async function collectRegisteredSources(env,fetcher=fetch){
  const start=rotation?(rotation.position-MAX_CALLS+ACTIVE.length*2)%ACTIVE.length:position;
  const receipts=[];let remaining=MAX_RECORDS;
  for(let i=0;i<Math.min(MAX_CALLS,ACTIVE.length)&&remaining>0;i++){
-  const source=ACTIVE[(start+i)%ACTIVE.length];const receipt=await collectOne(db,source,fetcher,remaining,now,env.PUBLIC_PAGE_READING_ENABLED==='true');receipts.push(receipt);remaining-=receipt.imported||0;
+  const source=ACTIVE[(start+i)%ACTIVE.length];const receipt=await collectOne(db,source,fetcher,remaining,now);receipts.push(receipt);remaining-=receipt.imported||0;
  }
  return {status:receipts.some(r=>r.status==='failed')?'partial_failure':'completed',checkedAt:iso(now),sourceBudget:MAX_CALLS,recordBudget:MAX_RECORDS,imported:MAX_RECORDS-remaining,sources:receipts,coverage:'bounded_registered_public_sources_only'};
 }

@@ -128,11 +128,11 @@ test('two reader slots prioritize missing-contact AU clinical pages then Italy, 
  assert.equal(f.db.prepare('SELECT status FROM public_page_queue WHERE id=?').get(rows[0].id).status,'pending');
  const fallback=await dispatchPublicPageReading(f.env,readable);assert.equal(fallback.receipts[0].id,rows[0].id);
 });
-test('worst two successful AU parent reads with link discovery stay within twenty reader SQL statements',async()=>{
+test('two successful parent reads plus coverage repair stay within the free-tier SQL budget',async()=>{
  const f=fixture(),rows=[1,2].map(n=>({...row(n,'AU'),url:'https://synthetic.edu.au/jobs/'+n,officialBases:['synthetic.edu.au'],labels:['General Practitioner Level 1']}));await enqueuePublicPages(f.env.OPPORTUNITY_DB,rows);
  const start=f.queries();
  const fetcher=async url=>url.endsWith('/robots.txt')?new Response('User-agent: *\nAllow: /'):new Response('<main>General Practitioner: Applications invited. Apply jobs@synthetic.edu.au. Clinical supervision will be discussed. <a href="/contact/team">Contact clinical team</a></main>',{headers:{'Content-Type':'text/html'}});
- const result=await dispatchPublicPageReading(f.env,fetcher);assert.equal(result.processed,2);const readerQueries=f.queries()-start;assert.equal(readerQueries,20);assert(readerQueries+18+5<=50);
+ const result=await dispatchPublicPageReading(f.env,fetcher);assert.equal(result.processed,2);const readerQueries=f.queries()-start;assert(readerQueries<=23);assert(readerQueries+18+5<=50);
 });
 
 test('contact and team pages inherit clinical context and are read before more root GP pages while Italy retains a slot',async()=>{

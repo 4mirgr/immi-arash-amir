@@ -34,3 +34,4 @@ CREATE TABLE IF NOT EXISTS opportunity_editions (
 CREATE INDEX IF NOT EXISTS opportunity_editions_scope_filters ON opportunity_editions(profile_scope,country,trust,opportunity_type,state,closing_at);
 CREATE INDEX IF NOT EXISTS opportunity_editions_org_history ON opportunity_editions(organization_id,published_at DESC,first_seen_at DESC);
 CREATE INDEX IF NOT EXISTS opportunity_editions_source_external ON opportunity_editions(source_id,external_id);
+CREATE INDEX IF NOT EXISTS opportunity_editions_contact_url_country ON opportunity_editions(url,country);
