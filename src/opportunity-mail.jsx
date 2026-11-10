@@ -11,7 +11,7 @@ const safeURL=value=>{try{const u=new URL(value);return u.protocol==='https:'&&!
 const email=value=>String(value||'').toLowerCase();
 
 export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{},onOpenSettings=()=>{},gpApplication=null}){
- const application=person==='arash'&&gpApplication?{variant:gpApplication.variant,subjectIndex:gpApplication.subjectIndex,clinicQuote:gpApplication.clinicQuote,cvQuote:gpApplication.cvQuote,confirmCvQuote:gpApplication.confirmCvQuote}:null;
+ const application=person==='arash'&&gpApplication?{variant:gpApplication.variant,subjectIndex:gpApplication.subjectIndex,clinicQuote:gpApplication.clinicQuote,cvQuote:gpApplication.cvQuote,confirmCvQuote:gpApplication.confirmCvQuote,...(gpApplication.connectionId?{connectionId:gpApplication.connectionId,confirmConnection:gpApplication.confirmConnection===true}:{})}:null;
  const oppId=opportunity?.id||'',scope=person+':'+oppId+':'+JSON.stringify(application);
  const identity=useRef({scope,epoch:0});if(identity.current.scope!==scope)identity.current={scope,epoch:identity.current.epoch+1};
  const epoch=identity.current.epoch,alive=useRef(true),operation=useRef(0),lock=useRef(false);

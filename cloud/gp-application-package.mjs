@@ -3,6 +3,8 @@
 import {enrichReadPages} from './opportunity-store.mjs';
 import {publishedRecipients} from './mail-automation.mjs';
 import {gpOpportunitySignals} from './gp-opportunity-signals.mjs';
+import {composeClinicParagraphs,readGpWritingProfile,suggestEvidencePair} from './gp-letter-composer.mjs';
+import {readClinicConnections} from './gp-clinic-connections.mjs';
 const ID=/^opp_[a-f0-9]{32}$/;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const VARIANTS=['A','B','C'];
@@ -24,20 +26,21 @@ function sentences(value,{cv=false}={}){
  for(const line of lines(value)){
   if(line.length<12||line.length>600||INSTRUCTION.test(line)||/[\[\]{}]|\*\*/.test(line)||!CLINICAL.test(line)||seen.has(line))continue;
   // Do not promote a header, personal address or contact line as a capability.
-  if(cv&&/^(?:email|phone|address|referee|references|contact)\s*:/i.test(line))continue;
-  seen.add(line);out.push(line);if(out.length>=12)break;
+  if(cv&&(/^(?:email|phone|address|referee|references|contact)\s*:/i.test(line)||/:$/.test(line)))continue;
+  seen.add(line);out.push(line);if(out.length>=40)break;
  }
  return out;
 }
 const SOURCE_CAUTION='Published clinic and advertisement statements require review; they do not establish an approved supervisor, current vacancy or personal eligibility.';
+const FOUR_PARAGRAPH_BODY='Dear {{practiceManager}},\n\n{{openingParagraph}}\n\n{{clinicEvidence}}\n\n{{cvEvidence}}\n\n{{closingParagraph}}\n\nKind regards,\n{{doctorName}}';
 export const GP_APPLICATION_TEMPLATES=Object.freeze([
- {variant:'A',name:'GP A — Urban network enquiry',subject:'GP application — {{clinicName}}',body:'Dear {{practiceManager}},\n\nI am an internationally trained doctor seeking a supervised general practice position within an established team. I would welcome a discussion about whether your practice can support the position-specific PESCI and supervised practice documentation, where applicable.\n\n{{clinicEvidence}}\n\n{{cvEvidence}}\n\nPlease let me know a convenient time to discuss the role and supervision arrangements. Commencement would be subject to the required registration, supervision and work rights.\n\nKind regards,\n{{doctorName}}'},
- {variant:'B',name:'GP B — Independent practice enquiry',subject:'GP enquiry — {{clinicName}}',body:'Dear {{practiceManager}},\n\nI am an internationally trained doctor enquiring about a supervised GP role at your practice. Could we discuss whether you have a suitable position and capacity to support the required supervision and a position-specific PESCI application, where applicable?\n\n{{clinicEvidence}}\n\n{{cvEvidence}}\n\nI would be grateful for the opportunity to discuss your requirements. Commencement would be subject to the required registration, supervision and work rights.\n\nKind regards,\n{{doctorName}}'},
- {variant:'C',name:'GP C — Regional community enquiry',subject:'Supervised GP enquiry for your community — {{clinicName}}',body:'Dear {{practiceManager}},\n\nI am an internationally trained doctor interested in a supervised general practice role serving your regional community. I would welcome a discussion about a suitable position, supervision capacity and support for position-specific PESCI documentation, where applicable.\n\n{{clinicEvidence}}\n\n{{cvEvidence}}\n\nPlease let me know a convenient time to discuss your practice and community needs. Commencement would be subject to the required registration, supervision and work rights.\n\nKind regards,\n{{doctorName}}'},
+ {variant:'A',name:'GP A — Urban network enquiry',subject:'GP application — {{clinicName}}',body:FOUR_PARAGRAPH_BODY},
+ {variant:'B',name:'GP B — Independent practice enquiry',subject:'GP enquiry — {{clinicName}}',body:FOUR_PARAGRAPH_BODY},
+ {variant:'C',name:'GP C — Regional community enquiry',subject:'Supervised GP enquiry for your community — {{clinicName}}',body:FOUR_PARAGRAPH_BODY},
 ].map(item=>Object.freeze(item)));
 export const templateDefinitions=GP_APPLICATION_TEMPLATES;
 
-export function buildGpApplicationPackage({opportunity={},profile={},cvText='',cvVersionId=null,variant='auto',clinicQuote='',cvQuote='',confirmCvQuote=false,now=Date.now()}={}){
+export function buildGpApplicationPackage({opportunity={},profile={},cvText='',cvVersionId=null,variant='auto',clinicQuote='',cvQuote='',confirmCvQuote=false,selectedConnection=null,confirmConnection=false,now=Date.now()}={}){
  if(!['auto',...VARIANTS].includes(variant))fail('invalid_gp_variant');
  const sourceURL=safeURL(opportunity.url),sourceText=[opportunity.summary,opportunity.fullText].map(value=>text(value,50000)).filter(Boolean).join('\n');
  const organizations=typeof opportunity.organization==='string'?opportunity.organization:opportunity.organization?.name;
@@ -54,8 +57,8 @@ export function buildGpApplicationPackage({opportunity={},profile={},cvText='',c
  const urban=geography.monashMentioned.some(n=>n<=2)||lines(sourceText).some(s=>/\b(?:metropolitan|urban)\b/i.test(s)&&!INSTRUCTION.test(s)&&!/\b(?:not|non[- ])\s*(?:a\s+)?(?:metropolitan|urban)\b/i.test(s));
  const recommendedVariant=regional?'C':explicitNetwork&&urban?'A':'B';
  const chosen=variant==='auto'?recommendedVariant:variant;
- const clinicEvidenceCandidates=sentences(sourceText).map(value=>({text:value,sourceUrl:sourceURL,status:'source_statement_not_independently_verified'})).slice(0,8);
- const cvEvidenceCandidates=sentences(cvText,{cv:true}).map(value=>({text:value,source:'own_cv_self_reported',status:'owner_confirmation_required'})).slice(0,8);
+ const clinicEvidenceCandidates=sentences(sourceText).map(value=>({text:value,sourceUrl:sourceURL,status:'source_statement_not_independently_verified'})).slice(0,24);
+ const cvEvidenceCandidates=sentences(cvText,{cv:true}).map(value=>({text:value,source:'own_cv_self_reported',status:'owner_confirmation_required'})).slice(0,24);
  const selectedClinic=normalize(clinicQuote),selectedCv=normalize(cvQuote);
  if(selectedClinic&&!clinicEvidenceCandidates.some(item=>item.text===selectedClinic))fail('clinic_quote_not_in_current_source',409);
  if(selectedCv&&!cvEvidenceCandidates.some(item=>item.text===selectedCv))fail('cv_quote_not_in_owned_cv',409);
@@ -71,17 +74,23 @@ export function buildGpApplicationPackage({opportunity={},profile={},cvText='',c
  const missingFields=[];
  for(const [missing,code]of[[!name,'clinic_name_not_stated'],[!sourceURL,'source_url_missing'],[!sourceFresh,'source_observation_stale'],[sourceClosed,'source_closed_or_future'],[!roleRelevant,'gp_role_requires_review'],[!recipients.length,'published_recipient_missing'],[!selectedClinic,'clinic_quote_required'],[!selectedCv,'cv_quote_required'],[selectedCv&&confirmCvQuote!==true,'cv_confirmation_required'],[!UUID.test(cvVersionId||''),'cv_version_required']])if(missing)missingFields.push(code);
  const doctorName=normalize(profile.name||profile.fullName||profile.full_name).slice(0,150)||'Dr Arash Entezar';
- const clinicParagraph=selectedClinic?'Your published information states: "'+selectedClinic+'".':'{{clinicEvidence}}';
- const cvParagraph=selectedCv&&confirmCvQuote===true?'My CV records the following relevant experience: "'+selectedCv+'". I would welcome a discussion about how this experience could support your team under the required supervision.':'{{cvEvidence}}';
- const substitutions={clinicName:name||'{{clinicName}}',practiceManager:manager.value||'Practice Manager',doctorName,clinicEvidence:clinicParagraph,cvEvidence:cvParagraph};
+ const writing=readGpWritingProfile(profile);
+ if(!writing.confirmed)missingFields.push('writing_profile_confirmation_required');
+ if(selectedConnection&&confirmConnection!==true)missingFields.push('connection_confirmation_required');
+ const composed=composeClinicParagraphs({clinicName:name,clinicQuote:selectedClinic,cvQuote:selectedCv,confirmed:confirmCvQuote===true,selectedConnection,confirmConnection});
+ const clinicParagraph=composed.clinicReason,cvParagraph=composed.candidateValue;
+ const paragraphs={opening:writing.opening,clinic:clinicParagraph,value:cvParagraph,closing:writing.closing};
+ const suggestedSelection=suggestEvidencePair(clinicEvidenceCandidates,cvEvidenceCandidates);
+ const substitutions={clinicName:name||'{{clinicName}}',practiceManager:manager.value||'Practice Manager',doctorName,openingParagraph:writing.opening,closingParagraph:writing.closing,clinicEvidence:clinicParagraph,cvEvidence:cvParagraph};
  const template=GP_APPLICATION_TEMPLATES.find(item=>item.variant===chosen);
- const body=template.body.replace(/\{\{(clinicName|practiceManager|doctorName|clinicEvidence|cvEvidence)\}\}/g,(match,key)=>substitutions[key]??match);
+ const signature=[writing.signaturePhone,writing.signatureEmail].filter(Boolean).join(' | ');
+ const body=template.body.replace(/\{\{(clinicName|practiceManager|doctorName|openingParagraph|closingParagraph|clinicEvidence|cvEvidence)\}\}/g,(match,key)=>substitutions[key]??match)+(signature?'\n'+signature:'');
  const subjects=chosen==='C'?['Supervised GP enquiry for your community — '+(name||'{{clinicName}}'),'GP expression of interest — '+(name||'{{clinicName}}'),'General practice role enquiry — '+doctorName]:chosen==='A'?['GP application — '+(name||'{{clinicName}}')+' — '+doctorName,'Application for a supervised GP role — '+(name||'{{clinicName}}'),'GP opportunity enquiry — '+(name||'{{clinicName}}')]:['GP enquiry — '+(name||'{{clinicName}}'),'Expression of interest — '+doctorName,'Supervised GP role enquiry — '+(name||'{{clinicName}}')];
  if(/\{\{|\[\[(?:name|clinic|doctor|recipient)/i.test(body+' '+subjects.join(' '))&&!missingFields.includes('template_placeholders_require_review'))missingFields.push('template_placeholders_require_review');
- const provenance=[{kind:'advertisement',url:sourceURL,checkedAt:opportunity.lastSeenAt||opportunity.last_seen_at||null,status:'source_observation_not_vacancy_verification'},...(selectedClinic?[{kind:'clinic_quote',url:sourceURL,quote:selectedClinic,status:'exact_source_statement'}]:[]),...(selectedCv&&confirmCvQuote===true?[{kind:'cv_quote',cvVersionId,quote:selectedCv,status:'owner_confirmed_self_report_not_credential_verification'}]:[])];
+ const provenance=[{kind:'advertisement',url:sourceURL,checkedAt:opportunity.lastSeenAt||opportunity.last_seen_at||null,status:'source_observation_not_vacancy_verification'},...(selectedClinic?[{kind:'clinic_quote',url:sourceURL,quote:selectedClinic,status:'exact_source_statement'}]:[]),...(selectedCv&&confirmCvQuote===true?[{kind:'cv_quote',cvVersionId,quote:selectedCv,status:'owner_confirmed_self_report_not_credential_verification'}]:[]),...(selectedConnection&&confirmConnection===true?[{kind:'owned_contact',contactId:selectedConnection.id,name:selectedConnection.name,organization:selectedConnection.organization,status:'owner_confirmed_connection_not_independently_verified'}]:[])];
  const warnings=[SOURCE_CAUTION,'RACGP FSP 2027.1 excludes applicants requiring Level 1 supervision; confirm the correct registration and training route.','PESCI is position-specific; the employer position description and supervised practice documentation require confirmation.','FSP eligibility, Level 1 supervision, registration, Medicare/19AB and visa requirements are separate checks; no eligibility is inferred.'];
- if(selectedClinic&&clinicParagraph.split(/\s+/).length>25)warnings.push('The selected complete source quote makes the clinic paragraph longer than 25 words; it was not truncated or reworded.');
- return {version:1,profileId:'arash',opportunityId:opportunity.id||null,cvVersionId:UUID.test(cvVersionId||'')?cvVersionId:null,templateName:template.name,variant:chosen,recommendedVariant,variantReasons:regional?['explicit_rural_or_mmm3_7_source_wording']:explicitNetwork&&urban?['published_network_and_urban_wording']:['independent_or_unknown_location_or_network_default'],subjects,body,recipients,dossier:{name:field(name,sourceURL,publishedOrg?.quote||name,publishedOrg?.method||'published_organization_label_not_verified_clinic'),address:opportunity.address?field(opportunity.address,sourceURL):contactField('address'),phone:opportunity.phone?field(opportunity.phone,sourceURL):contactField('phone'),website:safeURL(opportunity.website||opportunity.organizationWebsite)?field(safeURL(opportunity.website||opportunity.organizationWebsite),sourceURL):contactField('website'),sourcePage:field(sourceURL,sourceURL),practiceManager:manager,network,mmm:field(geography.monashMentioned.length?geography.monashMentioned.join(', '):null,sourceURL,'MMM '+geography.monashMentioned.join(', '),'advertisement_wording_not_verified_geography'),dpa:field(geography.dpaExcerpts.join(' | ')||null,sourceURL,geography.dpaExcerpts.join(' | '),'advertisement_wording_not_verified_geography'),activity:{value:sourceClosed?'source_closed_or_unavailable':sourceFresh?'recent_source_observation':'source_requires_refresh',status:'needs_review',sourceUrl:sourceURL,clinicOperatingStatus:'not_verified'},applicationType:{value:applicationType,status:'source_statement',sourceUrl:sourceURL}},readyForReview:missingFields.length===0,missingFields,provenance,clinicEvidenceCandidates,cvEvidenceCandidates,candidates:{clinic:clinicEvidenceCandidates,strengths:cvEvidenceCandidates},registrationCautions:warnings,automaticSending:false};
+ if(!writing.confirmed)warnings.push('The fixed opening and closing paragraphs must be confirmed in the owner private writing profile before an application can be reviewed.');
+ return {version:2,paragraphs,suggestedSelection,proposal:suggestedSelection?{selectedClinicQuote:suggestedSelection.clinicQuote,selectedCvQuote:suggestedSelection.cvQuote,status:suggestedSelection.status}:null,writingStatus:{version:writing.version,status:writing.confirmed?'owner_confirmed_private_profile':'owner_confirmation_required',paragraphCount:4,needsReview:true,issues:writing.issues},commonConnections:composed.mutualConnections,selectedConnectionId:selectedConnection?.id||null,profileId:'arash',opportunityId:opportunity.id||null,cvVersionId:UUID.test(cvVersionId||'')?cvVersionId:null,templateName:template.name,variant:chosen,recommendedVariant,variantReasons:regional?['explicit_rural_or_mmm3_7_source_wording']:explicitNetwork&&urban?['published_network_and_urban_wording']:['independent_or_unknown_location_or_network_default'],subjects,body,recipients,dossier:{name:field(name,sourceURL,publishedOrg?.quote||name,publishedOrg?.method||'published_organization_label_not_verified_clinic'),address:opportunity.address?field(opportunity.address,sourceURL):contactField('address'),phone:opportunity.phone?field(opportunity.phone,sourceURL):contactField('phone'),website:safeURL(opportunity.website||opportunity.organizationWebsite)?field(safeURL(opportunity.website||opportunity.organizationWebsite),sourceURL):contactField('website'),sourcePage:field(sourceURL,sourceURL),practiceManager:manager,network,mmm:field(geography.monashMentioned.length?geography.monashMentioned.join(', '):null,sourceURL,'MMM '+geography.monashMentioned.join(', '),'advertisement_wording_not_verified_geography'),dpa:field(geography.dpaExcerpts.join(' | ')||null,sourceURL,geography.dpaExcerpts.join(' | '),'advertisement_wording_not_verified_geography'),activity:{value:sourceClosed?'source_closed_or_unavailable':sourceFresh?'recent_source_observation':'source_requires_refresh',status:'needs_review',sourceUrl:sourceURL,clinicOperatingStatus:'not_verified'},applicationType:{value:applicationType,status:'source_statement',sourceUrl:sourceURL}},readyForReview:missingFields.length===0,missingFields,provenance,clinicEvidenceCandidates,cvEvidenceCandidates,candidates:{clinic:clinicEvidenceCandidates,strengths:cvEvidenceCandidates},registrationCautions:warnings,automaticSending:false};
 }
 
 async function boundedText(request,max){
@@ -106,7 +115,16 @@ export async function getGpApplicationPackage(env,context,opportunityId,options=
  if(selected&&!UUID.test(selected))fail('invalid_gp_cv_version');
  const [profiles,cvs]=await Promise.all([context.rest('immi_profiles','?select=data'+own),selected?context.rest('immi_cv_versions','?select=id,text,version'+own+'&id=eq.'+selected):Promise.resolve([])]);
  if(options.cvVersionId&&!cvs?.[0])fail('owned_gp_cv_not_found',404);
- const cv=cvs?.[0];return buildGpApplicationPackage({opportunity:source,profile:profiles?.[0]?.data||{},cvText:cv?.text||'',cvVersionId:cv?selected:null,variant:options.variant||'auto',clinicQuote:options.clinicQuote||'',cvQuote:options.cvQuote||'',confirmCvQuote:options.confirmCvQuote===true,now:Date.now()});
+ const cv=cvs?.[0],buildOptions={opportunity:source,profile:profiles?.[0]?.data||{},cvText:cv?.text||'',cvVersionId:cv?selected:null,variant:options.variant||'auto',clinicQuote:options.clinicQuote||'',cvQuote:options.cvQuote||'',confirmCvQuote:options.confirmCvQuote===true,now:Date.now()};
+ let result=buildGpApplicationPackage(buildOptions);
+ const contacts=await readClinicConnections(env,context,[result.dossier.name.value,result.dossier.network.value].filter(Boolean));
+ if(options.connectionId){
+  if(!UUID.test(options.connectionId))fail('invalid_gp_connection');
+  const connection=contacts.candidates.find(item=>item.id===options.connectionId);
+  if(!connection)fail('gp_connection_not_in_current_owned_contacts',409);
+  result=buildGpApplicationPackage({...buildOptions,selectedConnection:connection,confirmConnection:options.confirmConnection===true});
+ }
+ return {...result,connectionCandidates:contacts.candidates,connectionStatus:contacts.status,liveLinkedInGraph:false};
 }
 export async function installGpApplicationTemplates(context){
  authorized(context);
@@ -140,8 +158,9 @@ if(url.searchParams.has('profile')&&url.searchParams.get('profile')!=='arash')fa
    if(request.headers.get('Origin')!==url.origin)fail('origin_rejected',403);
    if(Number(request.headers.get('Content-Length')||0)>6000)fail('gp_package_payload_too_large',413);
    const raw=await boundedText(request,6000);let input;try{input=JSON.parse(raw);}catch{fail('invalid_gp_package_payload');}
-   if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!['variant','cvVersionId','clinicQuote','cvQuote','confirmCvQuote'].includes(key)))fail('unexpected_gp_package_field');
-   if(input.clinicQuote!=null&&(typeof input.clinicQuote!=='string'||input.clinicQuote.length>600)||input.cvQuote!=null&&(typeof input.cvQuote!=='string'||input.cvQuote.length>600)||input.confirmCvQuote!=null&&typeof input.confirmCvQuote!=='boolean')fail('invalid_gp_package_quote');options={...options,...input};
+   if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!['variant','cvVersionId','clinicQuote','cvQuote','confirmCvQuote','connectionId','confirmConnection'].includes(key)))fail('unexpected_gp_package_field');
+   if(input.clinicQuote!=null&&(typeof input.clinicQuote!=='string'||input.clinicQuote.length>600)||input.cvQuote!=null&&(typeof input.cvQuote!=='string'||input.cvQuote.length>600)||input.confirmCvQuote!=null&&typeof input.confirmCvQuote!=='boolean')fail('invalid_gp_package_quote');
+   if(input.connectionId!=null&&(typeof input.connectionId!=='string'||!UUID.test(input.connectionId))||input.confirmConnection!=null&&typeof input.confirmConnection!=='boolean'||input.confirmConnection===true&&!input.connectionId)fail('invalid_gp_connection');options={...options,...input};
   }
   if(!['auto',...VARIANTS].includes(options.variant)||options.cvVersionId&&!UUID.test(options.cvVersionId))fail('invalid_gp_package_options');
   return json(await getGpApplicationPackage(env,context,match[1],options));

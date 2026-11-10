@@ -49,7 +49,7 @@ export async function handleOpportunityMailRequest(request,env,context,fetcher=f
   let preset=presets[0];const cv=cvs[0];if(!preset)fail('preset_not_found',404);if(!cv||typeof cv.text!=='string')fail('cv_not_found',404);
   if(input.application!==undefined){
    const app=input.application;
-   if(context.profileId!=='arash'||!app||typeof app!=='object'||Array.isArray(app)||Object.keys(app).some(k=>!['variant','subjectIndex','clinicQuote','cvQuote','confirmCvQuote'].includes(k))||!['A','B','C'].includes(app.variant)||!Number.isInteger(app.subjectIndex)||app.subjectIndex<0||app.subjectIndex>2||typeof app.clinicQuote!=='string'||app.clinicQuote.length>1000||typeof app.cvQuote!=='string'||app.cvQuote.length>1200||app.confirmCvQuote!==true)fail('invalid_gp_application');
+   if(context.profileId!=='arash'||!app||typeof app!=='object'||Array.isArray(app)||Object.keys(app).some(k=>!['variant','subjectIndex','clinicQuote','cvQuote','confirmCvQuote','connectionId','confirmConnection'].includes(k))||!['A','B','C'].includes(app.variant)||!Number.isInteger(app.subjectIndex)||app.subjectIndex<0||app.subjectIndex>2||typeof app.clinicQuote!=='string'||app.clinicQuote.length>1000||typeof app.cvQuote!=='string'||app.cvQuote.length>1200||app.confirmCvQuote!==true||(app.connectionId!==undefined&&(!UUID.test(app.connectionId)||app.confirmConnection!==true))||(app.confirmConnection!==undefined&&typeof app.confirmConnection!=='boolean'))fail('invalid_gp_application');
    const generated=await getGpApplicationPackage(env,context,row.id,{...app,cvVersionId:input.cvVersionId});
    if(!generated.readyForReview)fail('gp_application_evidence_required',409);
    if(preset.data?.name!==generated.templateName)fail('gp_application_template_mismatch',409);

@@ -11,7 +11,7 @@ async function fixture({privateSchema=true}={}){
  if(privateSchema)privateDb.exec(readFileSync(new URL('../cloud/gp-workflow-schema.sql',import.meta.url),'utf8'));
  let privateReads=0;const env={OPPORTUNITY_DB:binding(db),GOOGLE_DB:binding(privateDb,()=>privateReads++)};const at=Date.now()-100000;
  const records=[
-  ['old-strong','Level 1 supervision is available. International medical graduates are welcome. We provide clinical supervision for IMGs. PESCI support is available. No visa sponsorship is available.'],
+  ['old-strong','Level 1 supervision is available. International medical graduates are welcome. We provide clinical supervision for IMGs. PESCI support is available. Visa sponsorship is available.'],
   ['new-weak','General practice service. Supervision details have not been published.'],
   ['newest-restricted','No Level 1 supervision is available. PESCI support is available. International medical graduates are welcome.'],
  ];

@@ -19,7 +19,7 @@ function fixture(){
 test('PESCI-readiness mode changes evidence weights without a visa or MMM1 exclusion',()=>{
  const record={...source,location:'MMM1 metropolitan clinic. Non-DPA.',fullText:source.fullText+' No visa sponsorship is available.'};
  const a=assessFiveTier(record),b=assessFiveTier(record,'employment');
- assert.equal(a.tier,5);assert.equal(b.tier,5);assert(a.priorityWeight>b.priorityWeight);assert.equal(a.eligibility,'not_assessed');assert(!('acceptanceProbability' in a));assert(a.unknowns.includes('registration'));
+ assert.equal(a.tier,4);assert.equal(b.tier,4);assert.equal(a.stars,4);assert(a.priorityWeight>b.priorityWeight);assert.equal(a.eligibility,'not_assessed');assert(!('acceptanceProbability' in a));assert(a.unknowns.includes('registration'));
  assert(a.registrationCautions.some(x=>x.includes('19AB')));assert(a.registrationCautions.some(x=>x.includes('FSP')));
 });
 test('large teams and a simple or old website never manufacture supervision or clinic closure',()=>{
@@ -27,7 +27,8 @@ test('large teams and a simple or old website never manufacture supervision or c
  const assessment=assessFiveTier(record);assert.equal(assessment.tier,2);assert(assessment.unknowns.includes('level1'));assert.equal(assessment.priorityWeight,0);assert(assessment.nextSteps.some(x=>x.includes('Level 1')));
 });
 test('five tiers distinguish explicit commitments, weaker leads, normal prerequisites and clear restrictions',()=>{
- assert.equal(assessFiveTier(source).tier,5);
+ assert.equal(assessFiveTier({...source,fullText:source.fullText+' Visa sponsorship is available.'}).tier,5);
+ assert.equal(assessFiveTier(source).tier,4);
  assert.equal(assessFiveTier({...source,fullText:'Level 1 supervision is available. International medical graduates are welcome.'}).tier,4);
  assert.equal(assessFiveTier({...source,fullText:'International medical graduates are welcome.'}).tier,3);
  assert.equal(assessFiveTier({...source,fullText:'General practice consultations. Ahpra registration is required. PESCI is required.'}).tier,2);
@@ -77,4 +78,43 @@ test('progress assessment follows that owner goal mode while another owner remai
  const {call}=fixture();await call('settings',{goalMode:'employment'});
  assert.equal((await(await call('opportunities/'+id)).json()).assessment.goalMode,'employment');
  assert.equal((await(await call('opportunities/'+id,undefined,other)).json()).assessment.goalMode,'pesci_readiness');
+});
+
+test('five stars require explicit exact Level 1, IMG/PESCI and visa evidence; absence is not rejection',()=>{
+ const full={...source,fullText:source.fullText+' Visa sponsorship is available.'};
+ const rating=assessFiveTier(full);
+ assert.equal(rating.stars,5);assert.equal(rating.maxStars,5);assert.equal(rating.tier,5);
+ assert.equal(rating.meaning,'source_evidence_fit_not_acceptance_probability');
+ assert.equal(rating.profileContext,'gp_level1_pesci_route_only_no_private_cv_assessed');
+ assert.equal(rating.matrix.find(r=>r.id==='sponsorship').status,'supported');
+ assert(rating.matrix.find(r=>r.id==='level1').evidence.every(e=>e.url===source.url&&e.quote.includes('Level 1')));
+ for(const text of ['No visa sponsorship is available.','Visa sponsorship may be available.','We provide event sponsorship.','']){
+  const a=assessFiveTier({...source,fullText:source.fullText+' '+text});assert.equal(a.stars,4);
+  assert.notEqual(a.matrix.find(r=>r.id==='sponsorship').status,'supported');
+ }
+ assert.equal(assessFiveTier({...full,fullText:full.fullText.replace('Level 1 supervision','Level 1-2 supervision')}).stars,4);
+ assert.equal(assessFiveTier({...full,fullText:full.fullText.replace('Level 1 supervision is available.','Level 1 supervision may be available.')}).stars,4);
+ assert.equal(assessFiveTier({...full,fullText:full.fullText.replace('PESCI support is available.','PESCI is required.')}).stars,4);
+});
+test('team context supports four stars only with IMG and applicant-supervision evidence',()=>{
+ const base='International medical graduates are welcome. We provide clinical supervision for IMGs. ';
+ const rating=assessFiveTier({...source,fullText:base+'We are a teaching practice with 8 doctors.'});
+ assert.equal(rating.stars,4);assert.equal(rating.matrix.find(r=>r.id==='team_training').status,'supported');
+ assert.equal(rating.matrix.find(r=>r.id==='level1').status,'not_stated');
+ assert(rating.reasons.some(s=>s.includes('سطح دقیق')));
+ assert.equal(assessFiveTier({...source,fullText:'We are a teaching practice with 8 doctors.'}).stars,2);
+ assert.equal(assessFiveTier({...source,fullText:base+'We are not a teaching practice and cannot provide registrar training.'}).stars,3);
+ assert.equal(assessFiveTier({...source,fullText:'Supervision may be available. General practice consultations.'}).stars,3);
+});
+test('solo and unknown/old websites are not invented supervision bans, but explicit VR/Fellowship-only restrictions are visible',()=>{
+ const solo=assessFiveTier({...source,fullText:'General practice consultations with a solo GP. Website last updated 2019.',websiteStatus:'404'});
+ assert.equal(solo.stars,2);assert.equal(solo.matrix.find(r=>r.id==='level1').status,'not_stated');
+ assert.equal(solo.matrix.find(r=>r.id==='source_currency').status,'not_stated');
+ for(const phrase of ['FRACGP only.','Only FACRRM applicants should apply.','VR GPs only.']){
+  const a=assessFiveTier({...source,fullText:phrase});assert.equal(a.stars,1);assert.equal(a.matrix.find(r=>r.id==='registration').status,'restricted');
+  assert(a.matrix.find(r=>r.id==='registration').evidence.some(e=>e.quote===phrase));
+ }
+ assert.equal(assessFiveTier({...source,fullText:'FRACGP is not the only route. General practice consultations.'}).stars,2);
+ const dpa=assessFiveTier({...source,location:'MMM1, non-DPA metropolitan clinic.'});
+ assert.equal(dpa.stars,4);assert.equal(dpa.matrix.find(r=>r.id==='geography').status,'informational');
 });
