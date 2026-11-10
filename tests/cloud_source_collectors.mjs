@@ -142,3 +142,8 @@ test('page queue receives stable content version and requests fresh reading when
  reset();const original=fetchFixture();await collectRegisteredSources(env,async(url,options)=>url.includes('/759/')?new Response(JSON.stringify([pageup('1',{Title:'Medical Registrar - Rural Medicine'})])):original(url,options));
  const changed=db.prepare('SELECT * FROM public_page_queue WHERE id=?').get(row.id);assert.equal(changed.status,'read');assert.equal(changed.available_at,0);assert.notEqual(JSON.parse(changed.data).discoveryVersion,firstVersion);assert.equal(JSON.parse(changed.data).refreshRequested,true);
 });
+test('collector always registers accepted public records even while page processing is disabled',async()=>{
+ const {db,env}=fixture();db.exec(readFileSync(new URL('../cloud/public-page-schema.sql',import.meta.url),'utf8'));env.PUBLIC_PAGE_READING_ENABLED='false';const log=[];
+ const result=await collectRegisteredSources(env,fetchFixture(log));assert.equal(log.length,3,'the collector fetches feeds only, never the queued record pages');
+ assert(result.sources.filter(s=>s.imported>0).every(s=>s.readingQueue==='queued'));assert.equal(db.prepare('SELECT count(*) n FROM public_page_queue').get().n,db.prepare('SELECT count(DISTINCT url) n FROM opportunity_editions').get().n);assert.equal(db.prepare("SELECT count(*) n FROM public_page_queue WHERE status<>'pending'").get().n,0);
+});
