@@ -1,13 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import { KeyRound, LogIn, Mail, RefreshCw } from "lucide-react";
-import { api, setAccessToken } from "./api";
+import { api, setAccessToken, setSessionGuard } from "./api";
 import { consumeAuthCallback, recoveryRedirect, passwordProblem, passwordUpdateError } from './auth-recovery.mjs';
+import {createSessionRenewal} from './auth-session.mjs';
 
 export function AccessGate({ children }) {
   const [config, setConfig] = useState(null);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [session, setSession] = useState(null);
+  const [renewalState,setRenewalState]=useState({status:'ready',nextRetryAt:0});
+  const configRef=useRef(config);configRef.current=config;
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,6 +28,23 @@ export function AccessGate({ children }) {
   const authEpoch = useRef(0);
   const mounted = useRef(true);
   const isCurrentAuth = (epoch) => mounted.current && authEpoch.current === epoch;
+  const renewal=useRef(null);
+  if(!renewal.current)renewal.current=createSessionRenewal({
+    requestTokens:refresh_token=>tokenRequest('refresh_token',{refresh_token}),
+    verifySession:verifyBootstrap,
+    onSession:value=>{if(mounted.current){setAccessToken(value.access_token);setSession(value);}},
+    onState:value=>{if(mounted.current)setRenewalState(value);},
+    onInvalid:()=>{if(mounted.current){authEpoch.current++;setAccessToken('');setSession(null);setError('اعتبار ورود پایان یافته است؛ دوباره وارد حساب خود شوید.');}}
+  });
+  async function verifyBootstrap(accessToken){
+    try{
+      const bootstrap=await api('me',{headers:{Authorization:`Bearer ${accessToken}`}});
+      const profileId=bootstrap.currentProfileId||bootstrap.profileId||bootstrap.profiles?.[0]?.id;
+      const workspaceOwnerId=bootstrap.userId;
+      if(!['arash','amir'].includes(profileId)||typeof workspaceOwnerId!=='string'||!workspaceOwnerId)throw Object.assign(Error('حساب به فضای کاری مجاز متصل نشده است.'),{status:403});
+      return {profileId,workspaceOwnerId};
+    }catch(error){if([401,403].includes(error.status))error.authTerminal=true;throw error;}
+  }
   async function loadConfig() {
     setBusy(true);
     setError("");
@@ -55,6 +75,7 @@ export function AccessGate({ children }) {
     mounted.current = true;
     setCallback({ kind: callback.kind });
     loadConfig();
+    setSessionGuard(()=>renewal.current.ensure(),()=>{renewal.current.clear();authEpoch.current++;setAccessToken('');setSession(null);setError('اعتبار حساب یا عضویت پایان یافته است؛ دوباره وارد شوید.');});
     if (callback.kind === 'invalid') setError('این لینک بازیابی معتبر نیست یا اعتبار آن پایان یافته است. دوباره لینک بگیرید.');
     if (callback.kind === 'confirmation') setInfo('ایمیل تأیید شد. اکنون با ایمیل و رمز حساب خود وارد شوید.');
     return () => {
@@ -62,6 +83,7 @@ export function AccessGate({ children }) {
       authEpoch.current++;
       recoveryLink.current = null;
       setAccessToken("");
+      setSessionGuard(null);renewal.current.clear();
     };
   }, []);
   useEffect(() => {
@@ -172,44 +194,37 @@ export function AccessGate({ children }) {
     } finally { if (isCurrentAuth(epoch)) setBusy(false); }
   }
   async function tokenRequest(grant, payload) {
+    const currentConfig=configRef.current;
     const response = await fetch(
-      `${config.supabaseUrl}/auth/v1/token?grant_type=${grant}`,
+      `${currentConfig.supabaseUrl}/auth/v1/token?grant_type=${grant}`,
       {
         method: "POST",
         headers: {
-          apikey: config.publishableKey,
+          apikey: currentConfig.publishableKey,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(payload),redirect:'error',signal:AbortSignal.timeout(20000),
       },
     );
-    if (!response.ok)
-      throw Error(
-        "ورود انجام نشد. ایمیل، رمز عبور و فعال‌بودن حساب را بررسی کنید.",
-      );
+    if (!response.ok){
+      let code='';try{const body=await response.json();code=body.error_code||body.code||body.error||'';}catch{}
+      throw Object.assign(Error(response.status>=500||response.status===429?'ارتباط با سرویس ورود موقتاً برقرار نیست.':'ورود انجام نشد. ایمیل، رمز عبور و فعال‌بودن حساب را بررسی کنید.'),{status:response.status,code,authTerminal:grant==='refresh_token'&&[400,401,403].includes(response.status)});
+    }
     return response.json();
   }
   async function openSession(tokens, epoch) {
     if (!isCurrentAuth(epoch)) return false;
     try {
-      // Use this response's token explicitly, rather than a mutable global
-      // bearer that may already belong to a newer session.
-      const bootstrap = await api("me", {
-        headers: { Authorization: `Bearer ${tokens.access_token}` },
-      });
+      // Start the lifetime before /me so a slow verification cannot extend it.
+      const receivedExpiry=Date.now()+Number(tokens.expires_in||3600)*1000;
+      const expiry=Number.isFinite(Number(tokens.expires_at))?Math.min(receivedExpiry,Number(tokens.expires_at)*1000):receivedExpiry;
+      // Explicit bearer bypasses API preflight; owner verification precedes publication.
+      const verified=await verifyBootstrap(tokens.access_token);
       if (!isCurrentAuth(epoch)) return false;
-      const profileId =
-        bootstrap.currentProfileId ||
-        bootstrap.profileId ||
-        bootstrap.profiles?.[0]?.id;
-      if (!["arash", "amir"].includes(profileId))
-        throw Error("حساب به هیچ فضای کاری مجاز متصل نشده است.");
-      setAccessToken(tokens.access_token);
-      setSession({
-        ...tokens,
-        profileId,
-        expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000,
-      });
+      if(expiry-Date.now()<=20000)throw Object.assign(Error('تأیید ورود طول کشید و اعتبار کوتاه‌مدت آن کافی نیست؛ دوباره ورود را امتحان کنید.'),{status:503});
+      const opened={...tokens,...verified,expiresAt:expiry};
+      renewal.current.replace(opened);setRenewalState({status:'ready',nextRetryAt:0});
+      setAccessToken(opened.access_token);setSession(opened);
       return true;
     } catch (e) {
       if (isCurrentAuth(epoch)) {
@@ -271,7 +286,8 @@ export function AccessGate({ children }) {
     }
   }
   async function logout() {
-    const current = session;
+    const current = renewal.current.current()||session;
+    renewal.current.clear();
     authEpoch.current++;
     setSession(null);
     setAccessToken("");
@@ -288,42 +304,31 @@ export function AccessGate({ children }) {
       } catch {}
     }
   }
-  useEffect(() => {
-    if (!session) return;
-    const epoch = authEpoch.current;
-    const timer = setTimeout(
-      async () => {
-        try {
-          await openSession(
-            await tokenRequest("refresh_token", {
-              refresh_token: session.refresh_token,
-            }),
-            epoch,
-          );
-        } catch {
-          if (isCurrentAuth(epoch)) {
-            setSession(null);
-            setAccessToken("");
-            setError("نشست پایان یافت؛ دوباره وارد شوید.");
-          }
-        }
-      },
-      Math.max(1000, session.expiresAt - Date.now() - 60000),
-    );
-    return () => clearTimeout(timer);
-  }, [session]);
+  useEffect(()=>{
+    if(!session)return;
+    const wake=()=>renewal.current.ensure({force:true}).catch(()=>{});
+    const due=renewalState.nextRetryAt||session.expiresAt-60000;
+    const latestSafe=session.expiresAt-20000;
+    const wakeAt=latestSafe>Date.now()?Math.min(due,latestSafe):due;
+    const timer=setTimeout(()=>renewal.current.ensure().catch(()=>{}),Math.max(1000,wakeAt-Date.now()));
+    const visible=()=>{if(document.visibilityState==='visible')wake();};
+    window.addEventListener('online',wake);document.addEventListener('visibilitychange',visible);
+    return()=>{clearTimeout(timer);window.removeEventListener('online',wake);document.removeEventListener('visibilitychange',visible);};
+  },[session,renewalState.nextRetryAt,renewalState.status]);
   if (config?.mode === "local_demo")
     return children({
       cloud: false,
       initialPerson: "arash",
       onSignOut: logout,
     });
-  if (session)
-    return children({
-      cloud: true,
-      initialPerson: session.profileId,
-      onSignOut: logout,
-    });
+  if(session){
+    const locked=renewalState.status==='locked';
+    return <>
+      {renewalState.status==='retrying'&&<div className="notice" role="status" dir="rtl" style={{margin:0}}>ارتباط با سرویس ورود موقتاً ضعیف است؛ تلاش مجدد خودکار انجام می‌شود و مرحلهٔ کار شما حفظ شده است.</div>}
+      <div inert={locked?true:undefined}>{children({cloud:true,initialPerson:session.profileId,workspaceOwnerId:session.workspaceOwnerId,onSignOut:logout})}</div>
+      {locked&&<div className="access-screen" style={{position:'fixed',inset:0,zIndex:10000,background:'rgba(5,12,23,.94)'}}><section className="panel access-card" role="dialog" aria-modal="true" aria-label="برقراری دوبارهٔ ارتباط امن" dir="rtl"><h2>در حال برقراری دوبارهٔ ارتباط امن</h2><p>تمدید امن ورود هنوز تأیید نشده است. مرحله و انتخاب‌های شما در همین صفحه حفظ شده‌اند؛ تا تأیید دوبارهٔ حساب، امکان اقدام وجود ندارد.</p><button className="primary" type="button" onClick={()=>renewal.current.ensure({force:true}).catch(()=>{})}>تلاش دوباره</button><button className="secondary" type="button" onClick={logout}>خروج از حساب</button></section></div>}
+    </>;
+  }
   return (
     <div className="access-screen" dir="rtl">
       <section className="panel access-card">

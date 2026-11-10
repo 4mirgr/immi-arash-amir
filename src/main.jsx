@@ -1,3 +1,4 @@
+import {readCheckpoint,writeCheckpoint} from './workspace-checkpoint.mjs';
 import {googleAccountLabel} from './google-account-labels.mjs';
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -89,8 +90,8 @@ const fallbackStation = {
     "Communication and safe transfer",
   ],
 };
-function App({ cloud = false, initialPerson = "arash", onSignOut }) {
-  const [tab, setTab] = useState(initialPerson === "arash" ? "opportunities" : "overview"),
+function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignOut }) {
+  const [tab, setTab] = useState(() => {const saved=readCheckpoint(workspaceOwnerId,initialPerson,"navigation")?.tab;return nav.some(item=>item[0]===saved)?saved:initialPerson === "arash" ? "opportunities" : "overview";}),
     [person, setPerson] = useState(initialPerson),
     [data, setData] = useState({ clinics: [], profiles: [], stations: [] }),
     [online, setOnline] = useState(false),
@@ -128,7 +129,8 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
   const requestEpoch = currentPerson.current.epoch;
   const alive = useRef(true);
   const revision = useRef({ profile: person, value: null });
-  const polling = useRef(false);
+  const polling = useRef(null),refreshFlight=useRef(null),pollRetry=useRef({person,failures:0,after:0});
+  useEffect(()=>{writeCheckpoint(workspaceOwnerId,person,"navigation",{tab});},[workspaceOwnerId,person,tab]);
   const isCurrent = () =>
     alive.current &&
     currentPerson.current.person === person &&
@@ -140,7 +142,10 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
     };
   }, []);
   async function refresh() {
-    if (!isCurrent()) return;
+    if (!isCurrent()) return false;
+    if(refreshFlight.current?.person===person&&refreshFlight.current.epoch===requestEpoch)return refreshFlight.current.promise;
+    const flight={person,epoch:requestEpoch,promise:null};refreshFlight.current=flight;
+    flight.promise=(async()=>{
     setLoading(true);
     try {
       const d = await api("bootstrap?profile=" + person);
@@ -150,18 +155,24 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
       setOnline(true);
       setLast(new Date());
       if (d.settings?.emailPolicy) setPolicy(d.settings.emailPolicy);
-    } catch {
+      pollRetry.current={person,failures:0,after:0};return true;
+    } catch (e) {
       if (!isCurrent()) return;
       setOnline(false);
-      if (cloud) setData({ clinics: [], profiles: [], stations: [] });
+      if(e.status===401||e.status===403){setData({clinics:[],profiles:[],stations:[]});setLast(null);revision.current={profile:person,value:null};}
+      const failures=(pollRetry.current.person===person?pollRetry.current.failures:0)+1;
+      pollRetry.current={person,failures,after:Date.now()+Math.min(60000,10000*2**Math.min(failures-1,3))};
+      return false;
     } finally {
       if (isCurrent()) setLoading(false);
+      if(refreshFlight.current===flight)refreshFlight.current=null;
     }
+    })();return flight.promise;
   }
   async function heartbeat() {
     if (!cloud) return refresh();
-    if (!isCurrent() || polling.current) return;
-    polling.current = true;
+    if (!isCurrent() || polling.current?.person===person&&polling.current.epoch===requestEpoch || pollRetry.current.person===person&&Date.now()<pollRetry.current.after) return;
+    const flight={person,epoch:requestEpoch};polling.current = flight;
     try {
       const update = await api("updates?profile=" + person);
       if (!isCurrent()) return;
@@ -174,15 +185,17 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
       else {
         setOnline(true);
         setLast(new Date());
+        pollRetry.current={person,failures:0,after:0};
       }
-    } catch {
-      if (isCurrent()) setOnline(false);
+    } catch (e) {
+      if (isCurrent()){if(e.status===401||e.status===403){setData({clinics:[],profiles:[],stations:[]});setLast(null);revision.current={profile:person,value:null};}setOnline(false);const failures=(pollRetry.current.person===person?pollRetry.current.failures:0)+1;pollRetry.current={person,failures,after:Date.now()+Math.min(60000,10000*2**Math.min(failures-1,3))};}
     } finally {
-      polling.current = false;
+      if(polling.current===flight)polling.current = null;
     }
   }
   useEffect(() => {
     revision.current = { profile: person, value: null };
+    pollRetry.current={person,failures:0,after:0};setOnline(false);setLast(null);
     setData({ clinics: [], profiles: [], stations: [] });
     refresh();
     setBody("");
@@ -195,10 +208,12 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
         if (active && isCurrent()) setDrafts(Array.isArray(d) ? d : []);
       })
       .catch(() => {});
-    const interval = setInterval(heartbeat, 10000);
+    const interval = setInterval(()=>{if(document.visibilityState==="visible")heartbeat();}, 10000);
+    const resume=()=>{if(document.visibilityState==="visible"){pollRetry.current={person,failures:0,after:0};heartbeat();}};
+    window.addEventListener("online",resume);document.addEventListener("visibilitychange",resume);
     return () => {
       active = false;
-      clearInterval(interval);
+      clearInterval(interval);window.removeEventListener("online",resume);document.removeEventListener("visibilitychange",resume);
     };
   }, [person, cloud]);
   useEffect(() => {
@@ -370,7 +385,7 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
               ? cloud
                 ? "فضای ابری متصل"
                 : "سرور محلی متصل"
-              : "در انتظار اتصال سرور"}
+              : last ? "دریافت تازه موقتاً قطع است" : "در انتظار اتصال سرور"}
           </div>
           <small>هر قدم، نزدیک‌تر به استرالیا</small>
           <div className="mini-logo">
@@ -436,13 +451,13 @@ function App({ cloud = false, initialPerson = "arash", onSignOut }) {
           {!online && (
             <div className="notice">
               {cloud
-                ? "ارتباط با فضای ابری برقرار نیست؛ برای حفظ حریم خصوصی داده‌ای نمایش داده نمی‌شود."
+                ? last ? "دریافت تازه موقتاً انجام نشد؛ اطلاعات آخرین دریافت و مرحلهٔ کار شما حفظ شده‌اند. اتصال خودکار دوباره بررسی می‌شود." : "هنوز داده‌ای از سرور دریافت نشده است؛ ارتباط خودکار دوباره بررسی می‌شود."
                 : "نسخهٔ پایه · سرور داده در دسترس نیست. برای دریافت اطلاعات واقعی، API را اجرا کنید."}
             </div>
           )}
           {tab === "overview" && arash && <ArashHome onNavigate={setTab} online={online} googleConnected={googleConnection.state.connected} leadCount={clinics.length} draftCount={drafts.length} hasCV={!!profile?.cvText}/>}
           {tab === "overview" && !arash && <AmirHome onNavigate={setTab}/>}
-          {tab === "opportunities" && <JobOpportunitiesPanel key={person} person={person} notify={notify} onOpenSettings={()=>setTab("settings")} />}
+          {tab === "opportunities" && <JobOpportunitiesPanel key={person} workspaceOwnerId={workspaceOwnerId} person={person} notify={notify} onOpenSettings={()=>setTab("settings")} />}
           {tab === "opportunities" && (
             <WorkspaceFold title="بانک مراکز و انتخاب مخاطب" hint="سرنخ‌های تماس واردشده؛ مستقل از آگهی‌های شغلی" tone="amber"><section className="panel opportunities">
               <div className="section-head">
@@ -991,5 +1006,5 @@ function Stat({ icon: Icon, value, title, sub }) {
   );
 }
 createRoot(document.getElementById("root")).render(
-  <AccessGate>{(props) => <App key={props.initialPerson || "local"} {...props} />}</AccessGate>,
+  <AccessGate>{(props) => <App key={(props.initialPerson || "local")+":"+(props.workspaceOwnerId || "local")} {...props} />}</AccessGate>,
 );

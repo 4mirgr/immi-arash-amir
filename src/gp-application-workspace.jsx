@@ -43,7 +43,7 @@ export function GpApplicationWorkspace(props){
  if(person!=='arash'||!ID.test(id||''))return null;
  return <OwnedGpApplicationWorkspace key={person+':'+id} {...props} person={person} opportunityId={id}/>;
 }
-function OwnedGpApplicationWorkspace({person,opportunity,opportunityId,notify=()=>{},onOpenMail,onClose,onOpenSettings,onGoalChanged,onWorkflowChanged,compact=false,initialSelection=null}){
+function OwnedGpApplicationWorkspace({person,opportunity,opportunityId,notify=()=>{},onOpenMail,onClose,onOpenSettings,onGoalChanged,onWorkflowChanged,compact=false,initialSelection=null,onDraftChange}){
  const base='gp-applications/'+opportunityId+'/package',flow='gp-workflow/opportunities/'+opportunityId+'?profile='+person;
  const mounted=useRef(true),requests=useRef({initial:0,package:0,mutation:0}),lock=useRef(false),restoreSelection=useRef(true);
  const [started,setStarted]=useState(false),[loading,setLoading]=useState(true),[pending,setPending]=useState(''),[error,setError]=useState('');
@@ -54,6 +54,7 @@ function OwnedGpApplicationWorkspace({person,opportunity,opportunityId,notify=()
  const packageKey=cvId+':'+variant,visible=record?.key===packageKey?record.data:null;
  const valid=(channel,seq)=>mounted.current&&requests.current[channel]===seq;
  const variantValue=variant==='auto'?visible?.variant:variant;
+ useEffect(()=>{if(started&&!loading&&visible&&cvId)onDraftChange?.({opportunityId,cvVersionId:cvId,variant,subjectIndex});},[started,loading,visible,cvId,variant,subjectIndex,opportunityId,onDraftChange]);
  const clinicCandidates=array(visible?.clinicEvidenceCandidates||visible?.candidates?.clinic),cvCandidates=array(visible?.cvEvidenceCandidates||visible?.candidates?.strengths);
  const subjects=array(visible?.subjects),canGenerate=Boolean(cvId&&clinicQuote&&cvQuote&&clinicChecked&&cvChecked&&(!connectionId||connectionChecked)),canUse=Boolean(generated&&visible?.readyForReview&&canGenerate);
  const upperStage=['supervision_confirmed','position_documents','application_ready'].includes(stage);

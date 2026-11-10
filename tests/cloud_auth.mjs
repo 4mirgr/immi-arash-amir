@@ -96,3 +96,10 @@ test('LinkedIn routes keep member authorization and separate setup from connecti
  assert.equal(data.connected,false);assert.equal(data.canPublish,false);assert.equal(data.capabilities.liveAnalytics,false);
  assert.equal((await m.handle(request('/api/linkedin/connect',{method:'POST',headers:{Origin:'https://evil.example'},body:'{}'}),env)).status,403);
 });
+test('temporary Auth service failures are not represented as expired credentials',async()=>{
+ for(const status of [408,429,500,502,503,504]){
+  const m=mock({userStatus:status}),r=await m.handle(request('/api/me'),env);assert.equal(r.status,503,'upstream '+status);assert.deepEqual(await r.json(),{error:'Authentication service temporarily unavailable'});assert.equal(m.calls.length,1);
+ }
+ for(const status of [401,403])assert.equal((await mock({userStatus:status}).handle(request('/api/me'),env)).status,401);
+ const network=createHandler(async()=>{throw new TypeError('synthetic network unavailable')});assert.equal((await network(request('/api/me'),env)).status,503);
+});

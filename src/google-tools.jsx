@@ -10,16 +10,28 @@ const mailboxSuffix = mailbox => mailbox==='secondary'?'&mailbox=secondary':'';
 export function useGoogleConnection(person, cloud, mailbox='primary') {
   const key=person+':'+mailbox+':'+Boolean(cloud);
   const [state,setState]=useState({_scopeKey:key,connected:false,configured:false,loading:cloud});
-  const current=useRef({key,epoch:0}),mounted=useRef(true);
+  const current=useRef({key,epoch:0}),mounted=useRef(true),statusFlight=useRef(null);
   if(current.current.key!==key)current.current={key,epoch:current.current.epoch+1};
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;current.current.epoch++;};},[]);
-  const refresh=useCallback(async()=>{
+  const refresh=useCallback(()=>{
+    if(statusFlight.current?.key===key&&statusFlight.current.epoch===current.current.epoch)return statusFlight.current.promise;
     const epoch=current.current.epoch,active=()=>mounted.current&&current.current.key===key&&current.current.epoch===epoch;
-    if(!cloud){if(active())setState({_scopeKey:key,connected:false,configured:false,local:true});return null;}
-    try{const result=await api(`google/status?profile=${person}${mailboxSuffix(mailbox)}`);if(!active())return null;setState({_scopeKey:key,...result,loading:false});return result;}
-    catch(e){if(active())setState({_scopeKey:key,connected:false,configured:false,loading:false,error:e.status===404?'اتصال Google در این نسخه هنوز آماده نشده است.':e.message});return null;}
+    const flight={key,epoch,promise:null};statusFlight.current=flight;
+    flight.promise=(async()=>{
+      if(!cloud){if(active())setState({_scopeKey:key,connected:false,configured:false,local:true});return null;}
+      try{const result=await api(`google/status?profile=${person}${mailboxSuffix(mailbox)}`);if(!active())return null;setState({_scopeKey:key,...result,loading:false,stale:false,failureCount:0,lastCheckedAt:Date.now()});return result;}
+      catch(e){if(active())setState(previous=>({...((previous._scopeKey===key)?previous:{_scopeKey:key,connected:false,configured:false}),loading:false,stale:true,failureCount:(previous._scopeKey===key?previous.failureCount||0:0)+1,error:'وضعیت تازهٔ Google دریافت نشد؛ اطلاعات آخرین بررسی حفظ شده است. اتصال مجدد لازم نیست مگر Google لغو مجوز را تأیید کند.'}));return null;}
+      finally{if(statusFlight.current===flight)statusFlight.current=null;}
+    })();return flight.promise;
   },[person,cloud,mailbox,key]);
   useEffect(()=>{setState({_scopeKey:key,connected:false,configured:false,loading:cloud});refresh();},[refresh,cloud]);
+  useEffect(()=>{
+    if(!cloud||state._scopeKey!==key||!state.stale)return;
+    const retry=()=>{if(document.visibilityState==='visible'&&navigator.onLine!==false)refresh();};
+    const timer=setTimeout(retry,Math.min(300000,30000*2**Math.min(Math.max(0,(state.failureCount||1)-1),4)));
+    window.addEventListener('online',retry);document.addEventListener('visibilitychange',retry);
+    return()=>{clearTimeout(timer);window.removeEventListener('online',retry);document.removeEventListener('visibilitychange',retry);};
+  },[cloud,key,state._scopeKey,state.stale,state.failureCount,refresh]);
   return {state:state._scopeKey===key?state:{connected:false,configured:false,loading:cloud},refresh,mailbox};
 }
 
@@ -76,10 +88,11 @@ export function GoogleConnection({person,connection,notify,purpose=null,onConnec
   }
   async function disconnect(){setBusy(true);try{await api(`google/disconnect?profile=${person}${mailboxSuffix(mailbox)}`,{method:'POST',body:'{}'});await refresh();notify('اتصال Google همین پروفایل قطع شد.');}catch(e){notify(e.message);}finally{setBusy(false);}}
   const testerHint=secondary&&!state.connected?<p className="section-help">برنامهٔ Google فعلاً در حالت آزمایشی است؛ ایمیل جدید باید در فهرست Test users پروژهٔ Google اضافه شده باشد. <a href="https://console.cloud.google.com/auth/audience?project=aus-arash-and-amir" target="_blank" rel="noreferrer">مدیریت کاربران آزمایشی</a></p>:null;
+  if(state.stale&&!state.connected&&!state.configured)return <div className="google-connection"><p className="notice" role="status">وضعیت حساب Google موقتاً دریافت نشد؛ هنوز نمی‌توان گفت اتصال قطع شده است. بررسی خودکار دوباره انجام می‌شود.</p><button type="button" className="secondary" onClick={refresh}><RefreshCw size={14}/>بررسی دوبارهٔ وضعیت</button></div>;
   if(calendar)return <div className="google-connection calendar-connection">{testerHint}<p className="section-help">برای دیدن و ثبت برنامه‌ها در تقویم <bdi dir="ltr">{googleAccountLabel(person,mailbox,state.email)}</bdi>، مجوز Calendar همین حساب را در Google تأیید کنید. اتصال حساب دیگر جایگزین نمی‌شود.</p>{state.capabilities?.calendar?<span className="status">مجوز تقویم فعال است</span>:<button className="primary" type="button" disabled={busy||state.loading||!state.configured||state.local||!['amir','arash'].includes(person)||!secondary} onClick={connect}><Link2 size={16}/>{busy?'منتظر تأیید Google…':'اتصال تقویم '+googleAccountLabel(person,mailbox,state.email)}</button>}{connectError&&<p className="notice" role="alert">{connectError}</p>}{state.error&&<p className="notice" role="alert">{state.error}</p>}</div>;
   if(backup)return <div className="google-connection backup-drive-connection">{testerHint}<p className="section-help">برای ذخیرهٔ فایل رمزگذاری‌شده، اجازهٔ ساخت و خواندن فایل‌های همین برنامه در Drive حساب {googleAccountLabel(person,mailbox,state.email)} را تأیید کنید. دسترسی عمومی به همهٔ فایل‌های Drive درخواست نمی‌شود.</p>{state.connected&&<p className="google-mailbox" dir="ltr">{state.email}</p>}{state.capabilities?.backupDrive?<p className="status">مجوز Drive برای پشتیبان فعال است</p>:<button className="primary" type="button" disabled={busy||state.loading||!state.configured||state.local||!['amir','arash'].includes(person)||!secondary} onClick={connect}><Link2 size={16}/>{busy?'منتظر تأیید Google…':'اجازهٔ ذخیرهٔ پشتیبان در Drive'}</button>}{connectError&&<p className="notice" role="alert">{connectError}</p>}{state.error&&<p className="notice" role="alert">{state.error}</p>}</div>;
   return <div className="google-connection">{testerHint}
-    <div className="integration"><span className="clinic-icon"><Mail size={21}/></span><div><strong>{googleAccountLabel(person,mailbox,state.email)}</strong><small>{secondary?'Gmail این صندوق؛ مجوز ذخیرهٔ پشتیبان جداگانه است':'Gmail، Drive و Calendar همین حساب'}</small></div><span className={'status '+(state.connected?'':'amber')}>{state.loading?'در حال بررسی':state.connected?'متصل':'متصل نیست'}</span></div>
+    <div className="integration"><span className="clinic-icon"><Mail size={21}/></span><div><strong>{googleAccountLabel(person,mailbox,state.email)}</strong><small>{secondary?'Gmail این صندوق؛ مجوز ذخیرهٔ پشتیبان جداگانه است':'Gmail، Drive و Calendar همین حساب'}</small></div><span className={'status '+(state.connected?'':'amber')}>{state.loading?'در حال بررسی':state.stale?'وضعیت تازه دریافت نشد':state.connected?'متصل':'متصل نیست'}</span></div>
     {state.connected?<><p className="google-mailbox" dir="ltr">{state.email}</p><p className="muted">پیام‌ها، مجوزها و صف ارسال این حساب از کاربر دیگر جدا هستند.</p><button className="secondary" disabled={busy} onClick={disconnect}><Unplug size={16}/> قطع اتصال همین حساب</button></>:<>
       <p className="muted">{secondary?(person==='amir'?'حساب amirgr20 را انتخاب کنید؛ حساب dr.gerami.md و اتصال آرش تغییر نمی‌کنند.':'یک حساب Google دیگر متعلق به خودتان را انتخاب کنید. صندوق اصلی شما و تمام اتصال‌های امیر جدا می‌مانند.'):'با حساب Google خودتان وارد شوید. اتصال حساب کاربر دیگر، دسترسی این پنل را فعال نمی‌کند.'}</p>
       {state.local?<div className="notice">اتصال Google از نسخهٔ آنلاین و پس از ورود امن انجام می‌شود.</div>:state.configured?<button className="primary" disabled={busy} onClick={connect}><Link2 size={16}/>{busy?'منتظر تأیید Google…':'اتصال Google همین کاربر'}</button>:<div className="notice">تنظیم اولیهٔ اتصال Google هنوز کامل نشده است. پس از آماده‌شدن، دکمهٔ اتصال مستقل برای هر پزشک فعال می‌شود. <a href={setupURL} target="_blank" rel="noreferrer">راهنمای راه‌اندازی <ExternalLink size={12}/></a></div>}
@@ -87,6 +100,7 @@ export function GoogleConnection({person,connection,notify,purpose=null,onConnec
       {state.error&&<p className="muted" role="alert">{state.error}</p>}
       {state.status==='reconnect_required'&&<p className="notice">مجوز این حساب منقضی یا لغو شده؛ اتصال مجدد خودتان لازم است.</p>}
     </>}
+    {state.connected&&state.stale&&<p className="notice" role="status">{state.error}</p>}
     <button className="text-button" disabled={busy||state.loading} onClick={refresh}><RefreshCw size={14}/> بررسی وضعیت</button>
   </div>;
 }
@@ -106,27 +120,28 @@ export function GoogleInbox({person,connection,onReply,onSettings,notify,cloud=t
   const current=useRef(person);current.current=person;
   const connected=activeConnection.state.connected;
   const canRead=connected&&activeConnection.state.capabilities?.gmailRead===true;
-  const mounted=useRef(true),syncLock=useRef(null),latestSync=useRef(null);
+  const mounted=useRef(true),syncLock=useRef(null),latestSync=useRef(null),syncRetry=useRef({key:'',failures:0,after:0});
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;syncLock.current=null;};},[]);
   useEffect(()=>{setMailbox('primary');},[person]);
   const loadSequence=useRef(0);
   const contextKey=person+':'+selectedMailbox+':'+Boolean(connected)+':'+Boolean(canRead)+':'+(activeConnection.state.email||'');
   const currentContext=useRef(contextKey);currentContext.current=contextKey;
   const suffix=mailboxSuffix(selectedMailbox),visibleMessages=messagesContext===contextKey?messages:[];
-  const load=useCallback(async()=>{const sequence=++loadSequence.current;if(!canRead){setMessages([]);return false;}try{const result=await api(`google/mail/messages?profile=${person}${suffix}&priority=${encodeURIComponent(priority)}&scope=${scope}&order=${order}&topic=${encodeURIComponent(topic)}&limit=${pageSize}&offset=${page*pageSize}&q=${encodeURIComponent(query)}`);if(!mounted.current||current.current!==person||currentContext.current!==contextKey||sequence!==loadSequence.current)return;setMessages(Array.isArray(result)?result:result.messages||[]);setMessagesContext(contextKey);setStats(result);setError('');return true;}catch(e){if(mounted.current&&current.current===person&&currentContext.current===contextKey&&sequence===loadSequence.current){setError(e.message);setAutoSync(false);}return false;}},[person,canRead,priority,query,scope,order,page,pageSize,topic,contextKey,suffix]);
-  useEffect(()=>{loadSequence.current++;setMessages([]);setMessagesContext(null);setStats(null);setExpanded(null);setError('');setSyncNote('');setSyncError('');setAutoSync(false);setBusy(false);setPage(0);setScope('project');setOrder('relevant');setTopic('all');},[contextKey]);
+  const load=useCallback(async()=>{const sequence=++loadSequence.current;if(!canRead){setMessages([]);return false;}try{const result=await api(`google/mail/messages?profile=${person}${suffix}&priority=${encodeURIComponent(priority)}&scope=${scope}&order=${order}&topic=${encodeURIComponent(topic)}&limit=${pageSize}&offset=${page*pageSize}&q=${encodeURIComponent(query)}`);if(!mounted.current||current.current!==person||currentContext.current!==contextKey||sequence!==loadSequence.current)return;setMessages(Array.isArray(result)?result:result.messages||[]);setMessagesContext(contextKey);setStats(result);setError('');return true;}catch(e){if(mounted.current&&current.current===person&&currentContext.current===contextKey&&sequence===loadSequence.current){setError('پیام‌های تازه دریافت نشدند؛ پیام باز و نتیجهٔ قبلی حفظ شده‌اند. '+e.message);}return false;}},[person,canRead,priority,query,scope,order,page,pageSize,topic,contextKey,suffix]);
+  useEffect(()=>{loadSequence.current++;setMessages([]);setMessagesContext(null);setStats(null);setExpanded(null);setError('');setSyncNote('');setSyncError('');setAutoSync(false);syncRetry.current={key:contextKey,failures:0,after:0};setBusy(false);setPage(0);setScope('project');setOrder('relevant');setTopic('all');},[contextKey]);
   useEffect(()=>{const timer=setTimeout(load,250);return()=>{clearTimeout(timer);loadSequence.current++;}},[load]);
   async function sync(automatic=false,reset=false,older=false){
     if(!canRead||!mounted.current||syncLock.current?.key===contextKey)return;
-    if(automatic&&document.visibilityState!=='visible')return;
+    if(automatic&&(document.visibilityState!=='visible'||syncRetry.current.key===contextKey&&Date.now()<syncRetry.current.after))return;
     const lock={key:contextKey};syncLock.current=lock;setBusy(true);setError('');setSyncError('');const requested=contextKey;
-    try{const result=await api(`google/mail/${older?'project-search':'sync'}?profile=${person}${suffix}`,{method:'POST',body:JSON.stringify(older?{}:reset?{reset:true}:{})});if(!mounted.current||currentContext.current!==requested)return;setSyncNote(result.note||'بخش محدودی از پیام‌های همین حساب همگام شد؛ این نتیجه پیمایش کامل صندوق نیست.');const loaded=await load();if(!mounted.current||currentContext.current!==requested)return;if(!loaded)setAutoSync(false);const status=await activeConnection.refresh();if(!mounted.current||currentContext.current!==requested)return;if(!status?.connected){setAutoSync(false);setError('وضعیت اتصال Google نیازمند بررسی است؛ همگام‌سازی خودکار متوقف شد.');}}
-    catch(e){if(mounted.current&&currentContext.current===requested){setAutoSync(false);setSyncError(e.message);const expired=e.message.includes('history_expired_retry_sync');const limited=e.message.includes('sync_volume_limit_reset_required');setError(expired?'سابقهٔ تغییرات Gmail منقضی شده است. همگام‌سازی خودکار متوقف شد؛ دکمهٔ دریافت پیام‌های تازه را بزنید تا از پیام‌های اخیر شروع شود.':limited?'حجم تغییرات از حد همگام‌سازی بیشتر است. همگام‌سازی خودکار متوقف شد؛ در صورت تمایل با دکمهٔ شروع دوباره، پیام‌های اخیر را دریافت کنید.':e.message);}}
+    try{const result=await api(`google/mail/${older?'project-search':'sync'}?profile=${person}${suffix}`,{method:'POST',body:JSON.stringify(older?{}:reset?{reset:true}:{})});if(!mounted.current||currentContext.current!==requested)return;setSyncNote(result.note||'بخش محدودی از پیام‌های همین حساب همگام شد؛ این نتیجه پیمایش کامل صندوق نیست.');await load();if(!mounted.current||currentContext.current!==requested)return;const status=await activeConnection.refresh();if(!mounted.current||currentContext.current!==requested)return;if(status?.connected===false){setAutoSync(false);setError('Google قطع اتصال این حساب را تأیید کرد؛ اتصال اختصاصی را بررسی کنید.');}else if(!status){syncRetry.current={key:contextKey,failures:1,after:Date.now()+60000};setError('وضعیت تازهٔ اتصال دریافت نشد؛ پیام‌ها و تنظیم دریافت خودکار حفظ شده‌اند.');}else syncRetry.current={key:contextKey,failures:0,after:0};}
+    catch(e){if(mounted.current&&currentContext.current===requested){setSyncError(e.message);const expired=e.message.includes('history_expired_retry_sync'),limited=e.message.includes('sync_volume_limit_reset_required'),transient=!e.status||e.status===408||e.status===429||e.status>=500||e.status===401;if(expired||limited||!transient)setAutoSync(false);else{const failures=(syncRetry.current.key===contextKey?syncRetry.current.failures:0)+1;syncRetry.current={key:contextKey,failures,after:Date.now()+Math.min(300000,60000*2**Math.min(failures-1,3))};}setError(expired?'سابقهٔ تغییرات Gmail منقضی شده است. همگام‌سازی خودکار متوقف شد؛ دکمهٔ دریافت پیام‌های تازه را بزنید تا از پیام‌های اخیر شروع شود.':limited?'حجم تغییرات از حد همگام‌سازی بیشتر است. همگام‌سازی خودکار متوقف شد؛ در صورت تمایل با دکمهٔ شروع دوباره، پیام‌های اخیر را دریافت کنید.':transient?'دریافت تازه موقتاً انجام نشد؛ پیام باز و تنظیمات شما حفظ شده‌اند و نوبت بعدی با فاصلهٔ بیشتر بررسی می‌شود.':e.message);}}
     finally{if(syncLock.current===lock)syncLock.current=null;if(mounted.current&&currentContext.current===requested)setBusy(false);}
   }
   latestSync.current=sync;
   useEffect(()=>{if(!autoSync||!canRead)return;const timer=setInterval(()=>{if(document.visibilityState==='visible'&&syncLock.current?.key!==contextKey)latestSync.current?.(true);},60000);return()=>clearInterval(timer);},[autoSync,canRead,contextKey]);
   const mailboxBar=<div className="mailbox-picker"><label>صندوق ایمیل <select aria-label={person==='amir'?'انتخاب ایمیل امیر':'انتخاب ایمیل آرش'} value={selectedMailbox} onChange={e=>setMailbox(e.target.value)}><option value="primary">{googleAccountLabel(person,'primary',connection.state.email)}</option><option value="secondary">{googleAccountLabel(person,'secondary',secondaryConnection.state.email)}</option></select></label></div>;
+  if(!connected&&activeConnection.state.stale)return <section className="google-inbox">{mailboxBar}<p className="notice" role="status">وضعیت اتصال موقتاً دریافت نشد؛ برای بررسی دوباره نیازی به اتصال مجدد Google نیست.</p><button type="button" className="secondary" onClick={activeConnection.refresh}>بررسی دوبارهٔ وضعیت</button></section>;
   if(!connected)return <section className="google-inbox">{mailboxBar}{selectedMailbox==='secondary'?<GoogleConnection person={person} connection={secondaryConnection} notify={notify}/>:<div className="empty"><Mail size={34}/><h3>صندوق Google همین حساب را متصل کنید</h3><p>دریافت، استخراج اطلاعات و اولویت‌بندی فقط روی ایمیل‌های کاربر واردشده انجام می‌شود.</p><button className="secondary" onClick={onSettings}>بررسی اتصال اختصاصی <ArrowLeft size={15}/></button></div>}</section>;
   if(!canRead)return <section>{mailboxBar}<div className="notice">حساب Google متصل است ولی مجوز خواندن Gmail این حساب فعال نیست. برای اعطای مجوز، اتصال اختصاصی را بررسی کنید. <button className="text-button" onClick={onSettings}>بررسی اتصال</button></div></section>;
   return <section className="google-inbox inbox-workspace">
@@ -134,6 +149,7 @@ export function GoogleInbox({person,connection,onReply,onSettings,notify,cloud=t
       <div className="section-head"><div><span className="eyebrow">تنظیم نمایش و دریافت</span><h3>مکاتبات مرتبط با مسیر شما</h3><small className="google-mailbox" dir="ltr">{activeConnection.state.email}</small></div><button className="secondary" disabled={busy} onClick={()=>sync(false)}><RefreshCw size={15} className={busy?'spin':''}/>{busy?'در حال همگام‌سازی…':'دریافت پیام‌های تازه'}</button></div>
       <p className="section-help">اول صندوق و موضوع را انتخاب کنید؛ پیام‌ها در پایین همین بخش نمایش داده می‌شوند. برچسب موضوع با اولویت پاسخ فرق دارد و هر دو از متن بررسی‌شده به دست می‌آیند.</p>
       {mailboxBar}
+      {activeConnection.state.stale&&<p className="notice" role="status">وضعیت تازهٔ اتصال دریافت نشد؛ پیام‌های آخرین دریافت نمایش داده می‌شوند.</p>}
       <div className="inbox-control-grid">
         <label className="inbox-search-control">جست‌وجو در پیام‌ها<span className="inbox-search"><Search size={16}/><input aria-label="جست‌وجوی ایمیل‌های همین حساب" placeholder="موضوع، فرستنده یا متن…" value={query} onChange={e=>{setQuery(e.target.value);setPage(0);}}/></span></label>
         <label>موضوع پیام<select aria-label="موضوع پیام" value={topic} onChange={e=>{setTopic(e.target.value);setPage(0);}}><option value="all">همهٔ موضوع‌ها</option>{Object.entries(topicNames).map(([value,label])=><option value={value} key={value}>{label}</option>)}</select></label>

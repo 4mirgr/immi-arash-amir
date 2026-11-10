@@ -11,6 +11,7 @@ import {GpApplicationWorkspace,GpFitStars} from './gp-application-workspace';
 import './gp-list-integration.css';
 import './job-opportunities-layout.css';
 import './arash-opportunity-list.css';
+import {readCheckpoint,writeCheckpoint} from './workspace-checkpoint.mjs';
 
 const text=value=>typeof value==='string'?value:'';
 const list=value=>Array.isArray(value)?value:[];
@@ -53,13 +54,16 @@ function OpportunityEvidence({item}){
  </div>;
 }
 
-export function JobOpportunitiesPanel({person,notify,onOpenSettings}){
+export function JobOpportunitiesPanel({person,notify,onOpenSettings,workspaceOwnerId=null}){
+ const checkpoint=useMemo(()=>readCheckpoint(workspaceOwnerId,person,'opportunities'),[workspaceOwnerId,person]);
+ const draftCheckpoint=useRef(checkpoint||{}),restorePending=useRef(Boolean(checkpoint?.openOpportunityId)),checkpointReady=useRef(!checkpoint?.openOpportunityId),lastPerson=useRef(person);
+ const [restoredNotice,setRestoredNotice]=useState('');
  const [items,setItems]=useState([]),[sources,setSources]=useState([]),[automation,setAutomation]=useState(null);
  const [query,setQuery]=useState(''),[submittedQuery,setSubmittedQuery]=useState('');
- const [clinicalFocus,setClinicalFocus]=useState(person==='arash'?'medical':'all'),[ruralOnly,setRuralOnly]=useState(false),[sort,setSort]=useState(person==='arash'?'fit':'newest');
- const [country,setCountry]=useState('AU'),[state,setState]=useState('all'),[kind,setKind]=useState('all');
- const [official,setOfficial]=useState(true),[unofficial,setUnofficial]=useState(false),[types,setTypes]=useState(person==='arash'?['job']:TYPES.map(([id])=>id)),[includeClosed,setIncludeClosed]=useState(false);
- const [page,setPage]=useState(0),[total,setTotal]=useState(0),[busy,setBusy]=useState(false),[checking,setChecking]=useState(false),[error,setError]=useState(''),[checkNote,setCheckNote]=useState(''),[expanded,setExpanded]=useState(null);
+ const [clinicalFocus,setClinicalFocus]=useState(checkpoint?.clinicalFocus||(person==='arash'?'medical':'all')),[ruralOnly,setRuralOnly]=useState(checkpoint?.ruralOnly??false),[sort,setSort]=useState(checkpoint?.sort||(person==='arash'?'fit':'newest'));
+ const [country,setCountry]=useState(checkpoint?.country||'AU'),[state,setState]=useState(checkpoint?.state||'all'),[kind,setKind]=useState(checkpoint?.kind||'all');
+ const [official,setOfficial]=useState(checkpoint?.official??true),[unofficial,setUnofficial]=useState(checkpoint?.unofficial??false),[types,setTypes]=useState(checkpoint?.types||(person==='arash'?['job']:TYPES.map(([id])=>id))),[includeClosed,setIncludeClosed]=useState(checkpoint?.includeClosed??false);
+ const [page,setPage]=useState(checkpoint?.page||0),[total,setTotal]=useState(0),[busy,setBusy]=useState(false),[checking,setChecking]=useState(false),[error,setError]=useState(''),[checkNote,setCheckNote]=useState(''),[expanded,setExpanded]=useState(null);
  const [arashRowKey,setArashRowKey]=useState(null),arashPendingFocus=useRef(null);
  const [mailOpportunity,setMailOpportunity]=useState(null),[gpOpportunity,setGpOpportunity]=useState(null),[gpSelection,setGpSelection]=useState(null),[gpGoalMode,setGpGoalMode]=useState('pesci_readiness');
  useEffect(()=>{
@@ -77,33 +81,66 @@ export function JobOpportunitiesPanel({person,notify,onOpenSettings}){
  const effectiveState=effectiveCountry==='AU'&&(state==='all'||STATES.some(([id])=>id===state))?state:'all';
  const trust=official&&unofficial?'all':official?'official':unofficial?'unofficial':null;
  const noSelection=!trust||!types.length;
- const load=useCallback(async()=>{
-  const epoch=++generation.current,requestedOwner=person;setBusy(true);setError('');
+ const flights=useRef(new Set()),pollHealth=useRef({failures:0,next:0}),snapshotScope=useRef(null);
+ const load=useCallback(async({background=false}={})=>{
+  const requestScope=JSON.stringify([person,effectiveCountry,effectiveState,kind,submittedQuery,includeClosed,page,trust,types,clinicalFocus,ruralOnly,sort]);
+  if(flights.current.has(requestScope)||(background&&Date.now()<pollHealth.current.next))return;
+  flights.current.add(requestScope);
+  const epoch=++generation.current,requestedOwner=person;if(!background)setBusy(true);setError('');
+  if(snapshotScope.current!==requestScope){setItems([]);setTotal(0);setSources([]);setAutomation(null);}
   const params=new URLSearchParams({profile:person,country:effectiveCountry,state:effectiveState,kind,q:submittedQuery,includeClosed:String(includeClosed),limit:String(limit),offset:String(page*limit),clinicalFocus,ruralOnly:String(ruralOnly),sort});
   if(trust)params.set('trust',trust);
   params.set('types',types.join(','));
   const results=await Promise.allSettled([noSelection?Promise.resolve({opportunities:[],total:0}):api('opportunities?'+params),api('opportunities/sources?'+new URLSearchParams({profile:person,country:effectiveCountry}))]);
+  flights.current.delete(requestScope);
   if(epoch!==generation.current||owner.current!==requestedOwner)return;
-  if(results[0].status==='fulfilled'){
+  const validList=results[0].status==='fulfilled'&&Array.isArray(results[0].value?.opportunities||results[0].value);
+  if(validList){
+   snapshotScope.current=requestScope;pollHealth.current={failures:0,next:0};
    const data=results[0].value,records=list(data?.opportunities||(Array.isArray(data)?data:[])).filter(item=>availableTo(item,person));setItems(records);setTotal(Number.isFinite(data?.total)?data.total:records.length);if(person==='arash'&&['pesci_readiness','employment'].includes(data?.goalMode))setGpGoalMode(data.goalMode);
-  }else{setItems([]);setTotal(0);setError(results[0].reason?.message||'دریافت فهرست فرصت‌ها انجام نشد.');}
+  }else{
+   const terminal=[401,403].includes(results[0].reason?.status);
+   if(terminal||snapshotScope.current!==requestScope){setItems([]);setTotal(0);if(terminal)closeArashRow();}
+   const failures=++pollHealth.current.failures;pollHealth.current.next=Date.now()+Math.min(300000,10000*2**Math.min(failures,5));
+   setError(terminal?'دسترسی حساب باید دوباره بررسی شود.':'دریافت تازه موقتاً انجام نشد؛ آخرین فهرست و مرحلهٔ کار شما حفظ شده است. بررسی خودکار دوباره انجام می‌شود.');
+  }
   if(results[1].status==='fulfilled'){setSources(list(results[1].value?.sources).filter(source=>availableTo(source,person)));setAutomation(results[1].value?.automation||null);}
-  else{setSources([]);setAutomation(null);if(results[0].status==='fulfilled')setError('وضعیت دریافت منابع در دسترس نیست؛ تازگی داده‌ها تأیید نشده است.');}
+  else{if(validList)setError('دریافت وضعیت منابع موقتاً انجام نشد؛ آخرین اطلاعات نمایش داده می‌شود.');}
   setBusy(false);
  },[person,effectiveCountry,effectiveState,kind,submittedQuery,includeClosed,page,trust,types,noSelection,clinicalFocus,ruralOnly,sort]);
  const loadCurrent=useRef(load);loadCurrent.current=load;
  useEffect(()=>{load();return()=>{generation.current++;};},[load]);
- useEffect(()=>{const timer=setInterval(()=>{if(document.visibilityState==='visible')loadCurrent.current();},10000);return()=>clearInterval(timer);},[]);
- useEffect(()=>{setMailOpportunity(null);setGpOpportunity(null);setGpSelection(null);setGpGoalMode('pesci_readiness');setItems([]);setSources([]);setAutomation(null);setQuery('');setSubmittedQuery('');setPage(0);setCountry('AU');setState('all');setKind('all');setClinicalFocus(person==='arash'?'medical':'all');setTypes(person==='arash'?['job']:TYPES.map(([id])=>id));setRuralOnly(false);setSort(person==='arash'?'fit':'newest');setExpanded(null);setHistory({});setHistoryOpen(null);setHistoryBusy(null);setHistoryError('');setCheckNote('');setChecking(false);},[person]);
+ useEffect(()=>{const tick=()=>{if(document.visibilityState==='visible'&&navigator.onLine!==false)loadCurrent.current({background:true});};const wake=()=>{pollHealth.current.next=0;tick();};const timer=setInterval(tick,10000);window.addEventListener('online',wake);document.addEventListener('visibilitychange',wake);return()=>{clearInterval(timer);window.removeEventListener('online',wake);document.removeEventListener('visibilitychange',wake);};},[]);
+ useEffect(()=>{if(lastPerson.current===person)return;lastPerson.current=person;restorePending.current=false;checkpointReady.current=true;draftCheckpoint.current={};snapshotScope.current=null;pollHealth.current={failures:0,next:0};setMailOpportunity(null);setGpOpportunity(null);setGpSelection(null);setGpGoalMode('pesci_readiness');setItems([]);setSources([]);setAutomation(null);setQuery('');setSubmittedQuery('');setPage(0);setCountry('AU');setState('all');setKind('all');setClinicalFocus(person==='arash'?'medical':'all');setTypes(person==='arash'?['job']:TYPES.map(([id])=>id));setRuralOnly(false);setSort(person==='arash'?'fit':'newest');setExpanded(null);setHistory({});setHistoryOpen(null);setHistoryBusy(null);setHistoryError('');setCheckNote('');setChecking(false);},[person]);
  function closeArashRow(){if(person!=='arash')return;setArashRowKey(null);setGpOpportunity(null);setMailOpportunity(null);setGpSelection(null);}
+ const previousListScope=useRef(null);
  const arashListScope=[person,effectiveCountry,effectiveState,kind,submittedQuery,includeClosed,page,trust,types.join(','),clinicalFocus,ruralOnly,sort].join(':');
- useEffect(()=>{closeArashRow();},[arashListScope]);
+ useEffect(()=>{if(previousListScope.current&&previousListScope.current!==arashListScope){restorePending.current=false;checkpointReady.current=true;}previousListScope.current=arashListScope;closeArashRow();},[arashListScope]);
  useEffect(()=>{
   if(person!=='arash'||!arashRowKey)return;
   const selected=gpOpportunity||mailOpportunity;
   const visible=arashRowKey.startsWith('history:')?list(history[historyOpen]):items;
-  if(!selected||!visible.some(item=>item.id===selected.id))closeArashRow();
+  if(!selected||(arashRowKey.startsWith('history:')&&!visible.some(item=>item.id===selected.id)))closeArashRow();
  },[items,historyOpen,history,person]);
+ useEffect(()=>{
+  if(!restorePending.current||!items.length||person!=='arash')return;
+  const selected=items.find(item=>item.id===checkpoint?.openOpportunityId);
+  restorePending.current=false;if(!selected)checkpointReady.current=true;
+  if(selected){setArashRowKey(selected.id);setGpOpportunity(selected);setRestoredNotice('آگهی و انتخاب‌های قبلی باز شدند؛ برای ارسال، متن و گیرنده را دوباره بررسی کنید.');}
+ },[items,person,checkpoint]);
+ const persistView=useCallback((draft={})=>{
+  if(!checkpointReady.current){if(restorePending.current||arashRowKey!==checkpoint?.openOpportunityId)return;checkpointReady.current=true;}
+  const selected=gpOpportunity||mailOpportunity,openId=arashRowKey&&!arashRowKey.startsWith('history:')?selected?.id:null;
+  if(draft.opportunityId&&draft.opportunityId!==selected?.id)return;
+  const same=draftCheckpoint.current.openOpportunityId===openId;
+  const value={country:effectiveCountry,state:effectiveState,kind,clinicalFocus,ruralOnly,sort,official,unofficial,types,includeClosed,page,...(same?draftCheckpoint.current:{}),openOpportunityId:openId,step:mailOpportunity?'mail':'letter',...draft};
+  // Live controls take precedence over older filter coordinates.
+  Object.assign(value,{country:effectiveCountry,state:effectiveState,kind,clinicalFocus,ruralOnly,sort,official,unofficial,types,includeClosed,page});
+  draftCheckpoint.current=value;writeCheckpoint(workspaceOwnerId,person,'opportunities',value);
+ },[workspaceOwnerId,person,effectiveCountry,effectiveState,kind,clinicalFocus,ruralOnly,sort,official,unofficial,types,includeClosed,page,arashRowKey,gpOpportunity?.id,mailOpportunity?.id]);
+ useEffect(()=>{persistView();},[persistView]);
+ const selectedOpportunity=gpOpportunity||mailOpportunity;
+ const retainedOpportunity=person==='arash'&&arashRowKey&&!arashRowKey.startsWith('history:')&&selectedOpportunity&&!items.some(item=>item.id===selectedOpportunity.id)?{...selectedOpportunity,_readingSnapshot:true}:null;
  const groups=useMemo(()=>{const result=new Map();for(const item of items){const id=organizationId(item),key=id||'ungrouped';if(!result.has(key))result.set(key,{id,name:id?organizationName(item):'فرصت‌های بدون ارتباط تأییدشده با یک مجموعه',items:[]});result.get(key).items.push(item);}return [...result.values()];},[items]);
  function changeFilter(setter,value){setPage(0);setHistoryOpen(null);setter(value);}
  function toggleType(id){setPage(0);setTypes(current=>current.includes(id)?current.filter(value=>value!==id):[...current,id]);}
@@ -123,12 +160,13 @@ export function JobOpportunitiesPanel({person,notify,onOpenSettings}){
   return <article key={rowKey} className={'arash-opportunity-row'+(open?' is-open':'')+(closed?' is-unavailable':'')}>
    <button id={panelId+'-toggle'} className="arash-opportunity-toggle" type="button" aria-expanded={open} aria-controls={panelId} onClick={toggle}>
     <div className="arash-opportunity-identity"><strong dir="auto"><MixedText>{organizationName(item)}</MixedText></strong><span className="arash-opportunity-job" dir="auto"><MixedText>{text(item.title)||'آگهی شغلی'}</MixedText></span><span className="arash-opportunity-meta"><span><MapPin size={13}/><MixedText>{location}</MixedText></span>{emails.length?<bdi dir="ltr">{emails[0]}{emails.length>1?' +'+(emails.length-1).toLocaleString('fa-IR'):''}</bdi>:<span>{item.contactDiscovery?.status==='blocked'?'دسترسی تماس محدود':'ایمیل ثبت نشده'}</span>}</span></div>
-    <div className="arash-opportunity-row-status"><GpFitStars assessment={item.gpApplicationPriority} compact/><span className={'arash-opportunity-state '+(closed?'is-closed':'')}>{closed?statusLabels[item.status]:item.kind==='employment_register'?'اعلام علاقه‌مندی':item.status==='open'?'مهلت باز':'قابل بررسی'}</span></div>
+    <div className="arash-opportunity-row-status"><GpFitStars assessment={item.gpApplicationPriority} compact/><span className={'arash-opportunity-state '+(closed?'is-closed':'')}>{item._readingSnapshot?'در حال مطالعه':closed?statusLabels[item.status]:item.kind==='employment_register'?'اعلام علاقه‌مندی':item.status==='open'?'مهلت باز':'قابل بررسی'}</span></div>
     <span className="arash-opportunity-open-label"><Mail size={15}/>{open?'بستن':'نامه و ارسال'}<ChevronDown size={17}/></span>
    </button>
    {open&&<div id={panelId} className="arash-opportunity-inline" role="region" tabIndex={-1} aria-label={'نامه و درخواست برای '+organizationName(item)}>
+    {item._readingSnapshot&&<p className="section-help" role="status">این آگهی در نتایج تازهٔ همین صفحه نیست؛ برای ادامهٔ کار باز مانده است. شرایط و امکان ارسال هنگام اقدام دوباره بررسی می‌شوند.</p>}
     <div className="arash-opportunity-inline-tools"><span>درخواست برای همین آگهی</span>{safeLink(item.url)&&<a href={safeLink(item.url)} target="_blank" rel="noreferrer">اصل آگهی <ExternalLink size={13}/></a>}{mailOpen&&<button type="button" className="text-button" onClick={backToLetter}>ویرایش نامه و رزومه</button>}</div>
-    {mailOpen?<OpportunityMail key={person+':'+id+':mail'} compact person={person} opportunity={item} gpApplication={gpSelection?.opportunityId===id?gpSelection.application:null} onClose={backToLetter} notify={notify} onOpenSettings={onOpenSettings}/>:<GpApplicationWorkspace key={person+':'+id+':letter'} compact initialSelection={gpSelection?.opportunityId===id?gpSelection.application:null} person={person} opportunity={item} notify={notify} onClose={closeWithFocus} onOpenSettings={onOpenSettings} onGoalChanged={result=>{if(['pesci_readiness','employment'].includes(result?.goalMode))setGpGoalMode(result.goalMode);loadCurrent.current();}} onWorkflowChanged={()=>loadCurrent.current()} onOpenMail={selection=>{arashPendingFocus.current={id:panelId,heading:true};setGpSelection({opportunityId:id,application:selection});setMailOpportunity(item);setGpOpportunity(null);}}/>}
+    {mailOpen?<OpportunityMail key={person+':'+id+':mail'} compact person={person} opportunity={item} gpApplication={gpSelection?.opportunityId===id?gpSelection.application:null} onClose={backToLetter} notify={notify} onOpenSettings={onOpenSettings}/>:<GpApplicationWorkspace key={person+':'+id+':letter'} compact initialSelection={gpSelection?.opportunityId===id?gpSelection.application:draftCheckpoint.current.openOpportunityId===id?draftCheckpoint.current:null} onDraftChange={persistView} person={person} opportunity={item} notify={notify} onClose={closeWithFocus} onOpenSettings={onOpenSettings} onGoalChanged={result=>{if(['pesci_readiness','employment'].includes(result?.goalMode))setGpGoalMode(result.goalMode);loadCurrent.current();}} onWorkflowChanged={()=>loadCurrent.current()} onOpenMail={selection=>{arashPendingFocus.current={id:panelId,heading:true};setGpSelection({opportunityId:id,application:selection});setMailOpportunity(item);setGpOpportunity(null);}}/>}
     <details className="arash-opportunity-more"><summary>متن آگهی، شرایط و منبع اطلاعات</summary><div className="arash-opportunity-more-body"><p className="section-help">{trustLabel(item)} · آخرین مشاهده: {date(item.lastSeenAt||item.last_seen_at)} · مهلت: {date(item.closingAt||item.closing_at)}</p>{item.kind==='employment_register'&&<p className="notice">این مورد اعلام علاقه‌مندی است؛ جای خالی مشخص تأیید نشده است.</p>}<p dir="auto" className="arash-opportunity-full-text"><MixedText>{text(item.fullText)||text(item.summary)||'متن کامل در منبع آگهی است.'}</MixedText></p><OpportunityEvidence item={item}/>{renderScreening(item)}</div></details>
    </div>}
   </article>;
@@ -165,11 +203,11 @@ export function JobOpportunitiesPanel({person,notify,onOpenSettings}){
    <div className="opportunity-secondary-controls">{!arash&&clinicalControls}{sortingControl}</div>
    <details className="arash-fold neon-amber"><summary>{arash?'فیلترهای بیشتر':'فیلترهای بیشتر؛ نوع آگهی و منبع'}</summary><div className="arash-fold-body">{arash&&clinicalControls}{arash&&advancedKind}{trustControls}{opportunityTypes}{arash&&<p className="section-help">جست‌وجو در بانک منابع ثبت‌شده است. ستاره‌ها تناسب با شواهدند، نه احتمال پذیرش. هدف پیگیری: {gpGoalMode==='employment'?'استخدام':'آمادگی PESCI'}.</p>}</div></details>
   </div>
-  {checkNote&&<div className="notice" role="status">{checkNote}</div>}{error&&<div className="notice" role="alert">{error}<button className="text-button" disabled={busy} onClick={load}>دریافت دوباره</button></div>}
+  {restoredNotice&&<p className="section-help" role="status">{restoredNotice}</p>}{checkNote&&<div className="notice" role="status">{checkNote}</div>}{error&&<div className="notice" role="alert">{error}<button className="text-button" disabled={busy} onClick={load}>دریافت دوباره</button></div>}
   <div className="opportunity-results-heading"><h4>نتایج جست‌وجو</h4><p className="muted" role="status">{busy?'در حال دریافت دادهٔ ذخیره‌شده…':`${total.toLocaleString('fa-IR')} نتیجه با فیلتر فعلی`}{!arash&&' · رتبه‌بندی احتمال پذیرش نیست.'}</p></div>
   {noSelection&&<div className="notice">برای نمایش نتایج، دست‌کم یک نوع منبع و یک هدف فرصت را انتخاب کنید.</div>}
   {!busy&&!items.length&&!error&&!noSelection&&<div className="empty"><BriefcaseBusiness size={28}/><h3>موردی با این فیلتر ثبت نشده است</h3><p>منابعِ فقط پیوند یا تنظیم‌نشده، آگهی فعال محسوب نمی‌شوند. بانک تماس‌ها مستقل از این فهرست است.</p></div>}
-  {arash?<div className="arash-opportunity-list">{items.map(item=>renderItem(item))}</div>:<>
+  {arash?<div className="arash-opportunity-list">{retainedOpportunity&&renderItem(retainedOpportunity)}{items.map(item=>renderItem(item))}</div>:<>
   {groups.map(group=><div key={group.id||'ungrouped'} className="opportunity-result-group"><div className="section-head" style={{flexWrap:'wrap',gap:8}}><h4>{group.name}</h4>{group.id&&<button className="secondary" onClick={()=>toggleHistory(group.id)}>{historyOpen===group.id?'بستن تاریخچهٔ مجموعه':'نوبت‌های انتشار این مجموعه'}</button>}</div>{group.items.map(item=>renderItem(item))}{group.id&&historyOpen===group.id&&<div className="panel" aria-label="تاریخچهٔ انتشار مجموعه"><h4>فرصت‌های جداگانه و نسخه‌های انتشار این مجموعه</h4>{historyBusy===group.id?<p>در حال دریافت تاریخچه…</p>:historyError?<p role="alert">{historyError}</p>:history[group.id]?.length?history[group.id].map(item=>renderItem(item,true)):<p className="muted">تاریخچهٔ قابل‌نمایشی دریافت نشد.</p>}</div>}</div>)}
   </>}
   {arash&&groups.some(group=>group.id)&&<details className="arash-opportunity-archive"><summary>آگهی‌های قبلی مراکز</summary>{groups.filter(group=>group.id).map(group=><div key={group.id}><button className="text-button" onClick={()=>{closeArashRow();toggleHistory(group.id);}}>{group.name} · {historyOpen===group.id?'بستن':'دیدن سابقه'}</button>{historyOpen===group.id&&(historyBusy===group.id?<p role="status">در حال دریافت…</p>:historyError?<p role="alert">{historyError}</p>:<div className="arash-opportunity-list">{list(history[group.id]).map(item=>renderItem(item,true))}</div>)}</div>)}</details>}

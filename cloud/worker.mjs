@@ -73,8 +73,12 @@ export function createHandler(fetcher = fetch) {
       const authorization = request.headers.get('Authorization');
       if (!authorization || !/^Bearer [^\s]+$/.test(authorization)) throw new ApiError(401, 'Sign in required');
       const headers = {apikey:cfg.key,Authorization:authorization,'Content-Type':'application/json'};
-      const userResponse = await fetcher(cfg.url+'/auth/v1/user',{headers});
-      if (!userResponse.ok) throw new ApiError(401, 'Session is invalid or expired');
+      let userResponse;
+      try { userResponse=await fetcher(cfg.url+'/auth/v1/user',{headers,signal:AbortSignal.timeout(15000)}); }
+      catch { throw new ApiError(503,'Authentication service temporarily unavailable'); }
+      if (!userResponse.ok) throw [401,403].includes(userResponse.status)
+        ? new ApiError(401,'Session is invalid or expired')
+        : new ApiError(503,'Authentication service temporarily unavailable');
       const user = await userResponse.json();
       if (!user.id || user.is_anonymous) throw new ApiError(403, 'An invited account is required');
       async function rest(table, query = '', options = {}) {
