@@ -1,3 +1,4 @@
+import {interfaceLocale} from './interface-locale.mjs';
 import {googleAccountLabel} from './google-account-labels.mjs';
 import React,{useLayoutEffect,useRef,useState} from 'react';
 import {Download,ShieldCheck,FileCheck2,CloudUpload,RefreshCw,ExternalLink} from 'lucide-react';
@@ -7,8 +8,8 @@ import {GoogleConnection,useGoogleConnection} from './google-tools';
 import {backupSummary,decryptOwnerBackup,encryptOwnerExport,MAX_BACKUP_FILE_BYTES} from './backup-crypto.mjs';
 const validOwner=value=>['amir','arash'].includes(value)?value:null;
 const labels={amir:'امیر',arash:'آرش'};
-const date=value=>new Date(value).toLocaleString('fa-IR',{timeZone:'Asia/Tehran'});
-function Summary({record}){return <div className="notice"><strong>خلاصهٔ نسخهٔ پشتیبان</strong><p>{labels[record.profileId]} · {record.tableCount.toLocaleString('fa-IR')} بخش از اطلاعات · {record.rowCount.toLocaleString('fa-IR')} مورد · {date(record.createdAt)}</p>{record.truncatedTables.length>0?<p role="status">بخشی از اطلاعات به‌دلیل سقف خروجی داخل این فایل نیست؛ این نسخه کامل نیست.</p>:<p>در این خروجی محدودشدن تعداد موارد گزارش نشده؛ با این حال فایل، پشتیبان همهٔ سرویس‌ها و مدارک شما نیست.</p>}<p className="section-help">اطلاعات سایت تغییری نکرده است. بررسی فایل روی دستگاه، داده‌ها را به سایت برنمی‌گرداند.</p>{record.truncatedTables.length>0&&<details className="workspace-disclosure"><summary>بخش‌هایی که خروجی آن‌ها محدود شده است</summary><p><MixedText>{record.truncatedTables.join('، ')}</MixedText></p></details>}</div>;}
+const date=value=>new Date(value).toLocaleString(interfaceLocale('fa-IR'),{timeZone:'Asia/Tehran'});
+function Summary({record}){return <div className="notice"><strong>خلاصهٔ نسخهٔ پشتیبان</strong><p>{labels[record.profileId]} · {record.tableCount.toLocaleString(interfaceLocale('fa-IR'))} بخش از اطلاعات · {record.rowCount.toLocaleString(interfaceLocale('fa-IR'))} مورد · {date(record.createdAt)}</p>{record.truncatedTables.length>0?<p role="status">بخشی از اطلاعات به‌دلیل سقف خروجی داخل این فایل نیست؛ این نسخه کامل نیست.</p>:<p>در این خروجی محدودشدن تعداد موارد گزارش نشده؛ با این حال فایل، پشتیبان همهٔ سرویس‌ها و مدارک شما نیست.</p>}<p className="section-help">اطلاعات سایت تغییری نکرده است. بررسی فایل روی دستگاه، داده‌ها را به سایت برنمی‌گرداند.</p>{record.truncatedTables.length>0&&<details className="workspace-disclosure"><summary>بخش‌هایی که خروجی آن‌ها محدود شده است</summary><p><MixedText>{record.truncatedTables.join('، ')}</MixedText></p></details>}</div>;}
 
 export function OwnerBackup({person,notify=()=>{}}){
  const owner=validOwner(typeof person==='string'?person:person?.id),identity=useRef({owner,epoch:0});

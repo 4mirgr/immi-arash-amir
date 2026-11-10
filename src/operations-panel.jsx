@@ -1,9 +1,10 @@
+import {interfaceLocale} from './interface-locale.mjs';
 import {googleAccountLabel} from './google-account-labels.mjs';
 import React,{useEffect,useRef,useState} from 'react';
 import {api} from './api';
 import {MixedText} from './mixed-text';
 const MAIN_SITE='https://drgerami-md.ir/aus';
-const date=value=>{const parsed=new Date(value);return value&&Number.isFinite(parsed.getTime())?parsed.toLocaleString('fa-IR',{timeZone:'Asia/Tehran'}):'زمانی ثبت نشده';};
+const date=value=>{const parsed=new Date(value);return value&&Number.isFinite(parsed.getTime())?parsed.toLocaleString(interfaceLocale('fa-IR'),{timeZone:'Asia/Tehran'}):'زمانی ثبت نشده';};
 function pageLocation(){if(typeof window==='undefined')return {address:'',canonical:false};const {origin,pathname,hostname}=window.location;return {address:origin+pathname,canonical:hostname==='drgerami-md.ir'&&/^\/aus(?:\/|$)/.test(pathname)};}
 const sourceLabel=source=>!source.executable?'فقط لینک مرجع؛ دریافت خودکار ندارد':({updated:'دریافت موفق ثبت شده',failed:'آخرین دریافت ناموفق بود',not_checked:'هنوز بررسی نشده',partial:'بخشی از نتایج دریافت شده',cooldown:'در انتظار نوبت بعد',paused:'دریافت موقتاً متوقف است'}[source.status]||'وضعیت دریافت نیازمند بررسی است');
 export function OperationsPanel({person,notify=()=>{}}){
@@ -63,7 +64,7 @@ export function OperationsPanel({person,notify=()=>{}}){
     <p className="section-help">دکمهٔ زیر وضعیت ذخیره‌شدهٔ منابع مجاز همین پنل را نشان می‌دهد؛ به‌تنهایی جست‌وجوی تازه در همهٔ وب انجام نمی‌دهد.</p>
     <button className="secondary" type="button" disabled={!!sourceState?.loading} onClick={loadSources}>{sourceState?.loading?'در حال دریافت وضعیت…':'مشاهدهٔ وضعیت منابع'}</button>
     {sourceState?.error&&<p className="notice" role="alert"><MixedText>{sourceState.error}</MixedText></p>}
-    {sourceState&&!sourceState.loading&&!sourceState.error&&<><p>{configured.toLocaleString('fa-IR')} منبع برای دریافت خودکار تعریف شده؛ {successful.toLocaleString('fa-IR')} منبع سابقهٔ دریافت موفق دارد.</p>
+    {sourceState&&!sourceState.loading&&!sourceState.error&&<><p>{configured.toLocaleString(interfaceLocale('fa-IR'))} منبع برای دریافت خودکار تعریف شده؛ {successful.toLocaleString(interfaceLocale('fa-IR'))} منبع سابقهٔ دریافت موفق دارد.</p>
      {sources.length?<ul>{sources.map(source=><li key={source.id}><strong><MixedText>{source.name||source.id}</MixedText></strong> — {sourceLabel(source)}{source.lastSuccessAt&&<small className="section-help"> آخرین موفقیت: {date(source.lastSuccessAt)}</small>}</li>)}</ul>:<p className="section-help">در این پاسخ منبعی ثبت نشده است؛ این نتیجه به معنی نبود فرصت نیست.</p>}
     </>}
    </details>

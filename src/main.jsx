@@ -1,3 +1,4 @@
+import {interfaceLocale,useInterfaceLanguage} from './interface-locale.mjs';
 import {readCheckpoint,writeCheckpoint} from './workspace-checkpoint.mjs';
 import {googleAccountLabel} from './google-account-labels.mjs';
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -91,6 +92,7 @@ const fallbackStation = {
   ],
 };
 function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignOut }) {
+  useInterfaceLanguage();
   const [tab, setTab] = useState(() => {const saved=readCheckpoint(workspaceOwnerId,initialPerson,"navigation")?.tab;return nav.some(item=>item[0]===saved)?saved:initialPerson === "arash" ? "opportunities" : "overview";}),
     [person, setPerson] = useState(initialPerson),
     [data, setData] = useState({ clinics: [], profiles: [], stations: [] }),
@@ -468,14 +470,14 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
                       ? "بانک مراکز؛ نقطهٔ شروع ارتباط"
                       : "رصد فرصت‌ها و بانک مراکز"}{" "}
                     <span className="count">
-                      {clinics.length.toLocaleString("fa")}
+                      {clinics.length.toLocaleString(interfaceLocale("fa"))}
                     </span>
                   </h3>
                 </div>
                 <span className="sync">
                   <span className={"dot " + (online ? "green" : "amber")} />
                   {last
-                    ? "به‌روزرسانی " + last.toLocaleTimeString("fa-IR")
+                    ? "به‌روزرسانی " + last.toLocaleTimeString(interfaceLocale("fa-IR"))
                     : "منتظر داده"}
                 </span>
               </div>
@@ -495,7 +497,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
                 >
                   <option value="all">همهٔ ایالت‌ها</option>
                   {states.map((s) => (
-                    <option key={s}>{s}</option>
+                    <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
                 <button
@@ -515,7 +517,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
               {selected.length > 0 && (
                 <div className="bulk">
                   <span>
-                    {selected.length.toLocaleString("fa")} مورد انتخاب شده
+                    {selected.length.toLocaleString(interfaceLocale("fa"))} مورد انتخاب شده
                   </span>
                   <button className="primary" onClick={() => setTab("mail")}>
                     ساخت پیش‌نویس گروهی <Mail size={15} />
@@ -656,9 +658,9 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
                     صفحهٔ قبل
                   </button>
                   <span className="muted">
-                    صفحهٔ {page.toLocaleString("fa")} از{" "}
-                    {Math.ceil(filtered.length / 25).toLocaleString("fa")} ·{" "}
-                    {filtered.length.toLocaleString("fa")} نتیجه
+                    صفحهٔ {page.toLocaleString(interfaceLocale("fa"))} از{" "}
+                    {Math.ceil(filtered.length / 25).toLocaleString(interfaceLocale("fa"))} ·{" "}
+                    {filtered.length.toLocaleString(interfaceLocale("fa"))} نتیجه
                   </span>
                   <button
                     className="secondary"

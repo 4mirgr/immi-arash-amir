@@ -18,3 +18,16 @@ test('identical own completed request is cached without additional provider usag
 test('atomic reservations cap concurrent calls per owner and entire application',async()=>{const {call,calls}=fixture(async()=>{await new Promise(r=>setTimeout(r,5));return {response:'draft'};});const results=await Promise.all(Array.from({length:6},(_,i)=>call('analyze',{task:'pathway',question:'Unique '+i})));assert.equal(results.filter(r=>r.status===200).length,3);assert.equal(results.filter(r=>r.status===429).length,3);const others=await Promise.all(Array.from({length:4},(_,i)=>call('analyze',{task:'pathway',question:'Arash unique '+i},'arash')));assert.equal(others.filter(r=>r.status===200).length,3);assert.equal(calls(),6);assert.equal((await(await call()).json()).quota.globalUsed,6);});
 test('failed provider attempt consumes budget, is not retried automatically and never leaks raw failure',async()=>{const {call,calls}=fixture(async()=>{throw Error('sensitive synthetic payload');});const body={task:'pathway',question:'Failure test'};const failed=await call('analyze',body);assert.equal(failed.status,502);assert(!(await failed.text()).includes('sensitive synthetic'));assert.equal((await call('analyze',body)).status,503);assert.equal(calls(),1);const status=await(await call()).json();assert.equal(status.quota.ownerUsed,1);assert.deepEqual(status.history,[]);});
 test('private context is never persisted in raw form and missing provider usage stays unknown',async()=>{const {call,db}=fixture(async()=>({response:'A useful draft'}));const result=await(await call('analyze',{task:'cv',question:'Public synthetic question',context:'Unique private synthetic context',contextConsent:true})).json();assert.equal(result.providerUsage,null);assert(!JSON.stringify(db.prepare('SELECT * FROM ai_assistant_runs').all()).includes('Unique private synthetic context'));});
+
+test('English response language reaches fixed provider instructions and has a separate cache from default Persian',async()=>{
+ const prompts=[];const f=fixture(async(_model,input)=>{prompts.push(input.messages);return {response:'Synthetic private draft '+prompts.length};});
+ const base={task:'pathway',question:'Explain the next steps'};
+ const fa=await(await f.call('analyze',base)).json();const en=await(await f.call('analyze',{...base,language:'en'})).json();
+ assert.notEqual(fa.id,en.id);assert.equal(f.calls(),2);assert.match(prompts[0][0].content,/Respond in Persian/);assert.match(prompts[1][0].content,/Respond entirely in English/);assert.doesNotMatch(prompts[1][0].content,/Respond in Persian/);assert.equal(JSON.parse(prompts[1][1].content).responseLanguage,'en');
+ const cached=await(await f.call('analyze',{...base,language:'en'})).json();assert.equal(cached.id,en.id);assert.equal(cached.cached,true);assert.equal(f.calls(),2);
+ const explicitFa=await(await f.call('analyze',{...base,language:'fa'})).json();assert.equal(explicitFa.id,fa.id);assert.equal(f.calls(),2);
+});
+test('unsupported response languages fail before quota reservation or inference',async()=>{
+ const f=fixture();for(const language of ['de','English','en-US','',null,{},1])assert.equal((await f.call('analyze',{task:'cv',question:'Synthetic question',language})).status,400);
+ assert.equal(f.calls(),0);assert.equal(f.db.prepare('SELECT count(*) n FROM ai_assistant_runs').get().n,0);
+});

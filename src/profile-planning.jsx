@@ -1,3 +1,4 @@
+import {interfaceLocale} from './interface-locale.mjs';
 import React from "react";
 import { ClipboardList, GraduationCap, Languages, Clock3 } from "lucide-react";
 
@@ -107,7 +108,7 @@ export function ProfilePlanning({ profile }) {
       </section>}
       <p className="muted">
         این بخش فقط اطلاعات ذخیره‌شدهٔ همین پروفایل را نمایش می‌دهد.
-        {hasUpdatedDate && <> آخرین به‌روزرسانی: <time dateTime={updatedAt}>{updatedDate.toLocaleDateString("fa-IR")}</time>.</>}
+        {hasUpdatedDate && <> آخرین به‌روزرسانی: <time dateTime={updatedAt}>{updatedDate.toLocaleDateString(interfaceLocale("fa-IR"))}</time>.</>}
       </p>
     </section>
   );

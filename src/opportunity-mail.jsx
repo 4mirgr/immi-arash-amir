@@ -1,3 +1,4 @@
+import {interfaceLocale} from './interface-locale.mjs';
 import {googleAccountLabel} from './google-account-labels.mjs';
 import React,{useEffect,useRef,useState} from 'react';
 import {Mail,Eye,Send,X,ExternalLink,RefreshCw,FileText,CalendarClock,ArrowRight} from 'lucide-react';
@@ -80,7 +81,7 @@ export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{}
    if(!fresh())return;
    setResult({scope,epoch,items:sent.results});if(sent.unknown)setTransportUnknown(true);
    const count=sent.results.filter(item=>item.status==='sent').length;
-   notify(kind==='queue'?'نتیجهٔ ثبت پیام‌های انتخاب‌شده در صف آماده است؛ ایمیلی ارسال نشد.':count?`${count.toLocaleString('fa-IR')} ایمیل ارسال شد؛ نتیجهٔ هر گیرنده را ببینید.`:'ارسال تازه‌ای تأیید نشد؛ نتیجهٔ هر گیرنده را بررسی کنید.');
+   notify(kind==='queue'?'نتیجهٔ ثبت پیام‌های انتخاب‌شده در صف آماده است؛ ایمیلی ارسال نشد.':count?`${count.toLocaleString(interfaceLocale('fa-IR'))} ایمیل ارسال شد؛ نتیجهٔ هر گیرنده را ببینید.`:'ارسال تازه‌ای تأیید نشد؛ نتیجهٔ هر گیرنده را بررسی کنید.');
   }catch(e){if(fresh()){setError(message(e.message));if(kind==='preview')resetReview();else setTransportUnknown(true);}}
   finally{if(valid()){lock.current=false;setBusy('');}}
  }
@@ -110,7 +111,7 @@ export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{}
    if(!fresh())return;
    const approvals=scheduled.results.map(item=>item.approval).filter(Boolean);
    setScheduleRecord({scope,epoch,approvals});setResult({scope,epoch,items:scheduled.results});if(scheduled.unknown)setScheduleUnknown(true);
-   notify(approvals.length?`${approvals.length.toLocaleString('fa-IR')} زمان‌بندی ثبت شد؛ وضعیت هر گیرنده را ببینید.`:'زمان‌بندی تازه‌ای تأیید نشد؛ وضعیت را بازخوانی کنید.');
+   notify(approvals.length?`${approvals.length.toLocaleString(interfaceLocale('fa-IR'))} زمان‌بندی ثبت شد؛ وضعیت هر گیرنده را ببینید.`:'زمان‌بندی تازه‌ای تأیید نشد؛ وضعیت را بازخوانی کنید.');
   }catch(e){if(fresh()){setError(message(e.message));setScheduleUnknown(true);}}
   finally{if(valid()){lock.current=false;setBusy('');}}
  }
@@ -127,7 +128,7 @@ export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{}
   }catch(e){if(valid()&&request===operation.current){setError(message(e.message));setScheduleUnknown(true);}}
   finally{if(valid()){lock.current=false;setBusy('');}}
  }
- const scheduleDate=value=>{try{return new Intl.DateTimeFormat('fa-IR-u-ca-persian',{timeZone:'Asia/Tehran',dateStyle:'medium',timeStyle:'short'}).format(new Date(value));}catch{return 'زمان نیازمند بررسی';}};
+ const scheduleDate=value=>{try{return new Intl.DateTimeFormat(interfaceLocale('fa-IR-u-ca-persian'),{timeZone:'Asia/Tehran',dateStyle:'medium',timeStyle:'short'}).format(new Date(value));}catch{return 'زمان نیازمند بررسی';}};
  async function downloadCV(){if(!selection.cvVersionId||lock.current)return;lock.current=true;setBusy('cv');const request=++operation.current;try{const response=await apiResponse('cv/export?profile='+encodeURIComponent(person)+'&id='+encodeURIComponent(selection.cvVersionId)+'&format=docx'),blob=await response.blob();if(!valid()||request!==operation.current)return;const href=URL.createObjectURL(blob),link=document.createElement('a');link.href=href;link.download=person+'-application-cv.docx';link.click();setTimeout(()=>URL.revokeObjectURL(href),1000);}catch(e){if(valid())setError(message(e.message));}finally{if(valid()){lock.current=false;setBusy('');}}}
  const contacts=(data?.source?.recipientDetails||[]).filter(item=>selection.recipients.includes(email(item.value)));
  const cvLabel=data?.cvs.find(item=>item.id===selection.cvVersionId)?.name||'رزومهٔ انتخاب‌شده';
@@ -167,7 +168,7 @@ export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{}
      {(!compact||!application)&&<><label>قالب ایمیل<select value={selection.presetId} disabled={!!busy||!!queue||!!application||scheduleLocked} onChange={e=>change('presetId',e.target.value)}><option value="">قالب را انتخاب کنید</option>{data.presets.map(x=><option key={x.id} value={x.id}>{x.name||x.subject||'قالب'}{x.isDefault?' · پیش‌فرض':''}</option>)}</select></label>
      <label>رزومهٔ پیوست<select value={selection.cvVersionId} disabled={!!busy||!!queue||!!application||scheduleLocked} onChange={e=>change('cvVersionId',e.target.value)}><option value="">رزومه را انتخاب کنید</option>{data.cvs.map(x=><option key={x.id} value={x.id}>{x.name||'رزومه'}{x.isDefault?' · پیش‌فرض':''}</option>)}</select></label></>}
      <label>فرستنده<select value={selection.mailbox} disabled={!!busy||!!queue||scheduleLocked} onChange={e=>change('mailbox',e.target.value)}><option value="primary">{googleAccountLabel(person,'primary',data?.accounts?.primary?.email)}</option><option value="secondary">{googleAccountLabel(person,'secondary',data?.accounts?.secondary?.email)}</option></select></label>
-     <fieldset className="opportunity-recipient-picker" disabled={recipientsLocked}><legend>گیرندگان · {selection.recipients.length.toLocaleString('fa-IR')} انتخاب‌شده</legend><div className="opportunity-recipient-actions"><button type="button" className="text-button" onClick={()=>change('recipients',publishedAddresses)}>انتخاب همه</button><button type="button" className="text-button" onClick={()=>change('recipients',[])}>برداشتن همه</button></div><div className="opportunity-recipient-list">{publishedAddresses.map(address=><label key={address} className="checkline"><input type="checkbox" checked={selection.recipients.includes(address)} onChange={e=>change('recipients',e.target.checked?[...selection.recipients,address]:selection.recipients.filter(item=>item!==address))}/><span><bdi dir="ltr">{address}</bdi><small className="recipient-role">{roleLabels[recipientRole(data.source,address)]||roleLabels.unknown}</small></span></label>)}</div><p className="section-help">همهٔ ایمیل‌های منتشرشده ابتدا انتخاب‌اند؛ برای هر گیرنده ایمیل جدا فرستاده می‌شود.</p></fieldset>
+     <fieldset className="opportunity-recipient-picker" disabled={recipientsLocked}><legend>گیرندگان · {selection.recipients.length.toLocaleString(interfaceLocale('fa-IR'))} انتخاب‌شده</legend><div className="opportunity-recipient-actions"><button type="button" className="text-button" onClick={()=>change('recipients',publishedAddresses)}>انتخاب همه</button><button type="button" className="text-button" onClick={()=>change('recipients',[])}>برداشتن همه</button></div><div className="opportunity-recipient-list">{publishedAddresses.map(address=><label key={address} className="checkline"><input type="checkbox" checked={selection.recipients.includes(address)} onChange={e=>change('recipients',e.target.checked?[...selection.recipients,address]:selection.recipients.filter(item=>item!==address))}/><span><bdi dir="ltr">{address}</bdi><small className="recipient-role">{roleLabels[recipientRole(data.source,address)]||roleLabels.unknown}</small></span></label>)}</div><p className="section-help">همهٔ ایمیل‌های منتشرشده ابتدا انتخاب‌اند؛ برای هر گیرنده ایمیل جدا فرستاده می‌شود.</p></fieldset>
     </div>
     {compact&&application&&<p className="opportunity-mail-attachment"><FileText size={15}/><MixedText>{cvLabel}</MixedText><button type="button" className="text-button" disabled={!!busy||!selection.cvVersionId} onClick={downloadCV}>دریافت رزومه</button></p>}
     {!canSend&&<p className="notice">اتصال و اجازهٔ ارسال Gmail همین صندوق لازم است.</p>}

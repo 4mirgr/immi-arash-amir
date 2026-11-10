@@ -1,3 +1,4 @@
+import {interfaceLocale} from './interface-locale.mjs';
 import React,{useMemo,useState} from 'react';
 import {Search,ExternalLink,Copy,MapPin} from 'lucide-react';
 import {MixedText} from './mixed-text';
@@ -46,7 +47,7 @@ export function GPDiscovery({sources=[],notify=()=>{}}){
    <details style={{marginTop:10}}><summary>عبارت آمادهٔ جست‌وجو</summary><p dir="ltr" style={{overflowWrap:'anywhere',whiteSpace:'pre-wrap'}}>{query}</p></details>
    <div className="form-actions" style={{flexWrap:'wrap',marginTop:12}}><a className="primary link" href={searchUrl} target="_blank" rel="noreferrer"><Search size={15}/>بازکردن جست‌وجوی عمومی</a><button type="button" className="secondary" onClick={()=>copy(query,'عبارت جست‌وجو')}><Copy size={15}/>کپی عبارت</button><button type="button" className="secondary" onClick={()=>copy(questions,'پرسش‌های بررسی مرکز')}>کپی پرسش‌های بررسی مرکز</button></div>
    <p className="muted"><MixedText>جست‌وجوی شبکه‌های اجتماعی فقط صفحات عمومیِ قابل نمایه‌شدن را پیدا می‌کند؛ ورود، گروه خصوصی و همهٔ پست‌ها پوشش داده نمی‌شوند. محدودبودن نتیجه را با حذف یکی از کلیدواژه‌ها بررسی کنید. rural بودن به معنی MMM، DPA، اسپانسرشیپ یا اجازهٔ PESCI نیست.</MixedText></p>
-   <details style={{marginTop:14}}><summary>منابع محلی و مسیرهای کشف ({filtered.length.toLocaleString('fa-IR')})</summary>
+   <details style={{marginTop:14}}><summary>منابع محلی و مسیرهای کشف ({filtered.length.toLocaleString(interfaceLocale('fa-IR'))})</summary>
     <div className="inbox-filters" style={{gap:10,flexWrap:'wrap',marginTop:12}}><label>نوع منبع<select aria-label="نوع منبع GP" value={channel} onChange={event=>filter(setChannel,event.target.value)}><option value="all">همهٔ مسیرها</option>{Object.entries(CHANNELS).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label><label>منشأ<select aria-label="منشأ منبع GP" value={trust} onChange={event=>filter(setTrust,event.target.value)}><option value="all">رسمی و غیررسمی</option><option value="official">رسمی</option><option value="unofficial">غیررسمی؛ نیازمند تأیید</option></select></label></div>
     {!visible.length&&<p className="muted">منبع بررسی‌شده‌ای با این فیلتر در فهرست نیست؛ جست‌وجوی عمومی بالا همچنان قابل استفاده است.</p>}
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,260px),1fr))',gap:12,marginTop:12}}>{visible.map((source,index)=><article className="inbox-message" key={source.id||index} style={{minWidth:0,margin:0}}>

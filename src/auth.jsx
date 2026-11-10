@@ -1,3 +1,4 @@
+import {LanguageControl} from './language-control';
 import React, { useEffect, useRef, useState } from "react";
 import { KeyRound, LogIn, Mail, RefreshCw } from "lucide-react";
 import { api, setAccessToken, setSessionGuard } from "./api";
@@ -332,6 +333,7 @@ export function AccessGate({ children }) {
   return (
     <div className="access-screen" dir="rtl">
       <section className="panel access-card">
+        <div style={{display:"flex",justifyContent:"flex-end"}}><LanguageControl/></div>
         <div className="access-brand">
           <img src="/brand-aa-180.png" alt="AA" width="64" height="64" style={{borderRadius:14}}/>
           <h1>مسیر</h1>

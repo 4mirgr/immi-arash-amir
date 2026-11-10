@@ -1,3 +1,4 @@
+import {interfaceLocale} from './interface-locale.mjs';
 import React, { useEffect, useRef, useState } from "react";
 import {
   ArrowDownToLine,
@@ -129,7 +130,7 @@ function OwnedCVVersions({ person, notify }) {
                   <strong>{v.name}</strong>
                   <small>
                     {v.createdAt
-                      ? new Date(v.createdAt).toLocaleDateString("fa-IR")
+                      ? new Date(v.createdAt).toLocaleDateString(interfaceLocale("fa-IR"))
                       : ""}
                   </small>
                 </div>

@@ -1,0 +1,29 @@
+"""Optional Playwright/Chromium regression: mixed UI text, React updates and login language.
+All provider endpoints are synthetic; no authentication or messages are sent.
+"""
+from pathlib import Path
+from playwright.sync_api import sync_playwright,expect
+from http.server import ThreadingHTTPServer,SimpleHTTPRequestHandler
+from functools import partial
+import threading,tempfile,json,subprocess,shutil,re
+HARNESS='import React,{useLayoutEffect,useRef,useState} from \'@@REPO@@/node_modules/react/index.js\';\nimport {createRoot} from \'@@REPO@@/node_modules/react-dom/client.js\';\nimport {translateInterface} from \'@@REPO@@/src/ui-translations.mjs\';\nimport {AccessGate} from \'@@REPO@@/src/auth.jsx\';\nimport {MixedText} from \'@@REPO@@/src/mixed-text.jsx\';\nconst dictionary={\'Gmail شما متصل است؛ پیام\u200cهای مرتبط را بررسی کنید\':\'Your Gmail is connected; review relevant messages\',\' نتیجه با فیلتر فعلی\':\' results matching your filters\',\'افزودن\':\'Add\',\'نام قالب\':\'Template name\',\'متن خصوصی\':\'Private text must remain original\'};\nfunction App(){const[en,setEn]=useState(false),[n,setN]=useState(12),ref=useRef();useLayoutEffect(()=>en?translateInterface(ref.current,{dictionary}):undefined,[en]);return <div><button id="switch" onClick={()=>setEn(x=>!x)}>Toggle</button><main ref={ref}><p id="mixed" dir="auto"><MixedText>Gmail شما متصل است؛ پیام\u200cهای مرتبط را بررسی کنید</MixedText></p><div id="labelled"><b>نام قالب</b>: <MixedText>Gmail شما متصل است؛ پیام\u200cهای مرتبط را بررسی کنید</MixedText></div><p id="count">{n.toLocaleString(\'fa-IR\')+\' نتیجه با فیلتر فعلی\'}</p><button id="add" title="افزودن" onClick={()=>setN(x=>x+1)}>افزودن</button><input id="input" placeholder="نام قالب" defaultValue="متن خصوصی"/><textarea id="draft" placeholder="نام قالب" defaultValue="متن خصوصی"/><pre id="source">متن خصوصی</pre></main></div>};createRoot(document.getElementById(\'root\')).render(location.search.includes(\'auth\')?<AccessGate>{()=>null}</AccessGate>:<App/>);\n'
+repo=Path(__file__).resolve().parents[2];work=tempfile.TemporaryDirectory();root=Path(work.name)
+root.joinpath('index.html').write_text('<meta charset="utf-8"><div id="root"></div><script type="module" src="/app.js"></script><link rel="stylesheet" href="/app.css">')
+root.joinpath('app.css').write_text('')
+asset=repo/'public/brand-aa-180.png'
+if asset.exists():shutil.copyfile(asset,root/'brand-aa-180.png')
+for asset_name in ['privacy.html','privacy-language.js']:shutil.copyfile(repo/'public'/asset_name,root/asset_name)
+root.joinpath('harness.jsx').write_text(HARNESS.replace('@@REPO@@',repo.as_posix()))
+subprocess.run(['node','--input-type=module','-e','import {build} from "esbuild";await build('+json.dumps({'entryPoints':[str(root/'harness.jsx')],'outfile':str(root/'app.js'),'bundle':True,'format':'esm','logLevel':'silent'})+');'],cwd=repo,check=True)
+s=ThreadingHTTPServer(('127.0.0.1',0),partial(SimpleHTTPRequestHandler,directory=str(root)));threading.Thread(target=s.serve_forever,daemon=True).start()
+with sync_playwright() as p:
+ b=p.chromium.launch(executable_path=shutil.which('chromium'),args=['--no-sandbox']);page=b.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+ page.goto('http://127.0.0.1:'+str(s.server_port));page.locator('#switch').click();expect(page.locator('#mixed')).to_have_text('Your Gmail is connected; review relevant messages');expect(page.locator('#labelled')).to_have_text('Template name: Your Gmail is connected; review relevant messages');expect(page.locator('#count')).to_have_text('12 results matching your filters');expect(page.locator('#input')).to_have_attribute('placeholder','Template name');expect(page.locator('#draft')).to_have_attribute('placeholder','Template name');assert page.locator('#input').input_value()=='متن خصوصی';assert page.locator('#draft').input_value()=='متن خصوصی';assert page.locator('#source').inner_text()=='متن خصوصی'
+ for i in range(3):
+  page.locator('#add').click();expect(page.locator('#count')).to_have_text(str(13+i)+' results matching your filters');page.locator('#switch').click();expect(page.locator('#mixed')).to_have_text('Gmail شما متصل است؛ پیام‌های مرتبط را بررسی کنید');page.locator('#switch').click();expect(page.locator('#mixed')).to_have_text('Your Gmail is connected; review relevant messages')
+ writes=[]
+ def api(route):
+  assert route.request.method=='GET';route.fulfill(json={'mode':'cloud','authRequired':True,'supabaseUrl':'https://example.invalid','publishableKey':'synthetic-public-key'})
+ page.route('**/api/public-config',api);page.goto('http://127.0.0.1:'+str(s.server_port)+'/?auth');page.locator('#login-email').fill('owner@example.invalid');page.locator('#login-password').fill('synthetic-password');page.get_by_role('button',name='تغییر زبان رابط به انگلیسی',exact=True).click();expect(page.locator('html')).to_have_attribute('lang','en');expect(page.get_by_role('button',name='Switch interface to Persian',exact=True)).to_have_text('Persian');assert not re.search(r'[؀-ۿ]',page.locator('.access-card').inner_text());assert page.locator('#login-email').input_value()=='owner@example.invalid';assert page.locator('#login-password').input_value()=='synthetic-password'
+ page.get_by_role('button',name='Switch interface to Persian',exact=True).click();expect(page.locator('html')).to_have_attribute('lang','fa');assert page.locator('#login-password').input_value()=='synthetic-password';page.goto('http://127.0.0.1:'+str(s.server_port)+'/privacy.html');page.locator('#privacy-language').click();expect(page.locator('html')).to_have_attribute('lang','en');assert not re.search(r'[\u0600-\u06ff]',page.locator('body').inner_text());assert not errors,errors
+ print('PASS English mixed UI, dynamic updates, labelled values, textarea attributes, private content, reversible login language and retained form state.');b.close();s.shutdown()

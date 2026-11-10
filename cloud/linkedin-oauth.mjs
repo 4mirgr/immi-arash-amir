@@ -1,5 +1,7 @@
 import {encryptGoogleSecret,decryptGoogleSecret} from './google-oauth.mjs';
 const COOKIE='__Host-immi_linkedin_oauth';
+// Presentation only; this cookie never participates in identity or browser-binding checks.
+const LANGUAGE_COOKIE='__Host-immi_linkedin_ui_language';
 const AUTH='https://www.linkedin.com/oauth/v2/authorization',TOKEN='https://www.linkedin.com/oauth/v2/accessToken',USER='https://api.linkedin.com/v2/userinfo';
 const SCOPES=['openid','profile','email','w_member_social'];
 const API_VERSION='202610',DAILY_LIMIT=5;
@@ -24,18 +26,23 @@ export async function linkedInConnectionStatus(env,id){
  const row=await account(env,id);const connected=row?.status==='connected'&&row.expires_at>Date.now()+30000;const scopes=row?JSON.parse(row.scopes_json):[];const canPublish=connected&&scopes.includes('w_member_social');
  return {configured:true,connected,status:row?(connected?'connected':'reconnect_required'):'not_connected',email:row?.email||null,name:row?.name||null,canPublish,expiresAt:row?new Date(row.expires_at).toISOString():null,capabilities:capabilities(canPublish)};
 }
-function finish(ok,code='linkedin_connection_failed'){
+function finish(ok,code='linkedin_connection_failed',language='en'){
+ const english=language==='en';
  const allowed=new Set(['linkedin_setup_required','invalid_state','browser_binding_missing','browser_binding_mismatch','authorization_denied','linkedin_token_rejected','linkedin_identity_invalid','linkedin_identity_in_use','linkedin_connection_failed','linkedin_unavailable','linkedin_token_unavailable','linkedin_identity_unavailable','linkedin_redirect_rejected','linkedin_client_rejected','linkedin_invalid_response']);
  const safe=allowed.has(code)?code:'linkedin_connection_failed';
- return new Response('<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8"><title>LinkedIn</title><h1>'+(ok?'اتصال LinkedIn ثبت شد':'اتصال LinkedIn انجام نشد')+'</h1><p>به پنل اصلی برگردید و این پنجره را ببندید.</p>'+(ok?'':'<p>کد خطا: <code>'+safe+'</code></p>')+'</html>',{status:ok?200:400,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'; base-uri 'none'",'Set-Cookie':COOKIE+'=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0'}});
+ const headers=new Headers({'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'; base-uri 'none'"});
+ headers.append('Set-Cookie',COOKIE+'=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0');headers.append('Set-Cookie',LANGUAGE_COOKIE+'=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0');
+ return new Response('<!doctype html><html lang="'+(english?'en':'fa')+'" dir="'+(english?'ltr':'rtl')+'"><meta charset="utf-8"><title>LinkedIn</title><h1>'+(english?(ok?'LinkedIn connected':'LinkedIn connection failed'):(ok?'اتصال LinkedIn ثبت شد':'اتصال LinkedIn انجام نشد'))+'</h1><p>'+(english?'Return to your workspace and close this window.':'به پنل اصلی برگردید و این پنجره را ببندید.')+'</p>'+(ok?'':'<p>'+(english?'Error code: ':'کد خطا: ')+'<code>'+safe+'</code></p>')+'</html>',{status:ok?200:400,headers});
 }
 export async function handleLinkedInOAuthCallback(request,env,fetcher=fetch){
+ let language='en';
  try{
   const cfg=config(env),url=new URL(request.url);if(request.method!=='GET'||url.origin!==cfg.origin||url.pathname!==cfg.pathname)fail(400,'invalid_state');
   const state=url.searchParams.get('state');if(!state||!/^[\w-]{43}$/.test(state))fail(400,'invalid_state');
-  const binding=(request.headers.get('Cookie')||'').split(';').map(x=>x.trim().split('=')).find(x=>x[0]===COOKIE)?.[1];if(!binding||!/^[\w-]{43}$/.test(binding))fail(400,'browser_binding_missing');
+  const cookies=(request.headers.get('Cookie')||'').split(';').map(x=>x.trim().split('=')),binding=cookies.find(x=>x[0]===COOKIE)?.[1];if(!binding||!/^[\w-]{43}$/.test(binding))fail(400,'browser_binding_missing');
   const stateHash=await hash(state),row=await stmt(env.GOOGLE_DB,'SELECT * FROM linkedin_oauth_states WHERE state_hash=?',stateHash).first();
   if(!row||row.expires_at<=Date.now())fail(400,'invalid_state');if(row.browser_hash!==await hash(binding))fail(400,'browser_binding_mismatch');
+  language=cookies.find(x=>x[0]===LANGUAGE_COOKIE)?.[1]==='en'?'en':'fa';
   const consumed=await stmt(env.GOOGLE_DB,'DELETE FROM linkedin_oauth_states WHERE state_hash=? AND browser_hash=? AND expires_at>? RETURNING *',stateHash,row.browser_hash,Date.now()).first();if(!consumed)fail(400,'invalid_state');
   const code=url.searchParams.get('code');if(url.searchParams.has('error')||!code||code.length>4096)fail(400,'authorization_denied');
   const response=await provider(fetcher,TOKEN,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:cfg.href,client_id:env.LINKEDIN_CLIENT_ID,client_secret:env.LINKEDIN_CLIENT_SECRET}).toString()},'token');
@@ -49,8 +56,8 @@ export async function handleLinkedInOAuthCallback(request,env,fetcher=fetch){
   const name=typeof identity.name==='string'?identity.name.slice(0,200):'';
   const email=[true,'true'].includes(identity.email_verified)&&typeof identity.email==='string'?identity.email.slice(0,320):null;
   await stmt(env.GOOGLE_DB,"INSERT INTO linkedin_accounts(owner_id,profile_id,linkedin_sub,name,email,scopes_json,token_cipher,expires_at,status,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(owner_id) DO UPDATE SET profile_id=excluded.profile_id,linkedin_sub=excluded.linkedin_sub,name=excluded.name,email=excluded.email,scopes_json=excluded.scopes_json,token_cipher=excluded.token_cipher,expires_at=excluded.expires_at,status=excluded.status,updated_at=excluded.updated_at",row.owner_id,row.profile_id,identity.sub,name,email,JSON.stringify(scopes),cipher,Date.now()+Math.min(Number(grant.expires_in),90*86400)*1000,'connected',Date.now()).run();
-  return finish(true);
- }catch(error){return finish(false,error instanceof LinkedInOAuthError?error.code:'linkedin_connection_failed');}
+  return finish(true,undefined,language);
+ }catch(error){return finish(false,error instanceof LinkedInOAuthError?error.code:'linkedin_connection_failed',language);}
 }
 async function payload(request){if(Number(request.headers.get('content-length')||0)>2000)fail(413,'payload_too_large');const raw=await request.text();if(bytes(raw).length>2000)fail(413,'payload_too_large');let body;try{body=JSON.parse(raw);}catch{fail(400,'invalid_payload');}if(!body||typeof body!=='object'||Array.isArray(body))fail(400,'invalid_payload');return body;}
 async function publish(request,env,id,fetcher){
@@ -80,10 +87,11 @@ export async function handleLinkedInOAuthRequest(request,env,context,fetcher=fet
   if(path==='/api/linkedin/connection'&&request.method==='GET')return json(await linkedInConnectionStatus(env,id));
   if(path==='/api/linkedin/publications'&&request.method==='GET'){if(!env.GOOGLE_DB)fail(503,'linkedin_setup_required');const rows=await stmt(env.GOOGLE_DB,'SELECT post_id,status,provider_urn,created_at,author_sub FROM linkedin_publish_attempts WHERE owner_id=? ORDER BY created_at DESC LIMIT 100',id).all();return json({publications:rows.results.map(r=>({postId:r.post_id,status:r.status,providerUrn:r.provider_urn||null,createdAt:r.created_at,authorSubject:r.author_sub}))});}
   if(path==='/api/linkedin/connect'&&request.method==='POST'){
+   const language=url.searchParams.has('language')?url.searchParams.get('language'):'fa';if(!['fa','en'].includes(language)||url.searchParams.getAll('language').length>1)fail(400,'invalid_language');
    const cfg=config(env);if(cfg.origin!==url.origin)fail(503,'linkedin_setup_required');
    const state=random(),binding=random();await stmt(env.GOOGLE_DB,'DELETE FROM linkedin_oauth_states WHERE owner_id=? OR expires_at<?',id,Date.now()).run();await stmt(env.GOOGLE_DB,'INSERT INTO linkedin_oauth_states VALUES(?,?,?,?,?)',await hash(state),id,context.profileId,await hash(binding),Date.now()+600000).run();
    const params=new URLSearchParams({response_type:'code',client_id:env.LINKEDIN_CLIENT_ID,redirect_uri:cfg.href,state,scope:SCOPES.join(' ')});
-   return json({authorizationUrl:AUTH+'?'+params},200,{'Set-Cookie':COOKIE+'='+binding+'; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=600'});
+   const result=json({authorizationUrl:AUTH+'?'+params},200,{'Set-Cookie':COOKIE+'='+binding+'; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=600'});result.headers.append('Set-Cookie',LANGUAGE_COOKIE+'='+language+'; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=600');return result;
   }
   if(path==='/api/linkedin/disconnect'&&request.method==='POST'){if(!env.GOOGLE_DB)fail(503,'linkedin_setup_required');await stmt(env.GOOGLE_DB,'DELETE FROM linkedin_accounts WHERE owner_id=?',id).run();await stmt(env.GOOGLE_DB,'DELETE FROM linkedin_oauth_states WHERE owner_id=?',id).run();return json({connected:false,status:'not_connected',providerRevocationConfirmed:false});}
   if(path==='/api/linkedin/publish'&&request.method==='POST'){config(env);return json(await publish(request,env,id,fetcher));}

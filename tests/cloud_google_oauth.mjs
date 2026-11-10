@@ -197,3 +197,15 @@ test('new secondary Calendar permission is explicit and incomplete grant leaves 
  assert(url.searchParams.get('scope').includes('calendar.events'));assert(!url.searchParams.get('scope').includes('drive.file'));
  const fail=await finish(env,{url,cookie:response.headers.get('Set-Cookie').split(';')[0]},google('secondary-calendar','secondary@example.invalid',{scope:GOOGLE_SCOPES.slice(0,5).join(' ')}));assert.equal(fail.status,400);assert.equal(db.prepare('select token_cipher from google_accounts where owner_id=?').get(secondary.userId).token_cipher,old);
 });
+
+test('Google callback preserves requested English through encrypted state and launch, with safe legacy fallback',async()=>{
+ const {env,db}=fixture();const response=await handleGoogleRequest(req('start?language=en','POST'),env,arash),body=await response.json(),url=new URL(body.authorizationUrl);
+ const pending={response,body,url,cookie:response.headers.get('Set-Cookie').split(';')[0]};const row=db.prepare('SELECT * FROM google_oauth_states').get();const encrypted=await decryptGoogleSecret(env,'oauth:'+row.state_hash+':'+arash.userId,row.verifier_cipher);assert.equal(encrypted.language,'en');assert(!row.verifier_cipher.includes('"language"'));
+ const launched=await handleGoogleLaunch(new Request(origin+'/api/google/launch',{method:'POST',headers:{Origin:origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({ticket:body.launchTicket})}),env);assert.equal(launched.status,303);pending.cookie=launched.headers.get('Set-Cookie').split(';')[0];
+ const html=await(await finish(env,pending)).text();assert(html.includes('lang="en"'));assert(html.includes('Google connected'));assert(!/[\u0600-\u06ff]/u.test(html));
+ const legacy=await begin(env,amir);assert((await(await finish(env,legacy,google('another-sub','other@example.invalid'))).text()).includes('lang="fa"'));
+});
+test('Google locale is validated and English denied-consent output contains only safe diagnostic identifiers',async()=>{
+ const {env,db}=fixture();for(const value of ['de','','en&language=fa'])await assert.rejects(()=>handleGoogleRequest(req('start?language='+value,'POST'),env,arash),e=>e.code==='invalid_language');assert.equal(db.prepare('SELECT count(*) n FROM google_oauth_states').get().n,0);
+ const response=await handleGoogleRequest(req('start?language=en','POST'),env,arash),data=await response.json();const denied=await handleGoogleCallback(new Request(origin+'/api/google/callback?state='+new URL(data.authorizationUrl).searchParams.get('state')+'&error=access_denied',{headers:{Cookie:response.headers.get('Set-Cookie').split(';')[0]}}),env);const html=await denied.text();assert(html.includes('lang="en"'));assert(html.includes('authorization_denied'));assert(!html.includes('synthetic-secret'));assert(!/[\u0600-\u06ff]/u.test(html));
+});

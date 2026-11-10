@@ -37,14 +37,14 @@ export async function handleAiAssistantRequest(request,env,context){
   if(Number(request.headers.get('Content-Length')||0)>36000)return json({error:'payload_too_large'},413);
   const raw=await request.text();if(new TextEncoder().encode(raw).length>36000)return json({error:'payload_too_large'},413);
   let input;try{input=JSON.parse(raw);}catch{return json({error:'invalid_json'},400);}
-  if(!input||Array.isArray(input)||typeof input!=='object'||Object.keys(input).some(key=>!['task','question','context','contextConsent'].includes(key))||!TASKS.has(input.task)||typeof input.question!=='string'||!input.question.trim()||input.context!==undefined&&typeof input.context!=='string'||input.contextConsent!==undefined&&typeof input.contextConsent!=='boolean')return json({error:'invalid_analysis'},400);
+  if(!input||Array.isArray(input)||typeof input!=='object'||Object.keys(input).some(key=>!['task','question','context','contextConsent','language'].includes(key))||!TASKS.has(input.task)||typeof input.question!=='string'||!input.question.trim()||input.context!==undefined&&typeof input.context!=='string'||input.contextConsent!==undefined&&typeof input.contextConsent!=='boolean'||input.language!==undefined&&!['fa','en'].includes(input.language))return json({error:'invalid_analysis'},400);
   if(input.task==='pesci'&&profileId!=='arash')return json({error:'task_not_available'},403);
-  const question=input.question.trim(),privateContext=(input.context||'').trim();
+  const language=input.language||'fa',question=input.question.trim(),privateContext=(input.context||'').trim();
   if(question.length+privateContext.length>MAX_INPUT)return json({error:'input_too_long'},400);
   if(/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(question+privateContext))return json({error:'invalid_analysis'},400);
   if(privateContext&&input.contextConsent!==true)return json({error:'context_consent_required'},400);
   const evidence=publicEvidence(profileId,input.task,question);
-  const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([profileId,input.task,question,privateContext,evidence]))))].map(x=>x.toString(16).padStart(2,'0')).join('');
+  const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(language==='en'?[profileId,input.task,question,privateContext,evidence,'en']:[profileId,input.task,question,privateContext,evidence]))))].map(x=>x.toString(16).padStart(2,'0')).join('');
   const day=today(),db=env.GOOGLE_DB;
   const previous=await stmt(db,'SELECT * FROM ai_assistant_runs WHERE owner_id=? AND day=? AND input_hash=?',owner,day,hash).first();
   if(previous)return previous.status==='completed'?json(runView(previous,true)):json({error:previous.status==='running'?'analysis_in_progress':'analysis_failed_budget_reserved'},previous.status==='running'?409:503);
@@ -53,8 +53,8 @@ export async function handleAiAssistantRequest(request,env,context){
   if(!reserved)return json({error:'ai_daily_limit',quota:await quota(db,owner)},429);
   let timer;
   try{
-   const requestData={task:input.task,profileTrack:profileId==='arash'?'GP/PESCI':'internal-medicine/research',question,explicitOwnerContext:privateContext||null,reviewedPublicEvidence:evidence};
-   const result=await Promise.race([env.AI.run(AI_MODEL,{messages:[{role:'system',content:SYSTEM},{role:'user',content:JSON.stringify(requestData)}],max_tokens:MAX_OUTPUT,temperature:0.2}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('timeout')),30000);})]);
+   const requestData={task:input.task,responseLanguage:language,profileTrack:profileId==='arash'?'GP/PESCI':'internal-medicine/research',question,explicitOwnerContext:privateContext||null,reviewedPublicEvidence:evidence};
+   const result=await Promise.race([env.AI.run(AI_MODEL,{messages:[{role:'system',content:language==='en'?SYSTEM.replace('Respond in Persian unless the user requests an English CV/email.','Respond entirely in English, including headings, explanations, caveats and next steps. Preserve proper names, URLs and factual uncertainty.'):SYSTEM},{role:'user',content:JSON.stringify(requestData)}],max_tokens:MAX_OUTPUT,temperature:0.2}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('timeout')),30000);})]);
    if(typeof result?.response!=='string'||!result.response.trim()||result.response.length>12000)throw Error('invalid_response');
    const answer=result.response.trim().replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,''),usage=usageView(result.usage);
    await stmt(db,"UPDATE ai_assistant_runs SET status='completed',answer=?,usage_json=? WHERE id=? AND owner_id=?",answer,JSON.stringify(usage),id,owner).run();

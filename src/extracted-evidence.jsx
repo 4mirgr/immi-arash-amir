@@ -1,3 +1,4 @@
+import {interfaceLocale} from './interface-locale.mjs';
 import React,{useEffect,useRef,useState} from 'react';
 import {api} from './api';
 import {MixedText} from './mixed-text';
@@ -9,8 +10,8 @@ const TOPICS={medicine:'پزشکی',biomedical_life_sciences:'زیست‌پزش�
 const STATUSES={http_rejected:'پاسخ HTTP غیرقابل تلاش خودکار',access_denied:'دسترسی به صفحه رد شد',reading_storage_failed:'ذخیرهٔ نتیجه ناموفق؛ منتظر تلاش محدود',pdf_reader_required:'PDF نیازمند پردازشگر جداگانه',empty_text:'متن قابل استخراج دریافت نشد',unsupported_content:'نوع محتوا پشتیبانی نمی‌شود',crawl_delay_exceeds_budget:'فاصلهٔ دریافت بیشتر از بودجهٔ نوبت است',pending:'در صف خواندن',queued:'در صف خواندن',reading:'خواندن در حال اجرا',read:'محتوا خوانده شده',read_partial:'فقط بخشی از محتوا خوانده شده',robots_blocked:'robots اجازهٔ دریافت نمی‌دهد',robots_unavailable:'سیاست robots قابل بررسی نبود',fetch_failed:'دریافت ناموفق',failed:'دریافت ناموفق',body_too_large:'بزرگ‌تر از سقف دریافت',foreign_host:'دامنهٔ مقصد نیازمند بررسی',redirect_limit:'تغییر مسیر بیش از سقف',homepage_http_error:'خطای دریافت صفحه',http_error:'خطای دریافت صفحه',pdf_parser_unavailable:'ابزار خواندن PDF در دسترس نیست',unsupported_content_type:'نوع محتوا پشتیبانی نمی‌شود',invalid_url:'نشانی خارج از قواعد دریافت'};
 const text=value=>typeof value==='string'?value:'';
 const list=value=>Array.isArray(value)?value:[];
-const count=value=>Number.isFinite(value)?value.toLocaleString('fa-IR'):'نامشخص';
-const date=value=>{try{return value?new Intl.DateTimeFormat('fa-IR',{timeZone:'Asia/Tehran',dateStyle:'medium',timeStyle:'short'}).format(new Date(value)):'ثبت نشده';}catch{return 'ثبت نشده';}};
+const count=value=>Number.isFinite(value)?value.toLocaleString(interfaceLocale('fa-IR')):'نامشخص';
+const date=value=>{try{return value?new Intl.DateTimeFormat(interfaceLocale('fa-IR'),{timeZone:'Asia/Tehran',dateStyle:'medium',timeStyle:'short'}).format(new Date(value)):'ثبت نشده';}catch{return 'ثبت نشده';}};
 const safeLink=value=>{try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password&&!u.port?u.href:null;}catch{return null;}};
 
 function Excerpts({label,values}){

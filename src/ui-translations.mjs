@@ -1,5 +1,9 @@
 // Local interface labels only. No remote provider, source-content translation or
 // changes to React elements, form values, events, or application data.
+import {EN_CORE} from './locales/en-core.mjs';
+import {EN_OPPORTUNITIES} from './locales/en-opportunities.mjs';
+import {EN_WORKFLOWS} from './locales/en-workflows.mjs';
+import {EN_EVIDENCE} from './locales/en-evidence.mjs';
 const pairs=`
 نمای کلی|Overview
 رصد فرصت‌ها|Opportunity search
@@ -432,23 +436,67 @@ Google، ایمیل دوم و قالب‌های مکاتبه|Google, secondary e
 درخواست ایمیل و رزومه|Email and CV application
 
 `;
-export const UI_TRANSLATIONS=Object.freeze(Object.fromEntries(pairs.trim().split('\n').map(line=>{const at=line.indexOf('|');return [line.slice(0,at),line.slice(at+1)];})));
-const PRIVATE='[data-no-translate],pre,blockquote,code,script,style,textarea,[contenteditable="true"],[dir="auto"],.message-snippet,.message-body,.cv-preview,.source-quote,.evidence-quote,[dir="ltr"]:not(html):not(body):not(input):not(textarea)';
-const ATTRS=['aria-label','placeholder','title'];
-function translated(value,dictionary){const key=value.trim(),replacement=dictionary[key];return replacement?value.slice(0,value.indexOf(key))+replacement+value.slice(value.indexOf(key)+key.length):null;}
-// Returns a synchronous cleanup. Node identity is preserved for React reconciliation.
+export const UI_TRANSLATIONS=Object.freeze({...Object.fromEntries(pairs.trim().split('\n').filter(line=>line.includes('|')).map(line=>{const at=line.indexOf('|');return [line.slice(0,at),line.slice(at+1)];})),...EN_CORE,...EN_OPPORTUNITIES,...EN_WORKFLOWS,...EN_EVIDENCE,'و':'and','مورد':'items','حساب تقویم':'Calendar account','دکتر امیر هوشنگ گرامی':'Dr Amir Houshang Gerami','امیر هوشنگ گرامی':'Amir Houshang Gerami','نویسه':'characters','ستاره':'stars','؛ روی دستگاه خودتان نگه دارید.':'; keep it on your device.','؛ آمار پیشرفته و شبکهٔ کامل مجوز جدا می‌خواهند':'; advanced analytics and the full network require separate permissions','روی دستگاه خودتان نگه دارید.':'keep it on your device.','آمار پیشرفته و شبکهٔ کامل مجوز جدا می‌خواهند':'advanced analytics and the full network require separate permissions'});
+const PRIVATE='[data-no-translate],pre,blockquote,code,script,style,textarea,[contenteditable="true"],.message-snippet,.message-body,.cv-preview,.source-quote,.evidence-quote,.arash-opportunity-full-text,[data-private]';
+const ATTRS=['aria-label','placeholder','title','alt'];
+const ARABIC=/[\u0600-\u06ff]/;
+const cache=new WeakMap();
+const digits=value=>value.replace(/[۰-۹٠-٩]/g,c=>String(c.charCodeAt(0)-(c>='۰'&&c<='۹'?1776:1632)));
+const normalize=value=>digits(value).replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/\s+/g,' ').trim();
+const escape=value=>value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+function compiled(dictionary){
+ if(cache.has(dictionary))return cache.get(dictionary);
+ const exact=new Map();for(const [key,value]of Object.entries(dictionary))if(typeof value==='string'&&value)exact.set(normalize(key),value);
+ const keys=[...exact.keys()].filter(key=>ARABIC.test(key)&&key.length>=3).sort((a,b)=>b.length-a.length);
+ const fragments=keys.length?new RegExp('(?<![\\p{L}\\p{M}\\u200c])(?:'+keys.map(escape).join('|')+')(?![\\p{L}\\p{M}\\u200c])','gu'):null;
+ const value={exact,fragments};cache.set(dictionary,value);return value;
+}
+export function translateUIString(value,dictionary=UI_TRANSLATIONS){
+ if(typeof value!=='string'||!value.trim())return value;
+ const {exact,fragments}=compiled(dictionary),key=normalize(value);let next=exact.get(key);
+ if(next===undefined){
+  if(!ARABIC.test(key))return digits(value);
+  const counted=key.replace(/(\d[\d,.]*)\s+از\s+(?=\d)/g,'$1 of ');
+  next=fragments?counted.replace(fragments,part=>exact.get(part)):counted;
+  if(next===key)return digits(value);
+ }
+ // Interface formatting only. ISO/form values and quoted/user content never enter here.
+ next=digits(next).replace(/،/g,',').replace(/؛/g,';').replace(/؟/g,'?').replace(/ {2,}/g,' ').trim();
+ return value.match(/^\s*/)[0]+next+value.match(/\s*$/)[0];
+}
+// Only Text.nodeValue and accessibility attributes change. React nodes, option
+// values, handlers and all application payloads retain their identity and data.
 export function translateInterface(root,{dictionary=UI_TRANSLATIONS}={}){
  if(!root)return()=>{};
  const doc=root.ownerDocument,view=doc.defaultView,texts=new Map(),attributes=new Map();let active=true,pending=false;
- const excluded=node=>node?.closest?.(PRIVATE);
- function text(node){if(!node.parentElement||excluded(node.parentElement)||node.parentElement.closest('input,select option[data-private]')||node.parentElement.tagName==='OPTION'&&!node.parentElement.hasAttribute('value'))return;
-  const current=node.nodeValue,prior=texts.get(node);if(prior&&current===prior.rendered)return;
-  const next=translated(current||'',dictionary);if(next!==null&&next!==current){texts.set(node,{original:current,rendered:next});node.nodeValue=next;}else texts.delete(node);
+ const excluded=node=>Boolean(node?.closest?.(PRIVATE));
+ function source(node){const prior=texts.get(node);if(prior&&node.nodeValue===prior.rendered)return prior.original;if(prior)texts.delete(node);return node.nodeValue||'';}
+ function apply(node,next){const original=source(node);if(node.nodeValue===next)return;node.nodeValue=next;if(original!==next)texts.set(node,{original,rendered:next});else texts.delete(node);}
+ function text(node){if(!node.parentElement||excluded(node.parentElement)||node.parentElement.closest('input,svg')||node.parentElement.tagName==='OPTION'&&!node.parentElement.hasAttribute('value'))return;
+  const original=source(node),next=translateUIString(original,dictionary);if(next!==original)apply(node,next);
  }
- function attrs(node){if(excluded(node))return;for(const key of ATTRS){const value=node.getAttribute(key);if(value===null)continue;let states=attributes.get(node);const prior=states?.get(key);if(prior&&value===prior.rendered)continue;
-   const next=translated(value,dictionary);if(next!==null&&next!==value){if(!states){states=new Map();attributes.set(node,states);}states.set(key,{original:value,rendered:next});node.setAttribute(key,next);}else states?.delete(key);
+ const unitTags='p,span,small,strong,em,b,i,label,legend,summary,button,h1,h2,h3,h4,h5,h6,option,th,td,dt,dd,a,li,div';
+ function aggregate(element,handled){
+  if(excluded(element)||element.closest('svg')||element.tagName==='OPTION'&&!element.hasAttribute('value'))return;
+  // Aggregate only a single inline sentence (including MixedText's bdi runs).
+  // Never flatten child controls, lists, blocks, links or raw/source containers.
+  if(element.querySelector('input,textarea,select,button,pre,blockquote,code,[data-no-translate],[data-private],p,div,section,article,ul,ol,li,dl,table,header,footer,details'))return;
+  const walker=doc.createTreeWalker(element,view.NodeFilter.SHOW_TEXT),nodes=[];while(walker.nextNode())if(!walker.currentNode.parentElement.closest('svg'))nodes.push(walker.currentNode);
+  if(!nodes.length)return;
+  const groups=[[]];for(const node of nodes){if(handled.has(node)){if(groups.at(-1).length)groups.push([]);}else groups.at(-1).push(node);}
+  for(const group of groups){if(!group.length)continue;const original=group.map(source).join(''),next=translateUIString(original,dictionary);
+   if(next!==original)group.forEach((node,index)=>{apply(node,index===0?next:'');handled.add(node);});
+  }
+  // A hyperlink is a semantic boundary; translating nearby prose must never
+  // move its label outside the clickable node or make the link disappear.
+  if(element.tagName==='A')nodes.forEach(node=>handled.add(node));
+ }
+ function attrs(node){if(node.closest('[data-no-translate],[data-private],script,style,.message-body,.message-snippet,.cv-preview,.source-quote,.evidence-quote'))return;for(const key of ATTRS){const value=node.getAttribute(key);if(value===null)continue;let states=attributes.get(node);const prior=states?.get(key);if(prior&&value===prior.rendered)continue;
+   const next=translateUIString(value,dictionary);if(next!==value){if(!states){states=new Map();attributes.set(node,states);}states.set(key,{original:value,rendered:next});node.setAttribute(key,next);}else states?.delete(key);
   }}
- function scan(){if(!active)return;pending=false;const walker=doc.createTreeWalker(root,view.NodeFilter.SHOW_TEXT);while(walker.nextNode())text(walker.currentNode);if(root.nodeType===1)attrs(root);for(const element of root.querySelectorAll('[aria-label],[placeholder],[title]'))attrs(element);
+ function scan(){if(!active)return;pending=false;const handled=new Set();if(root.nodeType===1&&root.matches(unitTags))aggregate(root,handled);for(const element of [...root.querySelectorAll(unitTags)].reverse())aggregate(element,handled);
+  const walker=doc.createTreeWalker(root,view.NodeFilter.SHOW_TEXT);while(walker.nextNode())if(!handled.has(walker.currentNode))text(walker.currentNode);
+  if(root.nodeType===1)attrs(root);for(const element of root.querySelectorAll('[aria-label],[placeholder],[title],[alt]'))attrs(element);
   for(const node of texts.keys())if(!root.contains(node))texts.delete(node);for(const node of attributes.keys())if(!root.contains(node))attributes.delete(node);
  }
  const observer=new view.MutationObserver(()=>{if(!active||pending)return;pending=true;queueMicrotask(scan);});

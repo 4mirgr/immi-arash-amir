@@ -76,3 +76,13 @@ test('OAuth network stages and client rejection are reportable without secrets',
 test('explicit publication uses manual redirects and a redirect remains terminal unknown',async()=>{
  const {env,db}=fixture();await link(env);const id=post(db);let calls=0;const result=await handle(req('publish',{postId:id}),env,a,async(url,options)=>{calls++;assert.equal(options.redirect,'manual');return new Response(null,{status:307,headers:{Location:'https://untrusted.example'}});});assert.equal((await result.json()).status,'delivery_unknown');await handle(req('publish',{postId:id}),env,a,()=>{throw Error('Replay forbidden');});assert.equal(calls,1);
 });
+
+test('LinkedIn presentation locale preserves binding cookies and cannot bypass authentication',async()=>{
+ const {env}=fixture();const response=await handle(req('connect?language=en',{}),env,a),data=await response.json(),cookies=response.headers.getSetCookie();assert.equal(cookies.length,2);assert(cookies[0].startsWith('__Host-immi_linkedin_oauth='));assert(cookies[1].startsWith('__Host-immi_linkedin_ui_language=en;'));assert(cookies[1].includes('Secure; HttpOnly; SameSite=Lax'));
+ const pending={url:new URL(data.authorizationUrl),cookie:cookies.map(c=>c.split(';')[0]).join('; ')};const wrong={...pending,cookie:'__Host-immi_linkedin_oauth='+'x'.repeat(43)+'; __Host-immi_linkedin_ui_language=en'};assert.equal((await finish(env,wrong)).status,400);
+ const result=await finish(env,pending);const html=await result.text();assert.equal(result.status,200);assert(html.includes('lang="en"'));assert(html.includes('LinkedIn connected'));assert(!/[\u0600-\u06ff]/u.test(html));assert.equal(result.headers.getSetCookie().length,2);
+ const legacy=await begin(env,b);assert((await(await finish(env,legacy,provider('member-b'))).text()).includes('lang="fa"'));
+});
+test('LinkedIn locale validation rejects unsupported presentation choices without creating state',async()=>{
+ const {env,db}=fixture();for(const language of ['de','','en&language=fa'])assert.equal((await handle(req('connect?language='+language,{}),env,a)).status,400);assert.equal(db.prepare('SELECT count(*) n FROM linkedin_oauth_states').get().n,0);
+});

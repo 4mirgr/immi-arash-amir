@@ -103,6 +103,7 @@ export async function handleGoogleRequest(request,env,context,fetcher=fetch){
  if(request.method==='GET'&&url.pathname==='/api/google/status')return json(await googleStatus(env,id,context.profileId));
  if(request.method==='POST'&&request.headers.has('Origin')&&request.headers.get('Origin')!==url.origin&&!(url.pathname==='/api/google/start'&&googleStartOriginAllowed(request,env)))throw new GoogleError(403,'origin_rejected','Origin rejected');
  if(request.method==='POST'&&url.pathname==='/api/google/start'){
+  const language=url.searchParams.has('language')?url.searchParams.get('language'):'fa';if(!['fa','en'].includes(language)||url.searchParams.getAll('language').length>1)throw new GoogleError(400,'invalid_language','Unsupported interface language');
   const purpose=url.searchParams.get('purpose');if(purpose!==null&&(!['backup','calendar'].includes(purpose)||!isSecondaryGoogleOwner(id)))throw new GoogleError(400,'invalid_purpose','Additional service authorization requires the secondary account owner');
   const redirect=configured(env);await encryptionKey(env);if(isSecondaryGoogleOwner(id)&&context.profileId==='amir')secondaryEmail(env);
   if(!googleStartOriginAllowed(request,env))throw new GoogleError(503,'oauth_domain_setup_required','Google OAuth must start from a configured application origin');
@@ -119,7 +120,7 @@ export async function handleGoogleRequest(request,env,context,fetcher=fetch){
   const state=random(),binding=random(),verifier=random(),launchSecret=random(),callbackNonce=random(),stateHash=await hash(state);
   const bridge={tokenHash:await hash(launchSecret),binding,parentOrigin,callbackNonce};
   await env.GOOGLE_DB.prepare('DELETE FROM google_oauth_states WHERE expires_at<? OR owner_id=?').bind(now(),id).run();
-  await env.GOOGLE_DB.prepare('INSERT INTO google_oauth_states(state_hash,owner_id,profile_id,browser_hash,verifier_cipher,expires_at) VALUES(?,?,?,?,?,?)').bind(stateHash,id,context.profileId,await hash(binding),await encryptGoogleSecret(env,'oauth:'+stateHash+':'+id,{verifier,bridge,parentOrigin,callbackNonce,purpose,requestedScopes,expectedIdentity}),now()+600000).run();
+  await env.GOOGLE_DB.prepare('INSERT INTO google_oauth_states(state_hash,owner_id,profile_id,browser_hash,verifier_cipher,expires_at) VALUES(?,?,?,?,?,?)').bind(stateHash,id,context.profileId,await hash(binding),await encryptGoogleSecret(env,'oauth:'+stateHash+':'+id,{verifier,bridge,parentOrigin,callbackNonce,purpose,requestedScopes,expectedIdentity,language}),now()+600000).run();
   return json({authorizationUrl:authorizationUrl(env,id,redirect,state,await hash(verifier),purpose,requestedScopes,expectedIdentity),launchUrl:redirect.origin+'/api/google/launch',launchTicket:state+'.'+launchSecret,callbackNonce,oauthOrigin:redirect.origin},200,{'Set-Cookie':COOKIE+'='+binding+'; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600'});
  }
  if(request.method==='POST'&&url.pathname==='/api/google/disconnect'){
@@ -149,7 +150,7 @@ export async function handleGoogleLaunch(request,env){
  const stored=await decryptGoogleSecret(env,'oauth:'+stateHash+':'+pending.owner_id,pending.verifier_cipher);
  const bridge=stored.bridge;
  if(!bridge||bridge.parentOrigin!==origin||bridge.tokenHash!==await hash(secret)||!/^[A-Za-z0-9_-]{43}$/.test(bridge.binding))throw new GoogleError(400,'invalid_launch','Google connection launch expired or already used');
- const next=await encryptGoogleSecret(env,'oauth:'+stateHash+':'+pending.owner_id,{verifier:stored.verifier,parentOrigin:bridge.parentOrigin,callbackNonce:bridge.callbackNonce,purpose:stored.purpose||null,requestedScopes:stored.requestedScopes||null,expectedIdentity:stored.expectedIdentity||null});
+ const next=await encryptGoogleSecret(env,'oauth:'+stateHash+':'+pending.owner_id,{verifier:stored.verifier,parentOrigin:bridge.parentOrigin,callbackNonce:bridge.callbackNonce,purpose:stored.purpose||null,requestedScopes:stored.requestedScopes||null,expectedIdentity:stored.expectedIdentity||null,language:stored.language==='en'?'en':'fa'});
  const claimed=await env.GOOGLE_DB.prepare('UPDATE google_oauth_states SET verifier_cipher=? WHERE state_hash=? AND verifier_cipher=? AND expires_at>? RETURNING owner_id').bind(next,stateHash,pending.verifier_cipher,now()).first();
  if(!claimed)throw new GoogleError(400,'invalid_launch','Google connection launch expired or already used');
  return new Response(null,{status:303,headers:{Location:authorizationUrl(env,pending.owner_id,redirect,state,await hash(stored.verifier),stored.purpose,stored.requestedScopes,stored.expectedIdentity),'Set-Cookie':COOKIE+'='+bridge.binding+'; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'; base-uri 'none'"}});
@@ -169,15 +170,16 @@ async function recordCallbackDiagnostic(env,ownerId,diagnostic){
   await env.GOOGLE_DB.prepare('DELETE FROM google_oauth_diagnostics WHERE owner_id IS ? AND id NOT IN (SELECT id FROM google_oauth_diagnostics WHERE owner_id IS ? ORDER BY created_at DESC,rowid DESC LIMIT 50)').bind(ownerId||null,ownerId||null).run();
  }catch{/* Diagnostics are best effort and must not alter OAuth outcomes. */}
 }
-function finish(ok,status=200,diagnostic=null,notification=null){
+function finish(ok,status=200,diagnostic=null,notification=null,language='en'){
+ const english=language==='en';
  const safe=diagnostic&&CALLBACK_STAGES.includes(diagnostic.stage)&&CALLBACK_CODES.has(diagnostic.code)?diagnostic:null;
  const channel=notification&&/^https:\/\//.test(notification.parentOrigin)&&/^[A-Za-z0-9_-]{43}$/.test(notification.callbackNonce)?notification:null;
  const nonce=random(),script=channel?'<script nonce="'+nonce+'">if(window.opener)window.opener.postMessage('+JSON.stringify({type:'immi-google-oauth',ok,nonce:channel.callbackNonce,code:safe?.code||null}).replaceAll('<','\\u003c')+','+JSON.stringify(channel.parentOrigin).replaceAll('<','\\u003c')+');</script>':'';
- const detail=!ok&&safe?'<p>کد خطای قابل گزارش: <code dir="ltr">'+safe.stage+'/'+safe.code+'</code></p>':'';
- return new Response('<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>اتصال Google</title><body><h1>'+(ok?'اتصال Google ثبت شد':'اتصال Google انجام نشد')+'</h1><p>'+(ok?'به پنل اصلی برگردید. می‌توانید این پنجره را ببندید.':'به پنل اصلی برگردید و اتصال را دوباره آغاز کنید.')+'</p>'+detail+script+'</body></html>',{status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; script-src 'nonce-"+nonce+"'; frame-ancestors 'none'; base-uri 'none'",'Set-Cookie':COOKIE+'=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0'}});
+ const detail=!ok&&safe?'<p>'+(english?'Error code: ':'کد خطای قابل گزارش: ')+'<code dir="ltr">'+safe.stage+'/'+safe.code+'</code></p>':'';
+ return new Response('<!doctype html><html lang="'+(english?'en':'fa')+'" dir="'+(english?'ltr':'rtl')+'"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>'+(english?'Google connection':'اتصال Google')+'</title><body><h1>'+(english?(ok?'Google connected':'Google connection failed'):(ok?'اتصال Google ثبت شد':'اتصال Google انجام نشد'))+'</h1><p>'+(english?(ok?'Return to your workspace. You may close this window.':'Return to your workspace and start the connection again.'):(ok?'به پنل اصلی برگردید. می‌توانید این پنجره را ببندید.':'به پنل اصلی برگردید و اتصال را دوباره آغاز کنید.'))+'</p>'+detail+script+'</body></html>',{status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; script-src 'nonce-"+nonce+"'; frame-ancestors 'none'; base-uri 'none'",'Set-Cookie':COOKIE+'=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0'}});
 }
 export async function handleGoogleCallback(request,env,fetcher=fetch){
- let stage='configuration',ownerId=null,notification=null;
+ let stage='configuration',ownerId=null,notification=null,language='en';
  try{
   const expected=configured(env),url=new URL(request.url);if(request.method!=='GET'||url.origin!==expected.origin||url.pathname!==expected.pathname)throw new GoogleError(400,'invalid_callback','Invalid callback');
   stage='state';
@@ -196,8 +198,9 @@ export async function handleGoogleCallback(request,env,fetcher=fetch){
   stage='state_consume';
   const pending=await env.GOOGLE_DB.prepare('DELETE FROM google_oauth_states WHERE state_hash=? AND browser_hash=? AND expires_at>? RETURNING *').bind(stateHash,browserHash,now()).first();
   if(!pending)throw new GoogleError(400,'state_not_found','Connection state expired or already used');
+  const stored=await decryptGoogleSecret(env,'oauth:'+stateHash+':'+pending.owner_id,pending.verifier_cipher);const {verifier}=stored;language=stored.language==='en'?'en':'fa';
   const code=url.searchParams.get('code');if(url.searchParams.has('error')||!code||code.length>4096)throw new GoogleError(400,'authorization_denied','Google connection was not authorized');
-  const stored=await decryptGoogleSecret(env,'oauth:'+stateHash+':'+pending.owner_id,pending.verifier_cipher);const {verifier}=stored;
+
   if(appOrigins(env,expected).has(stored.parentOrigin)&&/^[A-Za-z0-9_-]{43}$/.test(stored.callbackNonce))notification={parentOrigin:stored.parentOrigin,callbackNonce:stored.callbackNonce};
   stage='token_exchange';
   const response=await googleFetch(fetcher,TOKEN_URL,form({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,code,code_verifier:verifier,grant_type:'authorization_code',redirect_uri:expected.href}));const grant=await responseJson(response);
@@ -222,6 +225,6 @@ export async function handleGoogleCallback(request,env,fetcher=fetch){
   const pinnedUpdate=isSecondaryGoogleOwner(pending.owner_id)?' WHERE google_accounts.google_sub=excluded.google_sub AND lower(google_accounts.email)=lower(excluded.email) AND google_accounts.profile_id=excluded.profile_id':'';
   await env.GOOGLE_DB.prepare('INSERT INTO google_accounts(owner_id,profile_id,google_sub,email,scopes_json,token_cipher,expires_at,status,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(owner_id) DO UPDATE SET profile_id=excluded.profile_id,google_sub=excluded.google_sub,email=excluded.email,scopes_json=excluded.scopes_json,token_cipher=excluded.token_cipher,expires_at=excluded.expires_at,status=excluded.status,updated_at=excluded.updated_at'+pinnedUpdate).bind(pending.owner_id,pending.profile_id,identity.sub,identity.email.toLowerCase(),JSON.stringify(scopes),cipher,now()+Math.min(Number(grant.expires_in),86400)*1000,'connected',now()).run();
   if(isSecondaryGoogleOwner(pending.owner_id)){const saved=await account(env,pending.owner_id);if(!saved||saved.google_sub!==identity.sub||saved.email.toLowerCase()!==identity.email.toLowerCase())throw new GoogleError(409,'identity_mailbox_mismatch','Disconnect the current secondary account before selecting a different Google account');}
-  return finish(true,200,null,notification);
- }catch(error){const diagnostic=callbackDiagnostic(stage,error);await recordCallbackDiagnostic(env,ownerId,diagnostic);return finish(false,error instanceof GoogleError?error.status:400,diagnostic,notification);}
+  return finish(true,200,null,notification,language);
+ }catch(error){const diagnostic=callbackDiagnostic(stage,error);await recordCallbackDiagnostic(env,ownerId,diagnostic);return finish(false,error instanceof GoogleError?error.status:400,diagnostic,notification,language);}
 }

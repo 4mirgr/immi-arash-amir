@@ -1928,3 +1928,11 @@ bdi[dir="ltr"] { direction: ltr; unicode-bidi: isolate; }
  .arash-opportunity-focus > .page-heading { gap: 10px; margin-bottom: 12px; }
  .arash-opportunity-focus > .page-heading h1 { font-size: 1.2rem; }
 }
+
+/* English UI direction follows the selected language inside legacy RTL panels. */
+:root[data-language="en"] .app [dir="rtl"]:not(input):not(textarea):not(pre):not(blockquote):not([data-no-translate]):not([data-private]):not(.message-body):not(.cv-preview):not(.source-quote):not(.evidence-quote),
+:root[data-language="en"] .access-screen[dir="rtl"] { direction:ltr; }
+:root[data-language="en"] .app .page,:root[data-language="en"] .access-card { text-align:start; }
+
+:root[data-language="en"] .app a.secondary.link { max-width:100%; white-space:normal; overflow-wrap:anywhere; min-width:0; }
+:root[data-language="en"] .app a.secondary.link bdi { white-space:normal; overflow-wrap:anywhere; word-break:break-word; min-width:0; }
