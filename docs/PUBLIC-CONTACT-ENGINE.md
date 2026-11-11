@@ -1,5 +1,7 @@
 # Public discovery and contact engine
 
+آخرین تکمیل‌های پنل آرش و ناتمامی‌های این موضوع در [گزارش ۱۱ نوامبر ۲۰۲۶](ARASH-DELIVERY-2026-11-11.fa.md) ثبت شده است؛ شمارش منابع در یادداشت‌های تاریخی پایین، snapshot همان تاریخ است.
+
 This engine runs within existing Workers Free services; it needs no additional search API key or paid subscription. Fixed source collection now has23 adapters, including five directly checked clinical recruitment sources (GP-CLINICAL-EXPANSION.md). The hourly collector still visits three sources per run; the normal full rotation is about8hours. This is finite coverage, not an exhaustive index of every Australian practice, private group or social profile.
 
 Actually retrieved HTML/plain text is parsed for emails, labelled phones, public social links, websites and explicitly stated organization identities. Every fact keeps sourceURL, readAt, exact quote, method and application/general/unknown role. Hidden content, login/action paths and privacy/DPO recipients are excluded. JSON-LD is parsed as data, never executed; only explicit JobPosting structures can establish an employer-name statement. Flat text uses local match context so an unrelated privacy footer cannot suppress clinical contacts elsewhere.
