@@ -143,7 +143,7 @@ async function reviewedRobots(source,fetcher){
 async function collectOne(db,source,fetcher,remaining,now){
  const lock=crypto.randomUUID();
  await run(db,'INSERT OR IGNORE INTO registered_source_checks(source_id) VALUES(?)',source.id);
- const claim=await first(db,'UPDATE registered_source_checks SET lock_token=?,lock_until=?,last_attempt_at=? WHERE source_id=? AND lock_until<? AND next_check_at<=? RETURNING etag,record_cursor',lock,now+90000,now,source.id,now,now);
+ const claim=await first(db,'UPDATE registered_source_checks SET lock_token=?,lock_until=?,last_attempt_at=? WHERE source_id=? AND lock_until<? AND next_check_at<=? RETURNING etag,record_cursor,last_success_at,status,partial',lock,now+90000,now,source.id,now,now);
  if(!claim)return {sourceId:source.id,status:'cooldown_or_busy',imported:0};
  try{
   validateSourceUrl(source.feedUrl,source);
@@ -154,7 +154,17 @@ async function collectOne(db,source,fetcher,remaining,now){
   let response;try{response=await fetcher(source.feedUrl,{headers:{...headers,...(source.requestMethod==='POST'?{'Content-Type':'application/json'}:{})},...(source.requestMethod==='POST'?{method:'POST',body:JSON.stringify(source.requestBody)}:{}),redirect:'manual',signal:AbortSignal.timeout(15000)});}catch{fail('source_unavailable');}
   if(response.redirected||(response.status>=300&&response.status<400&&response.status!==304))fail('source_redirect_rejected');
   if(response.url&&response.url!==source.feedUrl)fail('source_redirect_rejected');
-  if(response.status===304){await run(db,"UPDATE registered_source_checks SET status='not_modified',last_success_at=?,next_check_at=?,last_error_code=NULL,imported_records=0 WHERE source_id=? AND lock_token=?",now,now+SUCCESS_COOLDOWN,source.id,lock);return {sourceId:source.id,status:'not_modified',imported:0};}
+  if(response.status===304){
+   // A 304 confirms only the body identified by the ETag we actually sent.
+   // Match the prior successful observation timestamp rather than renewing every
+   // record ever seen at this source (removed and historical editions stay old).
+   if(!headers['If-None-Match']||!Number.isFinite(claim.last_success_at)||!['updated','not_modified'].includes(claim.status)||claim.partial||claim.record_cursor)fail('source_unexpected_not_modified');
+   const writes=await db.batch([
+    stmt(db,`UPDATE opportunity_editions AS current SET last_seen_at=? WHERE current.source_id=? AND current.last_seen_at=? AND current.status NOT IN ('closed','source_removed','future') AND (current.closing_at IS NULL OR julianday(current.closing_at)>julianday(?)) AND (current.published_at IS NULL OR julianday(current.published_at)<=julianday(?)) AND CASE WHEN json_valid(current.data) THEN json_extract(current.data,'$.sourceUrl') END=? AND NOT EXISTS (SELECT 1 FROM opportunity_editions next WHERE next.source_id=current.source_id AND next.external_id=current.external_id AND (next.first_seen_at>current.first_seen_at OR (next.first_seen_at=current.first_seen_at AND next.rowid>current.rowid))) AND EXISTS(SELECT 1 FROM registered_source_checks checks WHERE checks.source_id=current.source_id AND checks.lock_token=?)`,iso(now),source.id,iso(claim.last_success_at),iso(now),iso(now),source.feedUrl,lock),
+    stmt(db,"UPDATE registered_source_checks SET status='not_modified',last_success_at=?,next_check_at=?,last_error_code=NULL,imported_records=0 WHERE source_id=? AND lock_token=?",now,now+SUCCESS_COOLDOWN,source.id,lock)
+   ]);
+   return {sourceId:source.id,status:'not_modified',imported:0,refreshedObservations:writes?.[0]?.meta?.changes??null,observationScope:'latest_receipt_current_editions_only'};
+  }
   if(!response.ok)fail(response.status===429?'source_rate_limited':response.status===403?'source_access_denied':'source_http_error');
   const records=await normalizeSourceRecords(source,await boundedText(response));
   const start=claim.record_cursor<records.length?claim.record_cursor:0;

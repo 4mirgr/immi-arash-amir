@@ -13,7 +13,7 @@ function fixture(position){
  const binding={prepare(sql){return{bind(...args){const st=db.prepare(sql);return{async first(){return st.get(...args)||null;},async all(){return{results:st.all(...args)};},async run(){return{success:true,meta:st.run(...args)};},_run(){return st.run(...args);}};}};},async batch(items){db.exec('BEGIN');try{for(const item of items)item._run();db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}}};return{db,env:{OPPORTUNITY_DB:binding}};
 }
 test('only reviewed successful collector HTTP pages activate; unavailable restriction source stays manual',()=>{
- assert.equal(active.length,5);assert.equal(new Set(defs.map(s=>s.id)).size,defs.length);assert.equal(defs.find(s=>s.id==='reviewed-ararat-level1-restriction').executable,false);
+ assert.equal(active.length,7);assert.equal(new Set(defs.map(s=>s.id)).size,defs.length);assert.equal(defs.find(s=>s.id==='reviewed-ararat-level1-restriction').executable,false);
  for(const source of defs){assert.equal(new URL(source.feedUrl).protocol,'https:');assert.deepEqual(source.allowedHosts,[new URL(source.feedUrl).hostname]);assert(source.reason);assert.equal(source.evidenceQuotes,undefined);assert.equal(source.publishedContacts,undefined);assert(SOURCE_REGISTRY.some(s=>s.id===source.id));}
 });
 test('dynamic text preserves negative requirements and ignores old research quotes and hidden claims',async()=>{
@@ -27,7 +27,7 @@ test('referral adapter isolates the practice contact and retains AMC/PESCI requi
 });
 test('network pages remain enquiry registers and cannot widen their host or fabricate a current vacancy',()=>{
  for(const source of active.filter(s=>s.kind==='employment_register')){const [row]=normalize({...source,feedUrl:'https://evil.invalid/',allowedHosts:['evil.invalid']},content(source));assert.equal(row.kind,'employment_register');assert.equal(row.url,source.feedUrl);assert.match(row.title,/expression of interest/);assert.equal(row.contactEvidence[0].sourceURL,source.feedUrl);}
- assert.throws(()=>normalize({...active[0],id:'unregistered'},content(active[0])));assert.throws(()=>normalize({...active[0],adapter:'other'},content(active[0])));assert.throws(()=>normalize(defs.at(-1),content(defs.at(-1))));
+ assert.throws(()=>normalize({...active[0],id:'unregistered'},content(active[0])));assert.throws(()=>normalize({...active[0],adapter:'other'},content(active[0])));assert.throws(()=>normalize(defs.find(s=>s.id==='reviewed-ararat-level1-restriction'),content(defs.find(s=>s.id==='reviewed-ararat-level1-restriction'))));
  for(const bad of ['Not HTML',html('Access denied'), html('General Practitioner careers — verify you are human. '+ 'This page requires a browser challenge. '.repeat(8)), 'x'.repeat(1000001)])assert.throws(()=>normalize(active[1],bad));
 });
 test('registered rotation obeys robots before body fetch and keeps source/record budgets bounded',async()=>{

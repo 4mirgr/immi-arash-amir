@@ -25,7 +25,8 @@ export function normalizeReviewedGpSourceRecords(input,body){
   if(start<0||contact<0||end<contact||!content.slice(contact,end).includes(source.organizationName))fail('reviewed_gp_job_section_missing');
   content=content.slice(start,end);
  }
- if(content.length<120||!/\b(?:GPs?|general practi(?:ce|tioners?)|medical practitioners?)\b/i.test(content)||!/\b(?:career|employment|recruit|hiring|vacanc|supervis|training|mentorship|interest|PESCI)\w*/i.test(content))fail('reviewed_gp_recruitment_not_found');
+ const hiringLanguage=/\b(?:career|employment|recruit|hiring|vacanc|supervis|training|mentorship|interest|PESCI)\w*/i.test(content)||/\b(?:looking for|seeking)\s+(?:enthusiastic\s+)?(?:general practitioners?|GPs?)\b/i.test(content);
+ if(content.length<120||!/\b(?:GPs?|general practi(?:ce|tioners?)|medical practitioners?)\b/i.test(content)||!hiringLanguage)fail('reviewed_gp_recruitment_not_found');
  const evidence=extractPublicContacts(source.id==='reviewed-hwq-wembley-level1'?{text:content,sourceURL:source.feedUrl}:{html:body,sourceURL:source.feedUrl});
  const contacts=evidence.contacts.filter(contact=>['email','phone','website'].includes(contact.type)&&['application','organization_general','unknown'].includes(contact.contactRole));
  const appendix=contacts.slice(0,12).map(contact=>'Published '+contact.contactRole+' '+contact.type+': '+contact.value+' — '+contact.quote).join('\n');

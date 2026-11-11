@@ -30,6 +30,8 @@ import {handleOwnerBackupRequest} from './owner-backup.mjs';
 import {handleBackupDriveRequest} from './backup-drive.mjs';
 import {handleLinkedInSchedulerRequest,dispatchScheduledLinkedIn} from './linkedin-scheduler.mjs';
 import {handleMailSchedulerRequest,dispatchScheduledMail} from './mail-automation-scheduler.mjs';
+import {handleClinicBankRequest,dispatchClinicBankReading} from './clinic-bank.mjs';
+import {reconcileClinicBankGrowth} from './clinic-bank-growth.mjs';
 import educationalCase from '../library/pesci/PESCI-PRACTICE-COMM-001.json' with { type: 'json' };
 
 const DEFAULT_SETTINGS = { emailPolicy: 'auto_after_connection', defaultTemplate: '', notifications: false };
@@ -92,6 +94,7 @@ export function createHandler(fetcher = fetch) {
       if (!['arash','amir'].includes(profileId)) throw new ApiError(403, 'Account has not been provisioned for this workspace');
       const requestedProfile = url.searchParams.get('profile');
       if (requestedProfile && requestedProfile !== profileId) throw new ApiError(403, 'Profile access denied');
+      if(url.pathname.startsWith('/api/clinic-bank/'))return await handleClinicBankRequest(request,env,{userId:user.id,profileId})||json({error:'Not found'},404);
       if(url.pathname==='/api/research/pages')return await handlePublicPagesRequest(request,env,{userId:user.id,profileId})||json({error:'Not found'},404);
       if(url.pathname==='/api/discovery/universities')return await handleUniversityCatalogueRequest(request,env,{userId:user.id,profileId})||json({error:'Not found'},404);
       if(url.pathname.startsWith('/api/gp-applications/'))return await handleGpApplicationPackageRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
@@ -232,4 +235,4 @@ export function createHandler(fetcher = fetch) {
     } catch (error) { const expected=error instanceof ApiError||error instanceof GoogleError;return json({error:expected ? error.message : 'Request failed',...(error instanceof GoogleError?{code:error.code}:{})},expected ? error.status : 500); }
   };
 }
-export default {fetch:createHandler(),async scheduled(event,env){const cron=event.cron||'0 * * * *';if(cron==='*/15 * * * *')return await dispatchTelegramNotifications(env);if(cron==='*/5 * * * *'){const publication=await dispatchScheduledLinkedIn(env);const reading=await dispatchPublicPageReading(env);const discoveryAI=await dispatchPublicDiscoveryAI(env);return {publication,reading,discoveryAI};}if(cron==='2-57/5 * * * *')return await dispatchScheduledMail(env);if(cron==='15 */6 * * *'){const maintenance=await runMaintenance(env);const evidence=await watchEvidenceSources(env);return {maintenance,evidence};}return await runScheduledCollection(event,env,collectRegisteredSources);}};
+export default {fetch:createHandler(),async scheduled(event,env){const cron=event.cron||'0 * * * *';if(cron==='*/15 * * * *')return await dispatchTelegramNotifications(env);if(cron==='*/5 * * * *'){const publication=await dispatchScheduledLinkedIn(env);const reading=await dispatchPublicPageReading(env);const discoveryAI=await dispatchPublicDiscoveryAI(env);const clinicBankGrowth=await reconcileClinicBankGrowth(env);const clinicBank=await dispatchClinicBankReading(env);return {publication,reading,discoveryAI,clinicBankGrowth,clinicBank};}if(cron==='2-57/5 * * * *')return await dispatchScheduledMail(env);if(cron==='15 */6 * * *'){const maintenance=await runMaintenance(env);const evidence=await watchEvidenceSources(env);return {maintenance,evidence};}return await runScheduledCollection(event,env,collectRegisteredSources);}};

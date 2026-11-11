@@ -1,0 +1,27 @@
+import React,{useEffect,useRef,useState} from 'react';
+import {Search,ExternalLink,Database} from 'lucide-react';
+import {api} from './api';
+import {interfaceLocale} from './interface-locale.mjs';
+import {MixedText} from './mixed-text';
+import './clinic-bank-panel.css';
+const safeLink=value=>{try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password?u.href:null;}catch{return null;}};
+const stateLabels={pending:'در صف بررسی',reading:'در حال خواندن',public_contacts_found:'تماس منتشرشده پیدا شد',public_page_read:'صفحه خوانده شد؛ تماس پیدا نشد',robots_blocked:'خواندن خودکار مجاز نیست',access_denied:'دسترسی محدود است',membership_check_unavailable:'بررسی دسترسی حساب موقتاً ممکن نیست',owner_inactive:'حساب غیرفعال است',pdf_reader_required:'نیازمند خواندن PDF',invalid_url:'نشانی قابل بررسی نیست'};
+export function ClinicBankPanel({person,onSearch}){
+ const [open,setOpen]=useState(false),[filter,setFilter]=useState('contacts'),[page,setPage]=useState(0),[snapshot,setSnapshot]=useState(null),[failed,setFailed]=useState(false),[busy,setBusy]=useState(false),epoch=useRef(0);
+ const scope=person+':'+filter+':'+page;
+ useEffect(()=>{if(!open)return;let mounted=true,flight=false;const seq=++epoch.current;setSnapshot(null);setFailed(false);
+  async function load(){if(flight)return;flight=true;setBusy(true);try{const [status,rows]=await Promise.all([api('clinic-bank/status?profile='+person),api('clinic-bank/items?'+new URLSearchParams({profile:person,status:filter,limit:'10',offset:String(page*10)}))]);if(mounted&&seq===epoch.current){setSnapshot({scope,status,items:rows.items||[]});setFailed(false);}}catch{if(mounted&&seq===epoch.current)setFailed(true);}finally{flight=false;if(mounted&&seq===epoch.current)setBusy(false);}}
+  load();const tick=()=>{if(document.visibilityState==='visible'&&navigator.onLine!==false)load();},timer=setInterval(tick,60000);return()=>{mounted=false;clearInterval(timer);};
+ },[open,person,filter,page]);
+ const data=snapshot?.scope===scope?snapshot:null,counts=data?.status.counts||{},num=n=>Number(n||0).toLocaleString(interfaceLocale('fa-IR'));
+ return <details className="arash-fold neon-cyan clinic-bank-panel" onToggle={e=>setOpen(e.currentTarget.open)}><summary><Database size={17}/>بانک خصوصی کلینیک‌ها؛ بررسی خودکار وب‌سایت‌ها</summary>{open&&<div className="arash-fold-body">
+  <p className="section-help">وب‌سایت‌های فایل‌های اکسل به‌تدریج خوانده می‌شوند تا اطلاعات تماس منتشرشده به‌روز شود. این مراکز سرنخ‌اند؛ داشتن ایمیل به معنی آگهی استخدام یا امکان سوپرویژن نیست.</p>
+  {data&&<div className="clinic-bank-counts"><span>وب‌سایت‌ها <strong>{num(counts.total)}</strong></span><span>بررسی‌شده <strong>{num(counts.read)}</strong></span><span>دارای تماس <strong>{num(counts.withContacts)}</strong></span><span>در صف بررسی <strong>{num(counts.pending)}</strong></span></div>}
+  {data&&<p className="section-help">{data.status.enabled?'چرخهٔ خودکار فعال است؛ هر نوبت حداکثر دو وب‌سایت بررسی می‌شود.':'چرخهٔ خودکار این بانک هنوز فعال نشده است.'} هدف بازبینی هفت‌روزه است؛ زمان واقعی به طول صف و محدودیت سایت‌ها بستگی دارد.</p>}
+  <div className="clinic-bank-controls"><label>نمایش<select value={filter} onChange={e=>{setFilter(e.target.value);setPage(0);}}><option value="contacts">دارای اطلاعات تماس</option><option value="pending">منتظر بررسی</option><option value="blocked">نیازمند رسیدگی</option><option value="all">همهٔ مراکز</option></select></label><span className="muted">{busy?'در حال دریافت…':''}</span></div>
+  {failed&&<p className="notice" role="status">وضعیت بانک موقتاً دریافت نشد؛ دوباره بررسی می‌شود.</p>}
+  <div className="clinic-bank-items">{data?.items.map(item=><article key={item.id}><strong dir="auto"><MixedText>{item.name||new URL(item.url).hostname}</MixedText></strong><small><MixedText>{stateLabels[item.status]||'بررسی سایت هنوز کامل نشده است'}</MixedText></small>{safeLink(item.url)&&<a href={item.url} target="_blank" rel="noreferrer">وب‌سایت مرکز <ExternalLink size={12}/></a>}{item.stale&&<span className="section-help">تماس‌ها نیازمند بررسی تازه‌اند.</span>}<details><summary>اطلاعات منتشرشده و منبع</summary>{item.contacts?.length?item.contacts.map((contact,index)=><div className="clinic-bank-contact" key={index}><bdi dir="ltr">{contact.value}</bdi>{safeLink(contact.sourceURL)&&<a href={contact.sourceURL} target="_blank" rel="noreferrer">منبع تماس</a>}</div>):<p className="section-help">هنوز اطلاعات تماسی از صفحهٔ عمومی ثبت نشده است.</p>}</details><button className="secondary" type="button" onClick={()=>onSearch(item.name||new URL(item.url).hostname)}><Search size={14}/>جست‌وجوی آگهی‌های این مرکز</button></article>)}</div>
+  {data&&!data.items.length&&<p className="section-help">در این گروه هنوز مرکزی ثبت نشده است.</p>}
+  <div className="clinic-bank-paging"><button className="secondary" disabled={busy||page===0} onClick={()=>setPage(p=>p-1)}>قبلی</button><span>{num(page+1)}</span><button className="secondary" disabled={busy||!data||data.items.length<10} onClick={()=>setPage(p=>p+1)}>بعدی</button></div>
+ </div>}</details>;
+}

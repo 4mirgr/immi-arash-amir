@@ -2,6 +2,8 @@
 import {googleStatus} from './google-oauth.mjs';
 import {googleAccountContext} from './google-account-scope.mjs';
 import {handleGoogleSendRequest} from './google-send.mjs';
+import {enrichReadPages} from './opportunity-store.mjs';
+import {assessFiveTier} from './gp-workflow.mjs';
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args);
 const all=async(db,sql,...args)=>(await stmt(db,sql,...args).all()).results||[];
@@ -26,12 +28,57 @@ function actionable(row){return freshSource(row)&&!['closed','source_removed','f
 export function publishedRecipients(item){const emails=new Set();const text=[item.email,item.contactEmail,item.summary,item.fullText].filter(x=>typeof x==='string').join(' ').slice(0,26000);for(const token of text.split(/\s+/)){if(!token.includes('@')||token.length>512)continue;for(const email of token.match(/[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?\.[a-zA-Z]{2,}/g)||[]){const normalized=validEmail(email);if(normalized)emails.add(normalized);if(emails.size>=20)return [...emails];}}return [...emails];}
 async function profileDefaults(context){const suffix='&profile_id=eq.'+context.profileId;const [presetRows,cvRows]=await Promise.all([context.rest('immi_preset_defaults','?select=preset_id'+suffix),context.rest('immi_cv_defaults','?select=version_id'+suffix)]);const presetId=presetRows[0]?.preset_id,cvVersionId=cvRows[0]?.version_id;let preset=null,cv=null;if(presetId)preset=(await context.rest('immi_presets','?select=data&id=eq.'+encodeURIComponent(presetId)+suffix))[0]?.data;if(cvVersionId)cv=(await context.rest('immi_cv_versions','?select=id,version&id=eq.'+encodeURIComponent(cvVersionId)+suffix))[0];return {presetId:preset?String(presetId):null,cvVersionId:cv?String(cvVersionId):null,preset,cv};}
 async function event(db,owner,id,action,reason){await stmt(db,'INSERT INTO mail_automation_events(id,owner_id,opportunity_id,action,reason,created_at) VALUES(?,?,?,?,?,?)',crypto.randomUUID(),owner,id,action,reason,now()).run();}
+// Suggestions are read-only views over scheduled public discovery plus this owner's
+// private suppression/history. A suggestion is never a draft, approval or transport job.
+async function recurringSuggestions(env,context,current,cadence){
+ const stamp=Date.now(),at=new Date(stamp),owner=context.userId,timeZone='Asia/Tehran';
+ const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(at).filter(x=>x.type!=='literal').map(x=>[x.type,x.value]));
+ const periodKey=parts.year+'-'+parts.month+'-'+parts.day;
+ const localAsUTC=Date.UTC(Number(parts.year),Number(parts.month)-1,Number(parts.day),Number(parts.hour),Number(parts.minute),Number(parts.second));
+ const offset=localAsUTC-Math.floor(stamp/1000)*1000;
+ const nextRefreshAt=new Date(Date.UTC(Number(parts.year),Number(parts.month)-1,Number(parts.day)+1)-offset).toISOString();
+ // Daily and weekly are different new-ad windows, not the same evergreen list.
+ // Re-observing an old advertisement does not make it newly published.
+ const windowStart=new Date(stamp-(cadence==='weekly'?7:1)*86400000).toISOString(),windowEnd=at.toISOString();
+ const rows=await all(env.OPPORTUNITY_DB,"SELECT e.*,o.data AS organization_data FROM opportunity_editions e LEFT JOIN opportunity_organizations o ON o.id=e.organization_id WHERE e.country='AU' AND e.profile_scope!='amir' AND e.opportunity_type='job' AND e.trust='official' AND e.status NOT IN ('closed','source_removed','future') AND (e.closing_at IS NULL OR julianday(e.closing_at)>julianday(?)) AND (e.published_at IS NULL OR julianday(e.published_at)<=julianday(?)) AND julianday(e.last_seen_at)>=julianday(?) AND julianday(e.last_seen_at)<=julianday(?) AND julianday(coalesce(e.published_at,e.first_seen_at))>=julianday(?) AND julianday(coalesce(e.published_at,e.first_seen_at))<=julianday(?) AND (instr(lower(e.title),'general practitioner')>0 OR instr(lower(e.title),'general practice')>0 OR instr(lower(e.title),'rural generalist')>0 OR instr(' '||lower(replace(e.title,'-',' '))||' ',' gp ')>0 OR instr(lower(e.title),'medical officer')>0 OR instr(lower(e.title),'medical practitioner')>0) AND instr(lower(e.title),'nurs')=0 AND instr(lower(e.title),'manager')=0 AND instr(lower(e.title),'reception')=0 ORDER BY e.last_seen_at DESC,e.id LIMIT 180",at.toISOString(),at.toISOString(),new Date(stamp-SOURCE_MAX_AGE).toISOString(),new Date(stamp+60000).toISOString(),windowStart,windowEnd);
+ const enriched=await enrichReadPages(env.OPPORTUNITY_DB,rows,context.profileId,stamp,env.PUBLIC_PAGE_READING_ENABLED==='true');
+ const candidates=[];
+ for(let i=0;i<rows.length;i++){
+  const row=rows[i],item=enriched[i],original=parse(row.data);
+  if(!actionable(row)||item.kind==='employment_register'||/\b(?:expression(?:s)? of interest|talent (?:pool|register)|employment register)\b/i.test(item.title||''))continue;
+  const assessment=assessFiveTier(item,'pesci_readiness',stamp);if(assessment.tier===1||!assessment.roleRelevant)continue;
+  // Only the current ad text supplies recipients. Related-page contact evidence
+  // and private uploaded spreadsheets are deliberately not recipients here.
+  const recipients=publishedRecipients(item);if(!recipients.length)continue;
+  const organization=parse(row.organization_data);let firstParty=false;
+  try{const host=new URL(row.url).hostname.replace(/^www\./,'');const domain=String(original.organizationDomain||'').replace(/^www\./,'');firstParty=organization.domainEvidence==='source_provided'&&!!domain&&(host===domain||host.endsWith('.'+domain));}catch{}
+  candidates.push({id:row.id,title:row.title,url:row.url,state:row.state,organization:original.organization||null,publishedAt:row.published_at||null,closingAt:row.closing_at||null,lastSeenAt:row.last_seen_at,status:row.status,firstParty,stars:assessment.stars,priorityWeight:assessment.priorityWeight,recipients,contactDiscoveryStatus:item.contactDiscovery?.status||null});
+ }
+ const addresses=[...new Set(candidates.flatMap(x=>x.recipients))],ids=candidates.map(x=>x.id);
+ let suppressed=[],prior=[],prepared=[];
+ if(addresses.length){
+  [suppressed,prior,prepared]=await Promise.all([
+   all(env.GOOGLE_DB,"SELECT email FROM mail_automation_suppressions WHERE owner_id=? AND email IN (SELECT value FROM json_each(?)) UNION SELECT email FROM google_send_suppressions WHERE owner_id IN (?,?) AND email IN (SELECT value FROM json_each(?))",owner,JSON.stringify(addresses),owner,owner+':secondary',JSON.stringify(addresses)),
+   all(env.GOOGLE_DB,"SELECT recipient,status,created_at FROM google_send_queue WHERE owner_id IN (?,?) AND recipient IN (SELECT value FROM json_each(?)) AND status IN ('queued','sending','sent','delivery_unknown','failed')",owner,owner+':secondary',JSON.stringify(addresses)),
+   all(env.GOOGLE_DB,"SELECT opportunity_id,recipient FROM mail_automation_jobs WHERE owner_id=? AND (opportunity_id IN (SELECT value FROM json_each(?)) OR recipient IN (SELECT value FROM json_each(?))) AND status IN ('draft','preparing','queued')",owner,JSON.stringify(ids),JSON.stringify(addresses))
+  ]);
+ }
+ const blocked=new Set([...suppressed.map(x=>x.email),...prior.map(x=>x.recipient),...prepared.map(x=>x.recipient)].map(x=>String(x).toLowerCase())),preparedIds=new Set(prepared.map(x=>x.opportunity_id));
+ const ranked=candidates.filter(x=>!preparedIds.has(x.id)&&x.recipients.every(email=>!blocked.has(email))).sort((a,b)=>b.stars-a.stars||Number(b.firstParty)-Number(a.firstParty)||(Date.parse(b.publishedAt)||0)-(Date.parse(a.publishedAt)||0)||a.id.localeCompare(b.id));
+ const selected=[],used=new Set();for(const candidate of ranked){if(candidate.recipients.some(email=>used.has(email)))continue;candidate.recipients.forEach(email=>used.add(email));const {recipients,priorityWeight,...view}=candidate;selected.push({...view,publishedRecipientCount:recipients.length,reviewRequired:true});if(selected.length>=current.dailyLimit)break;}
+ return {profileId:context.profileId,cadence,periodKey,nextRefreshAt,timeZone,windowStart,windowEnd,publicationFallback:'first_seen_only_when_publication_missing',generatedAt:at.toISOString(),suggestions:selected,availableCount:ranked.length,candidateWindow:rows.length,candidateLimit:180,batchLimit:current.dailyLimit,automaticSending:false,reviewRequired:true,coverage:'bounded_fresh_registered_advertisements_only',refresh:'recomputed_on_read_from_scheduled_discovery',exclusions:['owner_suppression','previous_or_uncertain_delivery_across_both_mailboxes','existing_preparation','closed_future_stale','employment_registers','duplicate_network_recipient'],importedClinicLeadsIncluded:false};
+}
 export async function handleMailAutomationRequest(request,env,context,fetcher=fetch){
  const url=new URL(request.url),base='/api/mail-automation';if(url.pathname!==base&&!url.pathname.startsWith(base+'/'))return null;
  try{
   const owner=own(context);if(url.searchParams.has('profile')&&url.searchParams.get('profile')!==context.profileId)throw Error('profile_access_denied');if(!env.GOOGLE_DB||!env.OPPORTUNITY_DB)throw Error('automation_storage_not_configured');
   if(request.method!=='GET'&&request.headers.has('Origin')&&request.headers.get('Origin')!==url.origin)throw Error('origin_rejected');
   const db=env.GOOGLE_DB,path=url.pathname.slice(base.length),current=await settings(db,owner);
+  if(request.method==='GET'&&path==='/suggestions'){
+   if(context.profileId!=='arash')throw Error('profile_access_denied');
+   const cadence=url.searchParams.get('cadence')||'daily';if(!['daily','weekly'].includes(cadence))throw Error('invalid_suggestion_cadence');
+   return json(await recurringSuggestions(env,context,current,cadence));
+  }
   if(request.method==='GET'&&path===''){
    const selected=await profileDefaults(context),mailboxes=[];for(const mailbox of ['primary','secondary']){const state=await googleStatus(env,owner+(mailbox==='secondary'?':secondary':''),context.profileId);mailboxes.push({mailbox,connected:state.connected,email:state.email||null,gmailSend:Boolean(state.capabilities?.gmailSend)});}
    const candidateTime=Date.now(),candidateNow=new Date(candidateTime).toISOString();

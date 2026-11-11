@@ -1,6 +1,6 @@
 // Authenticated owner export only. Provider grants/keys and received-mail caches are excluded.
 const SUPABASE_TABLES=['immi_profiles','immi_settings','immi_cv_versions','immi_cv_defaults','immi_presets','immi_preset_defaults','immi_drafts'];
-const PRIVATE_TABLES=['linkedin_sections','linkedin_drafts','linkedin_posts','linkedin_metrics','linkedin_contacts','linkedin_network_targets','linkedin_publish_attempts','roadmap_actions','pesci_practice_sessions','ai_assistant_runs','mail_automation_settings','mail_automation_jobs','mail_automation_suppressions','mail_automation_events','gp_workflow_settings','gp_opportunity_progress'];
+const PRIVATE_TABLES=['linkedin_sections','linkedin_drafts','linkedin_posts','linkedin_metrics','linkedin_contacts','linkedin_network_targets','linkedin_publish_attempts','roadmap_actions','pesci_practice_sessions','ai_assistant_runs','mail_automation_settings','mail_automation_jobs','mail_automation_suppressions','mail_automation_events','gp_workflow_settings','gp_opportunity_progress','clinic_bank_leads'];
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'}});
 export async function handleOwnerBackupRequest(request,env,context){
  const url=new URL(request.url);if(url.pathname!=='/api/backup/export')return null;

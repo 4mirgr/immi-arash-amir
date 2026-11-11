@@ -28,3 +28,11 @@ test('GP goal and preparation notes export only the authenticated owner records'
  for(const owner of ['a','b']){db.prepare('INSERT INTO gp_workflow_settings VALUES(?,?,?,?)').run(owner,'arash','pesci_readiness','2026-11-05');db.prepare('INSERT INTO gp_opportunity_progress VALUES(?,?,?,?,?,?,?)').run(owner,'opp_'+owner,'arash','clinic_identified','Synthetic '+owner,'','2026-11-05');}
  const data=await(await handleOwnerBackupRequest(req(),env,context)).json();assert.equal(data.collections.d1.gp_workflow_settings.length,1);assert.equal(data.collections.d1.gp_workflow_settings[0].owner_id,'a');assert.equal(data.collections.d1.gp_opportunity_progress[0].note,'Synthetic a');assert(!JSON.stringify(data).includes('Synthetic b'));
 });
+
+
+test('clinic website bank export stays owner-private and reports the existing export limit',async()=>{
+ const {db,env,context}=fixture();db.exec(readFileSync(new URL('../cloud/clinic-bank-schema.sql',import.meta.url),'utf8'));
+ for(const owner of ['a','b'])for(let i=0;i<105;i++)db.prepare("INSERT INTO clinic_bank_leads(id,owner_id,profile_id,url,name,created_at,updated_at) VALUES(?,?,'arash',?,?,?,?)").run(owner+i,owner,'https://'+owner+i+'.example/',owner+' synthetic centre','2026-11-11','2026-11-11');
+ const body=await(await handleOwnerBackupRequest(req(),env,context)).json();
+ assert.equal(body.collections.d1.clinic_bank_leads.length,100);assert(body.collections.d1.clinic_bank_leads.every(row=>row.owner_id==='a'));assert(body.coverage.truncatedTables.includes('d1.clinic_bank_leads'));assert.equal(body.coverage.automaticCloudBackup,false);
+});

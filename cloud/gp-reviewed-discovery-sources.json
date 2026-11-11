@@ -383,6 +383,90 @@
     "activationAllowed": true
   },
   {
+    "id": "reviewed-longford-gp-img",
+    "name": "Northern Midlands Medical Services — GP recruitment",
+    "country": "AU",
+    "state": "TAS",
+    "profileScope": "both",
+    "trust": "official",
+    "feedUrl": "https://longfordmedical.com.au/careers/",
+    "evidenceUrl": "https://longfordmedical.com.au/careers/",
+    "portalUrl": "https://longfordmedical.com.au/careers/",
+    "allowedHosts": [
+      "longfordmedical.com.au"
+    ],
+    "organizationName": "Northern Midlands Medical Services",
+    "organizationDomain": "longfordmedical.com.au",
+    "location": "Longford / Perth, Tasmania",
+    "title": "General Practitioner — Northern Midlands Medical Services",
+    "opportunityType": "job",
+    "kind": "vacancy",
+    "adapter": "gp_reviewed_html",
+    "executable": false,
+    "configurationStatus": "reviewed_candidate_requires_adapter_and_runtime_check",
+    "reviewedAt": "2026-11-11",
+    "readEvidence": {
+      "method": "direct_public_http_and_robots",
+      "httpStatus": 200,
+      "currentVacancyConfirmed": false,
+      "closingAt": null
+    },
+    "requirements": [
+      "Exact registration category and supervision level are not stated in the page read."
+    ],
+    "limitations": [
+      "Employer page labels a GP current vacancy and describes IMG teaching; no publication date or closing date is established.",
+      "Level 1 supervision, PESCI support, visa sponsorship, MMM and DPA are not confirmed.",
+      "Longford and Perth are described as practice locations, not separately verified vacancies."
+    ],
+    "sourceType": "first_party_recruitment_page",
+    "directHttpStatus": 200,
+    "collectorUserAgentHttpStatus": 200,
+    "activationAllowed": true
+  },
+  {
+    "id": "reviewed-yarriambiack-gp-img",
+    "name": "Yarriambiack Medical Clinic — GP and IMG enquiries",
+    "country": "AU",
+    "state": "VIC",
+    "profileScope": "both",
+    "trust": "official",
+    "feedUrl": "https://yarriambiackmedicalclinic.com/",
+    "evidenceUrl": "https://yarriambiackmedicalclinic.com/",
+    "portalUrl": "https://yarriambiackmedicalclinic.com/",
+    "allowedHosts": [
+      "yarriambiackmedicalclinic.com"
+    ],
+    "organizationName": "Yarriambiack Medical Clinic",
+    "organizationDomain": "yarriambiackmedicalclinic.com",
+    "location": "Warracknabeal, Victoria",
+    "title": "General Practitioner enquiry — Yarriambiack Medical Clinic",
+    "opportunityType": "job",
+    "kind": "employment_register",
+    "adapter": "gp_reviewed_html",
+    "executable": false,
+    "configurationStatus": "reviewed_candidate_requires_adapter_and_runtime_check",
+    "reviewedAt": "2026-11-11",
+    "readEvidence": {
+      "method": "direct_public_http_and_robots",
+      "httpStatus": 200,
+      "currentVacancyConfirmed": false,
+      "closingAt": null
+    },
+    "requirements": [
+      "Employer encourages International Medical Graduates to enquire; exact registration and supervision requirements are not stated."
+    ],
+    "limitations": [
+      "Evergreen first-party recruitment enquiry, not a dated confirmed vacancy.",
+      "No explicit Level 1 supervision, PESCI, visa sponsorship, MMM or DPA commitment.",
+      "Public manager and general contacts are re-extracted from each fetched page; the uploaded spreadsheets are not contact evidence."
+    ],
+    "sourceType": "first_party_employment_register",
+    "directHttpStatus": 200,
+    "collectorUserAgentHttpStatus": 200,
+    "activationAllowed": true
+  },
+  {
     "id": "reviewed-ararat-level1-restriction",
     "name": "Ararat Medical Centre — current recruitment restrictions",
     "country": "AU",
