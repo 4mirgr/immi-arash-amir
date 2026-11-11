@@ -39,7 +39,7 @@ import {
   Copy,
   X,
 } from "lucide-react";
-import "./style.css";
+import "./workspace-style.css";
 import { api } from "./api";
 import { AccessGate } from "./auth";
 import { CVVersions, Presets } from "./workspace-tools";

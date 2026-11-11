@@ -8,7 +8,7 @@ from playwright.sync_api import sync_playwright,expect
 repo=Path(__file__).resolve().parents[2]
 with tempfile.TemporaryDirectory() as work:
  root=Path(work)
- harness="""import React from 'react';import {createRoot} from 'react-dom/client';import {JobOpportunitiesPanel} from './job-opportunities-panel';import {LanguageControl} from './language-control';import './style.css';createRoot(document.getElementById('root')).render(<div className="app arash-workspace"><main className="main"><LanguageControl personId="arash"/><JobOpportunitiesPanel person="arash" notify={()=>{}}/></main></div>);"""
+ harness="""import React from 'react';import {createRoot} from 'react-dom/client';import {JobOpportunitiesPanel} from './job-opportunities-panel';import {LanguageControl} from './language-control';import './workspace-style.css';createRoot(document.getElementById('root')).render(<div className="app arash-workspace"><main className="main"><LanguageControl personId="arash"/><JobOpportunitiesPanel person="arash" notify={()=>{}}/></main></div>);"""
  config={'stdin':{'contents':harness,'resolveDir':str(repo/'src'),'loader':'jsx'},'bundle':True,'format':'esm','outfile':str(root/'app.js'),'external':['/fonts/*'],'logLevel':'silent'}
  subprocess.run(['node','--input-type=module','-e','import {build} from "esbuild";await build('+json.dumps(config)+');'],cwd=repo,check=True)
  shutil.copytree(repo/'public/fonts',root/'fonts',dirs_exist_ok=True)

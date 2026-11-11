@@ -1,0 +1,66 @@
+/* Original React presentation, informed by the supplied Dompet reference.
+   No vendor scripts, demo assets or account behavior are imported. */
+:root{--dompet-bg:#0e1726;--dompet-card:#152233;--dompet-soft:#192a3d;--dompet-input:#111e2e;--dompet-stroke:#2b3c50;--dompet-ink:#edf4fb;--dompet-subtle:#a6b6c8;--dompet-teal:#5bcfc5;--dompet-surface:var(--dompet-card);--dompet-border:var(--dompet-stroke);--accent:#5bcfc5;--line:var(--dompet-stroke);--muted:var(--dompet-subtle);--panel:var(--dompet-card);background:var(--dompet-bg);color:var(--dompet-ink)}
+:root[data-theme="light"]{--dompet-bg:#f6f6f6;--dompet-card:#fff;--dompet-soft:#eff7f6;--dompet-input:#f7f9fb;--dompet-stroke:#e1e8ee;--dompet-ink:#23364e;--dompet-subtle:#5e7085;--dompet-teal:#167c74;--accent:#167c74;--line:var(--dompet-stroke);--muted:var(--dompet-subtle);--panel:var(--dompet-card);background:var(--dompet-bg);color:var(--dompet-ink)}
+.app:is(.amir-workspace,.arash-workspace){background:var(--dompet-bg);color:var(--dompet-ink);--glass:var(--dompet-card);--glass-border:var(--dompet-stroke)}
+.app:is(.amir-workspace,.arash-workspace)>.sidebar{inset-block:16px;inset-inline-start:16px;inset-inline-end:auto;width:260px;padding:25px 17px 18px;background:var(--dompet-card);border:1px solid var(--dompet-stroke);border-radius:25px;box-shadow:0 8px 30px #0000000a;scrollbar-width:thin;scrollbar-color:var(--dompet-stroke) transparent}
+.app:is(.amir-workspace,.arash-workspace)>main{margin-inline-start:292px;margin-inline-end:0;min-width:0;width:calc(100% - 292px)}
+.app .sidebar .brand{padding:0 10px 25px;gap:12px;font-size:1.8rem;color:var(--dompet-ink)}
+.app .sidebar .brand-icon{width:45px;height:45px;display:grid;place-items:center;flex-shrink:0;border:0;background:transparent;box-shadow:none}
+.app .sidebar .brand span:not(.brand-icon){color:var(--dompet-subtle);font-size:.53rem;letter-spacing:1.6px;margin:5px 0 0}
+.app .sidebar .workspace-label{font-size:.7rem;margin:1px 9px 10px;color:var(--dompet-subtle)}
+.app .sidebar .profile{border:1px solid var(--dompet-stroke);background:var(--dompet-soft);border-radius:17px;min-height:78px;padding:13px 10px;text-align:start;gap:10px}
+.app .sidebar .profile strong{color:var(--dompet-ink);font-size:.79rem;line-height:1.8}
+.app .sidebar .profile small{color:var(--dompet-subtle);font-size:.68rem;line-height:1.8}
+.app .sidebar .avatar,.app .small-avatar{background:#5bcfc51c;color:var(--dompet-teal);border:1px solid #5bcfc53a;border-radius:14px;flex-shrink:0}
+.app .sidebar .avatar{width:42px;height:44px}
+.app .sidebar .demo-label{margin:10px 8px 22px;font-size:.64rem;line-height:1.8;color:var(--dompet-subtle)}
+.app .sidebar .nav-caption{font-size:.68rem;letter-spacing:0;padding:0 10px;margin:15px 0 9px;color:var(--dompet-subtle)}
+.app .sidebar :is(.arash-navigation,.amir-navigation){gap:6px}
+.app .sidebar :is(.arash-navigation,.amir-navigation) button{border:1px solid transparent;border-radius:13px;min-height:46px;padding:11px 13px;gap:12px;color:var(--dompet-subtle);font-size:.82rem;font-weight:500;background:transparent;text-align:start;box-shadow:none}
+.app .sidebar :is(.arash-navigation,.amir-navigation) button:hover{background:var(--dompet-soft);color:var(--dompet-ink)}
+.app .sidebar :is(.arash-navigation,.amir-navigation) button.active{background:#5bcfc51a;border-color:#5bcfc533;color:var(--dompet-teal);box-shadow:inset 3px 0 0 var(--dompet-teal);font-weight:700}
+:root[dir="rtl"] .app .sidebar :is(.arash-navigation,.amir-navigation) button.active{box-shadow:inset -3px 0 0 var(--dompet-teal)}
+.app .sidebar :is(.arash-navigation,.amir-navigation) .nav-fold{border-top:1px solid var(--dompet-stroke);padding-top:10px;margin-top:12px}
+.app .sidebar :is(.arash-navigation,.amir-navigation) .nav-fold>summary{color:var(--dompet-subtle);font-size:.75rem;line-height:1.8;padding:9px 10px}
+.app .sidebar .sidebar-bottom{padding:20px 10px 0;margin-top:auto;border-color:var(--dompet-stroke)}
+.app .sidebar .sidebar-bottom small{color:var(--dompet-subtle);font-size:.65rem}
+.app .sidebar .connection{font-size:.7rem;color:var(--dompet-ink)}
+.app>main>.workspace-toolbar{min-height:98px;height:auto;gap:16px;padding:22px 32px;background:var(--dompet-bg);border:0;flex-wrap:wrap;align-items:center}
+.app .workspace-toolbar .breadcrumb{font-size:.85rem;color:var(--dompet-subtle);gap:10px}
+.app .workspace-toolbar .breadcrumb>span{color:var(--dompet-ink);font-size:1rem;font-weight:700}
+.app .workspace-toolbar .header-actions{gap:10px;min-width:0;flex-wrap:wrap;align-items:center}
+.app .workspace-toolbar :is(.icon,.language-control,.text-size-control,.secondary){background:var(--dompet-card);border:1px solid var(--dompet-stroke);color:var(--dompet-ink);border-radius:12px;box-shadow:0 2px 5px #00000003}
+.app .workspace-toolbar .icon{min-width:40px;min-height:40px}
+.app .workspace-toolbar .timezone{font-size:.68rem;color:var(--dompet-subtle)}
+.app>main>.page{padding:12px 32px 44px;max-width:1600px;margin-inline:auto;min-width:0}
+.app .page>.page-heading{padding:6px 0 8px;margin-bottom:23px;gap:15px}
+.app .page>.page-heading h1{font-size:clamp(1.3rem,1.7vw,1.9rem);font-weight:800;letter-spacing:-.4px;line-height:1.65;color:var(--dompet-ink);margin-block:7px}
+.app .page>.page-heading p{font-size:.84rem;color:var(--dompet-subtle);line-height:1.85;max-width:80ch}
+.app .page>.page-heading .eyebrow{font-size:.72rem;color:var(--dompet-teal)}
+.app .page :is(.section-help,.muted){color:var(--dompet-subtle)}
+.app .workspace-guidance{border-radius:17px;background:var(--dompet-soft);border-color:var(--dompet-stroke);color:var(--dompet-subtle)}
+.app .toast{max-width:calc(100vw - 28px);border-radius:16px;background:var(--dompet-card);color:var(--dompet-ink);border-color:var(--dompet-teal);box-shadow:0 12px 40px #0003}
+.access-screen{background:radial-gradient(ellipse at 12% 15%,#5bcfc51c,transparent 45%),radial-gradient(ellipse at 90% 90%,#b18ad917,transparent 45%),var(--dompet-bg);color:var(--dompet-ink)}
+.access-screen .access-card{border-radius:28px;border:1px solid var(--dompet-stroke);background:var(--dompet-card);box-shadow:0 22px 75px #0002;padding:32px;max-width:470px;color:var(--dompet-ink)}
+.access-screen .access-card p{color:var(--dompet-subtle)}
+.access-screen .access-card input{background:var(--dompet-input);color:var(--dompet-ink);border-color:var(--dompet-stroke);min-height:48px;border-radius:12px}
+.access-screen .access-card .primary{background:var(--dompet-teal);color:#092725;border-color:transparent;min-height:46px;border-radius:13px}
+@media(min-width:761px) and (max-width:1100px){.app:is(.amir-workspace,.arash-workspace)>.sidebar{width:234px;padding-inline:12px;inset-inline-start:12px}.app:is(.amir-workspace,.arash-workspace)>main{margin-inline-start:258px;width:calc(100% - 258px)}.app>main>.page{padding-inline:22px}.app>main>.workspace-toolbar{padding-inline:22px}.app .workspace-toolbar .timezone{display:none}}
+@media(max-width:760px){
+ .app:is(.amir-workspace,.arash-workspace){display:block}
+ .app:is(.amir-workspace,.arash-workspace)>.sidebar{position:relative;inset:auto;width:100%;padding:12px 14px 10px;border:0;border-bottom:1px solid var(--dompet-stroke);border-radius:0 0 22px 22px;overflow:visible;box-shadow:0 5px 18px #00000005}
+ .app:is(.amir-workspace,.arash-workspace)>main{margin:0;width:100%}
+ .app .sidebar .profile{padding:10px 12px;min-height:66px;border-radius:16px;margin:0 0 10px}
+ .app .sidebar .profile strong{font-size:.83rem}.app .sidebar .profile small{font-size:.69rem}
+ .app .mobile-workspace-navigation{margin-top:0}
+ .app>main>.workspace-toolbar{padding:13px 14px;min-height:0;gap:12px}
+ .app .workspace-toolbar .breadcrumb{width:100%;font-size:.72rem}.app .workspace-toolbar .breadcrumb>span{font-size:.84rem}
+ .app .workspace-toolbar .header-actions{width:100%;justify-content:flex-start;gap:7px}
+ .app .workspace-toolbar .header-actions>.small-avatar{margin-inline-start:auto;width:34px;height:34px}
+ .app .workspace-toolbar .timezone{display:none}
+ .app>main>.page{padding:10px 14px 32px}
+ .app .page>.page-heading{margin-bottom:16px;padding-block:4px}.app .page>.page-heading h1{font-size:1.4rem}.app .page>.page-heading p{font-size:.8rem}
+ .access-screen .access-card{padding:24px 20px;border-radius:23px}
+}
+@media(prefers-reduced-motion:reduce){.app *, .app *::before,.app *::after{scroll-behavior:auto!important;transition-duration:0s!important;animation-duration:0s!important}}
