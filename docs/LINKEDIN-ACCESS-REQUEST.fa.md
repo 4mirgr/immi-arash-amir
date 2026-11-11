@@ -112,3 +112,34 @@ If no eligible access path exists for this use case, we will keep the advanced A
 ۷. [Restricted Uses of LinkedIn Marketing APIs and Data](https://learn.microsoft.com/en-us/linkedin/marketing/restricted-use-cases?view=li-lms-2026-10) — محدودیت استفاده، ترکیب، صدور و مخاطب دادهٔ اعضا.
 
 ۸. [Data Storage Requirements](https://learn.microsoft.com/en-us/linkedin/marketing/data-storage-requirements?view=li-lms-2026-10) — تفاوت نوع داده و مدت نگه‌داری؛ دادهٔ مستقل ارائه‌شده توسط مشتری از این جدول API تفکیک شده است.
+
+## بازبینی رسمی و قدم عملی — ۱۱ نوامبر ۲۰۲۶
+
+محتوای Community Management App Review و Connections API در این تاریخ دوباره خوانده شد. این دو دسترسی یکی نیستند: تأیید Community Management برای آمار/مدیریت محتوا، خودبه‌خود مجوز شبکه، دعوت، پیام‌رسانی یا جست‌وجوی همهٔ مشاغل نمی‌دهد.
+
+- Community Management همچنان سازمان حقوقی ثبت‌شده، کاربرد تجاری پشتیبانی‌شده، ایمیل کاری قابل تأیید، دامنه و Page تأییدشده و بررسی LinkedIn می‌خواهد. Page مستقل یا ایمیل دانشگاهی شخصی به‌تنهایی این شرط را احراز نمی‌کند. برای پروژهٔ شخصی فعلی وعدهٔ تأیید یا توصیهٔ ثبت شرکت صرفاً برای API داده نمی‌شود.
+- Connections API با `r_1st_connections` محدود به توسعه‌دهندگان مورد تأیید LinkedIn است. فقط کانکشن‌های درجهٔ اول صاحب رضایت را می‌دهد؛ شبکهٔ درجهٔ دوم در دسترس آن نیست. افزودن دستی نام scope به درخواست OAuth مجوز نمی‌سازد.
+- Job Posting API برای ایجاد/مدیریت آگهی از طرف کارفرما/ATS است؛ مجوز عمومی جست‌وجوی همهٔ آگهی‌های LinkedIn برای اپ شخصی نیست. صفحهٔ رسمی فعلی اعلام می‌کند شریک جدید Job Posting نمی‌پذیرد و به Apply Connect ارجاع می‌دهد؛ آن هم یکپارچه‌سازی استخدامی است، نه ابزار جست‌وجوی شغل متقاضی.
+- Premium، Sales Navigator یا ساخت Page را معادل دریافت مجوز API شخصی معرفی نکنید.
+
+### اقدام رایگان قابل انجام صاحب حساب
+
+۱. در نسخهٔ دسکتاپ LinkedIn: Me → Settings & Privacy → Data privacy → Get a copy of your data / Download your data. اگر Connections جداگانه قابل انتخاب است همان را درخواست کنید؛ وگرنه آرشیو بزرگ‌ترِ شامل connections را بگیرید. فقط `Connections.csv` را برای ورود در پنل همان مالک استفاده کنید، نه ZIP کامل شامل پیام‌ها و لاگ ورود. بعضی ایمیل‌ها به انتخاب حریم خصوصی خود کانکشن در خروجی وجود ندارند؛ نبودن ایمیل با حدس پر نمی‌شود. واردکنندهٔ فعلی سقف ۱۰۰۰ ردیف و ۵۰۰٬۰۰۰ بایت در هر درخواست دارد؛ فایل بزرگ‌تر باید با حفظ سرستون بخش‌بندی شود.
+
+۲. در Jobs برای Australia جست‌وجوهای General Practitioner، Rural GP، GP supervision و IMG GP را بسازید؛ هشدار هر جست‌وجو را روشن و دریافت روزانه با Email را انتخاب کنید. عنوان عمومی GP هم حفظ شود تا آگهی فاقد کلمهٔ IMG/Level1 حذف نشود. Jobs → Preferences → Job alerts محل مدیریت آن‌هاست. LinkedIn فعلاً تا ۲۰ هشدار هم‌زمان ذکر می‌کند. گیرندهٔ ایمیل باید صندوق Google متعلق به همان پزشک و متصل به سایت باشد.
+
+۳. از اطلاعات CSV و بانک کلینیک‌ها برای اولویت‌بندی مدیران، پزشکان و افراد مرتبط استفاده شود؛ متن معرفی، لینک پروفایل و تاریخ پیگیری در پنل خود مالک آماده باشد. دعوت و پیام در LinkedIn با اقدام مالک انجام می‌شود؛ API انتشار پست مجوز دعوت یا پیام خصوصی نیست. تطبیق نام شرکت، اثبات ارتباط مشترک یا معرفی‌شدن توسط فرد نیست.
+
+### مرز پیاده‌سازی فعلی
+
+ورود CSV مالک، پیشنهاد متن و پیگیری خصوصی در پروژه پیاده‌سازی شده‌اند. استخراج خودکار همهٔ کانکشن‌ها/پیام‌ها و جست‌وجوی سراسری مشاغل با API عمومی فعال نیست. ایمیل خبرنامه در Gmail می‌تواند در مکاتبات بازخوانی شود، اما خط لولهٔ اختصاصی «هشدار LinkedIn → استخراج لینک آگهی → بررسی منبع کارفرما → پیشنهاد شغلی خصوصی» هنوز پیاده‌سازی‌شده اعلام نمی‌شود. هشدار یا لینک به‌تنهایی جای خالی فعلی یا مجوز ارسال ایمیل نیست.
+
+منابع رسمی بازخوانی‌شده:
+
+- https://learn.microsoft.com/en-us/linkedin/marketing/community-management-app-review
+- https://learn.microsoft.com/en-us/linkedin/shared/integrations/people/connections-api
+- https://learn.microsoft.com/en-us/linkedin/talent/job-postings/api/overview?view=li-lts-2026-04
+- https://www.linkedin.com/help/linkedin/answer/a566336/export-connections-from-linkedin
+- https://www.linkedin.com/help/linkedin/answer/a1339364
+- https://www.linkedin.com/help/linkedin/answer/a511279
+- https://www.linkedin.com/help/linkedin/answer/a1420165
