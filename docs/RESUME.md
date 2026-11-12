@@ -32,6 +32,13 @@ Per-opportunity mail: docs/OPPORTUNITY-MAIL.md. New authenticated router precede
 Contact/discovery engine: read docs/PUBLIC-CONTACT-ENGINE.md selectively. New public enrichment and AI-budget schemas are mandatory ONLY inOPPORTUNITY_DB. Extractor version2 supports flattenedtext. New23source registry includesgp-expanded-sources;3sources/hour ~8hrotation. PublicAIquote selection4attempts/day excludesprivateCV/mail andmustvalidateverbatimsource. Relatedcontacts keepindependentproof; privateCVreadinessAPIonly, neverpersistpublic. Oneclickmailafterpreview/review mustrefusereused/ambiguousqueue andchangedGoogleidentity.
 
 
+## 2026-11-12 — local reviewed skills and automatic maintenance
+The user-supplied library index is now root `CODEX-EXTENDED-LIBRARY.md`; do bounded rg, not full reads. Two local skills in `.agents/skills/` wrap pinned code-reviewer/GitHub-Actions documents with licenses and hashes. `scripts/check_skills.py` validates references without executing third-party code. See `docs/AUTOMATIC-MAINTENANCE.fa.md` for exact triggers, scopes and recovery.
+
+Daily + push/PR checks now include synthetic browser/session/English/reflow/funding/team/mail tests and read-only production authentication probes. Weekly/manual patch maintenance calculates a temporary npm lock candidate with scripts disabled, refuses any minor/major/transitive/package/origin/manifest drift, then applies only a fully tested lockfile without force or overriding moved main. No cloud secrets are added to CI. Future Worker code changes still require authorized Cloudflare deployment; pushing source alone does not deploy its backend. Existing five discovery/transport crons remain independent.
+
+Runtime/UI corrections include future-opening evidence guards, negated tuition coverage, malformed plan resilience, catalogue filtering, out-of-order preparation-save protection, paused board polling during writes and actual calendar timezone selection. No schema, owner, provider-scope or structural layout changes.
+
 ## 2026-11-12 — Australian research bridge and shared tasks
 - Entry points: `research-funding.mjs` (Amir only), `research-funding-panel.jsx`, `team-board.mjs/jsx`; English catalogs merged. New desktop/mobile/checkpoint menu IDs `funding` (Amir only), `team` (both).
 - Five official funding source adapters (`au-funding-sources.*`) join existing hourly3source rotation;35 executable sources, no extra cron. Actual page text/quotes/deadlines/hash stored separately in OPPORTUNITY_DB `au_funding_pages`; generic programmes never enter the vacancy stream. Latest failed attempt blocks an open-call assertion;14day evidence-age limit. Seed HTML/rows remain ignored outside Git.

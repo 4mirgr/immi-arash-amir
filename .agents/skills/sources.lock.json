@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "catalogSha256": "458aca591fefb0f37cadde315c9364365f8f023da9cf995b6770acf41305c7ce",
+  "sources": [
+    {
+      "skill": "project-code-review",
+      "repository": "alirezarezvani/claude-skills",
+      "commit": "9ca476d8401f8750f92f4a7b31ec68efaa61ab02",
+      "path": "engineering-team/skills/code-reviewer",
+      "license": "MIT"
+    },
+    {
+      "skill": "project-tested-maintenance",
+      "repository": "sickn33/agentic-awesome-skills",
+      "commit": "00f9c4077878be6ffcc093c099f05a6cccaf1b95",
+      "path": "skills/github-actions",
+      "license": "MIT"
+    }
+  ],
+  "files": [
+    {
+      "path": ".agents/skills/project-code-review/references/upstream.md",
+      "sha256": "405fe797b4ff1be76148de2cf9cb9584705279da59803c9a9c1ea78e0e93bc9c"
+    },
+    {
+      "path": ".agents/skills/project-code-review/references/universal.md",
+      "sha256": "f6d292c24a6bb81dac9c6a628e50bbe508a6417068823e53d052d90073a1d748"
+    },
+    {
+      "path": ".agents/skills/project-code-review/references/typescript.md",
+      "sha256": "657f2e21bd8bc05dff64ed7b30589ddffed207e064fc503a50595cdf330dee78"
+    },
+    {
+      "path": ".agents/skills/project-code-review/references/python.md",
+      "sha256": "0e5433e03bca59e31482b44c844f7b04fd8ec392b76920bb4e73b0aa9d66973a"
+    },
+    {
+      "path": ".agents/skills/project-code-review/references/LICENSE",
+      "sha256": "a20126646f93d32a8989c3cf4772d59194f405034f7babe7daebeac22b8ab151"
+    },
+    {
+      "path": ".agents/skills/project-tested-maintenance/references/upstream.md",
+      "sha256": "1e9b23e066f217c317fc35e6e97cb47ed2bfd34c526e43f5489b426518249c1c",
+      "upstreamSha256": "bcca90112477f58ff32b7199c5c5c2351e18ea8fc06d4cdbac88d105a190c4f2",
+      "normalization": "Trailing whitespace only"
+    },
+    {
+      "path": ".agents/skills/project-tested-maintenance/references/LICENSE",
+      "sha256": "af98370a7edc0f00ec46979d049517833c9a7fa2ba74e3cf8cc42f7db557299d"
+    }
+  ]
+}

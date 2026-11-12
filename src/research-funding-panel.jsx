@@ -17,7 +17,7 @@ const eligibilityLabels={eligible:'متقاضی بین‌المللی؛ شرای
 const readingLabels={read:'متن منبع خوانده شده',read_partial:'بخشی از متن منبع خوانده شده',pending:'منبع در صف خواندن است',reading:'خواندن منبع در جریان است',robots_blocked:'خواندن خودکار این منبع محدود است',robots_unavailable:'قواعد دریافت منبع موقتاً در دسترس نیست',access_denied:'دسترسی خودکار منبع محدود است',fetch_failed:'دریافت منبع کامل نشد',pdf_reader_required:'پیوست PDF هنوز پردازش نشده',not_checked:'هنوز خواندن خودکار ثبت نشده'};
 const fallbackTitles={english:'آمادگی و مدرک زبان',research_cv:'رزومهٔ پژوهشی',transcript:'ریز نمرات',degree_translation:'ترجمهٔ مدارک تحصیلی',proposal:'پیشنهادهٔ پژوهشی',writing_sample:'نمونهٔ نوشتار علمی',referees:'معرفان علمی',supervisor:'شناسایی سوپروایزر پژوهشی',eligibility:'تطبیق شرایط پذیرش',funding_budget:'بودجه و پوشش واقعی فاند',visa_conditions:'بررسی شرایط ویزا',clinical_plan:'برنامهٔ مستقل مسیر پزشکی'};
 const planShape=value=>({preferredDegree:['either','phd','research_masters'].includes(value?.preferredDegree)?value.preferredDegree:'either',tasks:list(value?.tasks).filter(x=>x&&Object.hasOwn(fallbackTitles,x.id)).map(x=>({id:x.id,status:Object.hasOwn(taskStatus,x.status)?x.status:'todo'}))});
-const normalize=item=>({...item,fundingCoverage:Object.hasOwn(coverageLabels,item.fundingCoverage)?item.fundingCoverage:'unknown',degreeTypes:list(item.degreeTypes),_programme:item.status==='program'||item.kind==='program_information'||item.kind==='funding_programme'});
+const normalize=item=>({...item,fundingCoverage:Object.hasOwn(coverageLabels,item.fundingCoverage)?item.fundingCoverage:'unknown',degreeTypes:list(item.degreeTypes),_programme:item.catalogKind==='program'||item.status==='program'||item.kind==='program_information'||item.kind==='funding_programme'});
 
 export function ResearchFundingPanel({person='amir',notify=()=>{}}){
  const language=useInterfaceLanguage();
@@ -26,8 +26,8 @@ export function ResearchFundingPanel({person='amir',notify=()=>{}}){
  const scope=useRef(person),mounted=useRef(false),flight=useRef(null),epoch=useRef(0),ownerGeneration=useRef(0),dirtyRef=useRef(false),planRevision=useRef(0);
  scope.current=person;dirtyRef.current=dirty;
  const load=useCallback(async()=>{
-  if(person!=='amir'||flight.current?.person===person)return;const who=person,seq=++epoch.current;flight.current={person:who,seq};setBusy(true);
-  try{const value=await api('research-funding?profile='+who);if(!mounted.current||scope.current!==who||seq!==epoch.current)return;if(value.profileId&&value.profileId!==who)throw Error('profile_access_denied');setRecord({person:who,data:value});setError('');if(!dirtyRef.current){setPlan(planShape(value.plan));setSavedAt(value.plan?.updatedAt||null);}}
+  if(person!=='amir'||flight.current?.person===person)return;const who=person,seq=++epoch.current,revision=planRevision.current;flight.current={person:who,seq};setBusy(true);
+  try{const value=await api('research-funding?profile='+who);if(!mounted.current||scope.current!==who||seq!==epoch.current)return;if(value.profileId&&value.profileId!==who)throw Error('profile_access_denied');setRecord({person:who,data:value});setError('');if(!dirtyRef.current&&revision===planRevision.current){setPlan(planShape(value.plan));setSavedAt(value.plan?.updatedAt||null);}}
   catch{if(mounted.current&&scope.current===who&&seq===epoch.current)setError('دریافت تازه کامل نشد؛ آخرین داده و آماده‌سازی شما حفظ شده است.');}
   finally{if(flight.current?.seq===seq)flight.current=null;if(mounted.current&&scope.current===who&&seq===epoch.current)setBusy(false);}
  },[person]);
@@ -36,7 +36,7 @@ export function ResearchFundingPanel({person='amir',notify=()=>{}}){
  const updatePlan=updater=>{setPlan(current=>updater(current||{preferredDegree:'either',tasks:[]}));setDirty(true);dirtyRef.current=true;planRevision.current++;};
  async function savePlan(){
   if(person!=='amir'||!plan||saving)return;const who=person,revision=planRevision.current,ownerEpoch=ownerGeneration.current,payload=planShape(plan);setSaving(true);setError('');
-  try{const saved=await api('research-funding/plan?profile='+who,{method:'POST',body:JSON.stringify(payload)});if(!mounted.current||scope.current!==who||ownerEpoch!==ownerGeneration.current)return;if(revision===planRevision.current){setPlan(planShape(saved.plan||saved));setDirty(false);dirtyRef.current=false;}setSavedAt(saved.plan?.updatedAt||saved.updatedAt||new Date().toISOString());notify('برنامهٔ آمادگی در حساب خودتان ذخیره شد؛ اپلای یا ثبت دستاوردی انجام نشد.');}
+  try{const saved=await api('research-funding/plan?profile='+who,{method:'POST',body:JSON.stringify(payload)});if(!mounted.current||scope.current!==who||ownerEpoch!==ownerGeneration.current)return;if(revision===planRevision.current){planRevision.current++;setPlan(planShape(saved.plan||saved));setDirty(false);dirtyRef.current=false;}setSavedAt(saved.plan?.updatedAt||saved.updatedAt||new Date().toISOString());notify('برنامهٔ آمادگی در حساب خودتان ذخیره شد؛ اپلای یا ثبت دستاوردی انجام نشد.');}
   catch{if(mounted.current&&scope.current===who&&ownerEpoch===ownerGeneration.current)setError('ذخیرهٔ برنامه تأیید نشد؛ انتخاب‌های شما حفظ شده‌اند.');}
   finally{if(mounted.current&&scope.current===who&&ownerEpoch===ownerGeneration.current)setSaving(false);}
  }

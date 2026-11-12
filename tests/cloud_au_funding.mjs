@@ -17,3 +17,18 @@ test('full package classification requires published international fee evidence;
  const baker=normalizeFundingSourcePage(source,html().replace('Tuition fees scholarship','La Trobe Full Fee Research scholarship'),now).snapshot;assert.equal(baker.fundingCoverage.classification,'fees_and_stipend');assert.equal(baker.funding.tuitionCovered,true);
  const monash=normalizeFundingSourcePage(sources[0],html().replace('Baker Department','Research Training Program RTP Stipend')+'Domestic students receive RTP Fees Offset; international applicants may combine separate tuition scholarships.',now).snapshot;assert.equal(monash.fundingCoverage.classification,'partial');assert.equal(monash.funding.tuitionCovered,null);
 });
+
+
+test('an explicit future or unreadable opening date cannot be advertised as an open call',()=>{
+ const beforeOpening=normalizeFundingSourcePage(source,html('<p>Opening date 01/12/2026</p>'),now).snapshot;
+ assert.equal(beforeOpening.status,'unknown');assert.equal(beforeOpening.openingDate.date,'2026-12-01');
+ assert.equal(normalizeFundingSourcePage(source,html('<p>Applications open 1 December 2026</p>'),Date.parse('2026-12-02T12:00:00Z')).snapshot.status,'open');
+ assert.equal(normalizeFundingSourcePage(source,html('<p>Opening date to be announced</p>'),now).snapshot.status,'unknown');
+});
+test('a negated full-fee scholarship mention cannot establish a full funding package',()=>{
+ for(const exclusion of ['does not include a La Trobe Full Fee Research scholarship','will not cover tuition fees','excludes Full Fee Research scholarship']){
+  const page=html().replace('Tuition fees scholarship','La Trobe Full Fee Research scholarship')+'<p>This award '+exclusion+'.</p>';
+  const result=normalizeFundingSourcePage(source,page,now).snapshot;
+  assert.equal(result.fundingCoverage.classification,'partial',exclusion);assert.equal(result.funding.tuitionCovered,null,exclusion);
+ }
+});

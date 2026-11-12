@@ -12,3 +12,6 @@ Read this file, then ONLY your role file in docs/agents/. Do not reread the full
 - Finish with targeted checks and a short handoff. No paid resource creation without explicit budget.
 
 - Recovery index: docs/RESUME.md; requirements/status map: docs/GOALS.md. Read these selectively when resuming or changing scope, not on every small edit.
+
+- Selected local skills: `.agents/skills/project-code-review/SKILL.md` and `.agents/skills/project-tested-maintenance/SKILL.md`; read only the relevant one. Catalog `CODEX-EXTENDED-LIBRARY.md` is an index: use bounded rg, never load it wholesale. Source pins/licenses/hashes are in `.agents/skills/sources.lock.json`; verify with `python scripts/check_skills.py`.
+- Automatic maintenance contract and exact gates: `docs/AUTOMATIC-MAINTENANCE.fa.md`. Preserve architecture/owners; only fully tested stable lockfile patches may be committed unattended. No feature/auth/schema/medical-content rewrites or inherited external-action consent.

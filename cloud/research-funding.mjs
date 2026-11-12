@@ -12,7 +12,7 @@ const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'Cont
 const parse=v=>{try{const x=JSON.parse(v);return x&&typeof x==='object'?x:{};}catch{return {};}};
 const safeURL=value=>{try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password&&!u.port?u.href:null;}catch{return null;}};
 function planView(row){
- const saved=Array.isArray(parse(row?.tasks_json))?parse(row.tasks_json):[];
+ const tasks=parse(row?.tasks_json),saved=Array.isArray(tasks)?tasks.filter(task=>task&&typeof task==='object'&&!Array.isArray(task)&&TASK_IDS.includes(task.id)&&STATUS.includes(task.status)):[];
  return{fundingGoal:'full_funding',preferredDegree:DEGREE.includes(row?.preferred_degree)?row.preferred_degree:'either',tasks:TASK_IDS.map(id=>({id,title:strategy.requirements.find(item=>item.id===id)?.title||id,status:STATUS.includes(saved.find(t=>t.id===id)?.status)?saved.find(t=>t.id===id).status:'todo'})),updatedAt:row?.updated_at||null,meaning:'owner_reported_preparation_not_verified_credentials'};
 }
 function snapshot(source,row,now){
@@ -20,7 +20,8 @@ function snapshot(source,row,now){
  const actual=Boolean(row&&stored.id===source.id&&safeURL(row.url)===expected);
  const data=actual?stored:{id:source.id,title:source.title||source.name,institution:source.institution,url:expected,summary:source.summary,requirements:source.requirements||[],degreeTypes:source.degreeTypes||[],fundingCoverage:'unknown',internationalEligibility:'unknown',status:source.catalogKind==='program'?'program':'unknown',checkedAt:source.reviewedAt||null};
  const fresh=actual&&['program','open','closed','unknown'].includes(row.status)&&(!row.check_status||['updated','not_modified'].includes(row.check_status)||Number(row.last_attempt_at)<observed)&&Number.isFinite(observed)&&observed<=now+60000&&now-observed<=14*86400000;
- const status=evidenceClosed(data,now)?'closed':data.status==='program'?'program':fresh&&data.status==='open'?'open':'unknown';
+ const openingDay=data.openingDate?.date,openingInFuture=typeof openingDay==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(openingDay)&&openingDay>new Date(now).toISOString().slice(0,10);
+ const status=evidenceClosed(data,now)?'closed':data.status==='program'?'program':fresh&&data.status==='open'&&!openingInFuture?'open':'unknown';
  return{...data,fundingCoverage:typeof data.fundingCoverage==='string'?data.fundingCoverage:data.fundingCoverage?.classification||'unknown',fundingCoverageEvidence:data.fundingCoverage?.evidence||[],internationalEligibility:typeof data.internationalEligibility==='string'?data.internationalEligibility:data.internationalEligibility?.status==='international_mentioned_not_individual_assessment'?'conditional':'unknown',id:source.id,url:expected,status,degreeTypes:(data.degreeTypes||[]).map(value=>/phd|doctor/i.test(value)?'phd':/master|mphil/i.test(value)?'research_masters':null).filter(Boolean),sourceType:'official',reading:{status:actual?(row.check_status==='failed'&&Number(row.last_attempt_at)>=observed?'fetch_failed':'read'):'not_checked',readAt:actual?row.read_at:null},currentSourceVerified:fresh,applicationAutomatic:false};
 }
 const TOPICS=[['internal_medicine','پزشکی داخلی',/internal medicine|physician|پزشکی داخلی|متخصص داخلی/i],['cardiometabolic','قلب و متابولیسم',/cardiolog|cardiovascular|diabet|metabolic|قلب|دیابت/i],['public_health','سلامت عمومی',/public health|epidemiolog|population health|بهداشت|اپیدمیولوژی/i],['clinical_research','پژوهش بالینی',/clinical research|clinical trial|پژوهش بالینی|کارآزمایی/i]];

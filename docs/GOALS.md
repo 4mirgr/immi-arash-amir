@@ -19,6 +19,7 @@ User mandate: two independent doctor workspaces, shared public clinic/opportunit
 | PESCI | Officially grounded case presentation/mock/library/read-aloud/speed/timing/feedback | Nine original educational cases with own answer/reflection history, practice timer and English speech are implemented. Full validated examination simulator and ongoing licensed question-source pipeline remain incomplete |
 | Automation/AI | Coordinated, cheap, reliable background enrichment | Bounded cron collectors, watchers, notifications and approved schedulers; request-based Workers AI with hard quotas. No unlimited/perpetual conversational agents |
 | UI | Professional, readable and interactive, AA canonical logo | Responsive RTL with Latin isolation; per-profile browser font-size/theme controls; dual Tehran/Jalali and Australian/Gregorian calendar; collapsible/filterable analysis, study and development cards |
+| Maintenance | Reviewed local skills, repeatable daily/browser/live checks and tested stable dependency patches | Selected pinned skills and checksum catalog; bounded weekly lockfile maintenance with fail-closed gates, no arbitrary architecture or credential changes. Worker deployment remains a separate authorized transport. See AUTOMATIC-MAINTENANCE.fa.md |
 | Recovery | GitHub as canonical source for later agents | AGENTS + role files + POLICY + this map + RESUME + source/date/evidence notes. Private CVs, credentials and mail excluded from git |
 
 ## Research and recommendation rules

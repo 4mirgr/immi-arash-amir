@@ -1,0 +1,72 @@
+name: Tested patch maintenance
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 4 * * 1'
+permissions:
+  contents: read
+concurrency:
+  group: aus-patch-maintenance
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: ./.github/actions/setup-project-checks
+      - name: Prepare stable patch-only lockfile candidate
+        run: python scripts/update_patch_dependencies.py --write
+      - name: Detect candidate
+        id: candidate
+        shell: bash
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Verify the actual candidate
+        if: steps.candidate.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          python scripts/check_skills.py
+          node --test tests/cloud*.mjs
+          python -m unittest discover -s tests -v
+          npm run build
+          node scripts/build_worker.mjs
+          python scripts/run_browser_checks.py
+          npm audit --audit-level=high
+      - name: Apply only the verified lockfile without force
+        if: steps.candidate.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,subprocess
+          from scripts.update_patch_dependencies import validate_candidate
+          before=json.loads(subprocess.check_output(['git','show','HEAD:package-lock.json'],text=True))
+          after=json.load(open('package-lock.json'))
+          validate_candidate(before,after)
+          changed=subprocess.check_output(['git','diff','--name-only'],text=True).splitlines()
+          if changed!=['package-lock.json']:raise SystemExit('Unexpected file changes; no automatic commit')
+          subprocess.run(['git','fetch','origin','main'],check=True)
+          local=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          remote=subprocess.check_output(['git','rev-parse','origin/main'],text=True).strip()
+          if local!=remote:raise SystemExit('main moved; regenerate and reverify')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package-lock.json
+          git commit -m 'chore: apply tested stable dependency patches'
+          gh auth setup-git
+          git push origin HEAD:main
