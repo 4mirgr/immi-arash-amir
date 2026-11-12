@@ -39,7 +39,7 @@ Contact/discovery engine: read docs/PUBLIC-CONTACT-ENGINE.md selectively. New pu
 - GOOGLE_DB `team_board_tasks` stores ONLY explicitly shared tasks. Verified creator/assignee status changes; cap40; explicit consent resets after draft edits. Separate Google/mail/CV stays private. Meeting links and owner-imported ICS do not connect Google/Teams or send invitations.
 - New schemas `au-funding-schema.sql` (OPPORTUNITY_DB), `research-funding-schema.sql` + `team-board-schema.sql` (GOOGLE_DB) applied additively2026-11-12. Five actual public publisher snapshots seeded. Owner export adds own private funding plan and own authored shared tasks, retaining existing100row/2MB limitations.
 - Strategy/evidence: `cloud/research-bridge-evidence.json`, `docs/research/AU-RESEARCH-BRIDGE-2026-11-12.fa.md`. Baker/La Trobe cardiovascular/diabetes PhD2027 call closes8Jan2027; research entry and possible deferral need confirmation against training completion. Sydney programme's18Dec2026 round deadline is shown separately, never as a globally open project.
-- Checks: focused backend/privacy/source/checkpoint/export tests, English+mobile component tests including actual public evidence, and isolated `/aus/` build. Deployment receipt is recorded in the delivery note once verified.
+- Checks: focused backend/privacy/source/checkpoint/export tests, English+mobile component tests including actual public evidence, and isolated `/aus/` build. Deployment receipt and verified limits: `docs/RESEARCH-FUNDING-DELIVERY-2026-11-12.fa.md`.
 
 ## 2026-11-05 — خوانایی و اتصال دامنهٔ جدید
 
