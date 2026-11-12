@@ -22,8 +22,8 @@ with tempfile.TemporaryDirectory() as work:
   if path=='/api/opportunities':data={'opportunities':[ad],'total':1}
   elif path=='/api/opportunities/sources':data={'sources':[],'automation':{}}
   elif path=='/api/mail-automation/suggestions':cadences.append(q.get('cadence'));data={'suggestions':[ad],'profileId':'arash','automaticSending':False}
-  elif path=='/api/clinic-bank/status':data={'counts':{'total':5233,'read':2,'withContacts':1,'pending':5231},'enabled':True}
-  elif path=='/api/clinic-bank/items':data={'items':[{'id':'bank_a','name':'Synthetic Clinic','url':'https://clinic.example/','status':'public_contacts_found','stale':False,'contacts':[{'type':'email','value':'jobs@clinic.example','sourceURL':'https://clinic.example/contact'}]}]}
+  elif path=='/api/clinic-bank/status':data={'counts':{'total':5233,'read':2,'withContacts':1,'pending':5231},'enabled':True,'lastRunAt':'2026-11-12T09:05:00Z'}
+  elif path=='/api/clinic-bank/items':data={'items':[{'id':'bank_a','name':'Synthetic Clinic','url':'https://clinic.example/','status':'public_contacts_found','stale':False,'readAt':'2026-11-11T09:05:00Z','lastAttemptAt':'2026-11-12T09:05:00Z','lastSuccessAt':'2026-11-11T09:05:00Z','contacts':[{'type':'email','value':'jobs@clinic.example','sourceURL':'https://clinic.example/contact','quote':'Published recruitment enquiries for Synthetic Clinic.'}]}]}
   elif path=='/api/opportunities/'+ad['id']+'/mail':data={'opportunityId':ad['id'],'publishedRecipients':['jobs@clinic.example'],'url':ad['url'],'trust':'official','scheduling':{'enabled':False}}
   elif path=='/api/google/status':data={'connected':False}
   elif path in ['/api/cv/versions','/api/presets']:data=[]
@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory() as work:
   page.locator('.opportunity-bulk-choice input').check();expect(page.locator('.opportunity-batch-launcher')).to_be_visible();page.evaluate('window.scrollTo(0,document.body.scrollHeight)');box=page.locator('.opportunity-batch-launcher button').bounding_box();assert box and 0<=box['y']<844
   page.locator('.clinic-bank-panel>summary').click();expect(page.locator('.clinic-bank-counts')).to_contain_text('5,233');expect(page.locator('.clinic-bank-items article')).to_have_count(1)
   page.locator('.clinic-bank-items details').evaluate('(e)=>e.open=true');expect(page.locator('.clinic-bank-contact')).to_contain_text('jobs@clinic.example')
-  assert not re.search(r'[\u0600-\u06ff]',page.locator('.clinic-bank-panel').inner_text()),page.locator('.clinic-bank-panel').inner_text()
+  expect(page.locator('.clinic-bank-panel')).to_contain_text('Last recorded check, Tehran time:');expect(page.locator('.clinic-bank-items blockquote')).to_have_text('Published recruitment enquiries for Synthetic Clinic.');assert not re.search(r'[\u0600-\u06ff]',page.locator('.clinic-bank-panel').inner_text()),page.locator('.clinic-bank-panel').inner_text()
   assert not re.search(r'[\u0600-\u06ff]',page.locator('.periodic-outreach').inner_text()),page.locator('.periodic-outreach').inner_text()
   assert not page.evaluate('document.documentElement.scrollWidth>innerWidth')
   page.locator('.arash-row-quick-actions button').click();expect(page.locator('.send-action-dock-inline')).to_be_visible()

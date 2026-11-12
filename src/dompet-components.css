@@ -167,3 +167,22 @@
 @media(prefers-reduced-motion:reduce) {
   .app .page input,.app .page select,.app .page textarea,.app .arash-opportunity-row { transition: none; }
 }
+
+/* Reflow at the largest supported text size: a heading, source table or
+   nested grid must not set the width of the entire mobile workspace. */
+.app .page .panel,
+.app .page .section-head,
+.app .page .section-head>*,
+.app .page details { min-width: 0; }
+.app .page .section-head { flex-wrap: wrap; }
+.app .page .section-head h2,
+.app .page .section-head h3,
+.app .page .section-head h4 { max-width: 100%; overflow-wrap: anywhere; }
+.app .opportunity-supporting-panels { grid-template-columns: minmax(0,1fr); min-width: 0; }
+.app .opportunity-supporting-panels>details { max-width: 100%; }
+.app .linkedin-workspace { min-width: 0; grid-template-columns: minmax(0,1fr); }
+.app .page summary:focus-visible { outline: 2px solid var(--dompet-teal); outline-offset: 3px; }
+@media(max-width:640px) {
+ .app .linkedin-workspace .li-grid { grid-template-columns: minmax(0,1fr); }
+ .app .page .section-head>button { max-width: 100%; white-space: normal; }
+}

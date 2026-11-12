@@ -1,3 +1,4 @@
+import {evidenceDeadlinePassed} from './evidence-deadline.mjs';
 import eligibility from './eligibility-evidence.json' with {type:'json'};
 import study from './study-evidence.json' with {type:'json'};
 import development from './development-evidence.json' with {type:'json'};
@@ -31,7 +32,7 @@ export function analyseProfile(profileId,profile={}){
  return {summary:'تمرکز بر استخدامِ واقع‌بینانه با نظارت و تطبیق PESCI با سمت واقعی است. ادعاهای آزمون و ارزیابیِ پرونده باید با نتیجه، تاریخ و نوع مسیر تأیید شوند؛ کاهش MMM به‌تنهایی احتمال پذیرش را ثابت نمی‌کند.',knownFacts,unknowns,scenarios};
 }
 async function progress(db,owner){return (await db.prepare('SELECT action_id,status,note,updated_at FROM roadmap_actions WHERE owner_id=?').bind(owner).all()).results||[];}
-export function deadlinePassed(item,now=Date.now()){const value=typeof item.deadline==='string'?item.deadline:item.deadline?.date;if(typeof value!=='string')return false;const parsed=Date.parse(value);return Number.isFinite(parsed)&&parsed+(/^\d{4}-\d{2}-\d{2}$/.test(value)?86400000:0)<now;}
+export const deadlinePassed=evidenceDeadlinePassed;
 function assessItem(item,profileId,profile){
  const planning=profile.planning||{},language=planning.language||{};
  const closed=['closed','expired'].includes(item.status)||['closed','expired'].includes(item.deadline?.status)||deadlinePassed(item);

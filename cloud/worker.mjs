@@ -14,8 +14,6 @@ import {runMaintenance} from './maintenance.mjs';
 import {handleOperationsRequest} from './operations.mjs';
 import {handleUniversityCatalogueRequest} from './university-catalogue.mjs';
 import {handlePublicPagesRequest} from './public-page-store.mjs';
-import {dispatchPublicPageReading} from './public-page-worker.mjs';
-import {dispatchPublicDiscoveryAI} from './public-discovery-ai.mjs';
 import {googleAccountContext} from './google-account-scope.mjs';
 import {handleLinkedInInsightsRequest} from './linkedin-insights.mjs';
 import {handleNetworkTargetsRequest} from './network-targets.mjs';
@@ -28,10 +26,10 @@ import {handleGpApplicationPackageRequest} from './gp-application-package.mjs';
 import {handleGpWorkflowRequest} from './gp-workflow.mjs';
 import {handleOwnerBackupRequest} from './owner-backup.mjs';
 import {handleBackupDriveRequest} from './backup-drive.mjs';
-import {handleLinkedInSchedulerRequest,dispatchScheduledLinkedIn} from './linkedin-scheduler.mjs';
+import {handleLinkedInSchedulerRequest} from './linkedin-scheduler.mjs';
 import {handleMailSchedulerRequest,dispatchScheduledMail} from './mail-automation-scheduler.mjs';
-import {handleClinicBankRequest,dispatchClinicBankReading} from './clinic-bank.mjs';
-import {reconcileClinicBankGrowth} from './clinic-bank-growth.mjs';
+import {handleClinicBankRequest} from './clinic-bank.mjs';
+import {runBackgroundCycle} from './background-cycle.mjs';
 import educationalCase from '../library/pesci/PESCI-PRACTICE-COMM-001.json' with { type: 'json' };
 
 const DEFAULT_SETTINGS = { emailPolicy: 'auto_after_connection', defaultTemplate: '', notifications: false };
@@ -235,4 +233,4 @@ export function createHandler(fetcher = fetch) {
     } catch (error) { const expected=error instanceof ApiError||error instanceof GoogleError;return json({error:expected ? error.message : 'Request failed',...(error instanceof GoogleError?{code:error.code}:{})},expected ? error.status : 500); }
   };
 }
-export default {fetch:createHandler(),async scheduled(event,env){const cron=event.cron||'0 * * * *';if(cron==='*/15 * * * *')return await dispatchTelegramNotifications(env);if(cron==='*/5 * * * *'){const publication=await dispatchScheduledLinkedIn(env);const reading=await dispatchPublicPageReading(env);const discoveryAI=await dispatchPublicDiscoveryAI(env);const clinicBankGrowth=await reconcileClinicBankGrowth(env);const clinicBank=await dispatchClinicBankReading(env);return {publication,reading,discoveryAI,clinicBankGrowth,clinicBank};}if(cron==='2-57/5 * * * *')return await dispatchScheduledMail(env);if(cron==='15 */6 * * *'){const maintenance=await runMaintenance(env);const evidence=await watchEvidenceSources(env);return {maintenance,evidence};}return await runScheduledCollection(event,env,collectRegisteredSources);}};
+export default {fetch:createHandler(),async scheduled(event,env){const cron=event.cron||'0 * * * *';if(cron==='*/15 * * * *')return await dispatchTelegramNotifications(env);if(cron==='*/5 * * * *')return await runBackgroundCycle(env,{now:Number.isFinite(event.scheduledTime)?event.scheduledTime:Date.now()});if(cron==='2-57/5 * * * *')return await dispatchScheduledMail(env);if(cron==='15 */6 * * *'){const maintenance=await runMaintenance(env);const evidence=await watchEvidenceSources(env);return {maintenance,evidence};}return await runScheduledCollection(event,env,collectRegisteredSources);}};

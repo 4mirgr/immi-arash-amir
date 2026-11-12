@@ -64,3 +64,13 @@
  .access-screen .access-card{padding:24px 20px;border-radius:23px}
 }
 @media(prefers-reduced-motion:reduce){.app *, .app *::before,.app *::after{scroll-behavior:auto!important;transition-duration:0s!important;animation-duration:0s!important}}
+/* White text preserves readable contrast on the dark-teal light palette. */
+:root[data-theme="light"] .access-screen .access-card .primary { color:#fff; }
+@media(max-width:760px){
+ .app .page>.page-heading{flex-wrap:wrap;align-items:flex-start}
+ .app .page>.page-heading>div{min-width:0;flex:1 1 240px}
+ .app .page>.page-heading>button{max-width:100%;white-space:normal}
+}
+/* The fixed desktop sidebar scrolls; its identity must never be compressed
+   below the height of a long doctor name or enlarged text. */
+@media(min-width:761px){.app .sidebar>*{flex-shrink:0}}

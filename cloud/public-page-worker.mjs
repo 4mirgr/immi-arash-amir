@@ -2,9 +2,10 @@ import {extractPublicContacts} from './public-contact-extraction.mjs';
 import {reconcileContactCoverage} from './contact-coverage.mjs';
 import {storePublicReading,PUBLIC_PAGE_REFRESH_MS,PUBLIC_PAGE_RETRY_MS} from './public-page-store.mjs';
 const AGENT='MasirUniversityDiscovery/1.0',MAX_BODY=1000000;
+export const PUBLIC_PAGE_REQUEST_LIMIT=6;
 const sensitive=/(?:^|\/)(?:login|logout|signin|sign-in|admin|wp-admin|account|auth|apply|application|candidate)(?:\/|$)/i;
 const error=code=>{throw Error(code);};
-function safe(value,bases){const u=new URL(value);if(u.protocol!=='https:'||u.username||u.password||u.port||!bases.some(base=>u.hostname===base||u.hostname.endsWith('.'+base))||!/^[-a-z0-9.]+$/.test(u.hostname)||/^\d+(?:\.\d+){3}$/.test(u.hostname)||u.hostname.includes('..')||u.hostname.endsWith('.localhost')||u.hostname.endsWith('.local')||u.hostname.endsWith('.internal')||sensitive.test(decodeURIComponent(u.pathname)))error('invalid_url');u.hash='';return u.href;}
+function safe(value,bases){if(typeof value!=='string'||/[\x00-\x20\\]/.test(value))error('invalid_url');const u=new URL(value);if(u.protocol!=='https:'||u.username||u.password||u.port||!bases.some(base=>u.hostname===base||u.hostname.endsWith('.'+base))||!/^[-a-z0-9.]+$/.test(u.hostname)||/^\d+(?:\.\d+){3}$/.test(u.hostname)||u.hostname.includes('..')||u.hostname.endsWith('.localhost')||u.hostname.endsWith('.local')||u.hostname.endsWith('.internal')||['nip.io','sslip.io','localtest.me','vcap.me','lvh.me'].some(base=>u.hostname===base||u.hostname.endsWith('.'+base))||sensitive.test(decodeURIComponent(u.pathname))||[...u.searchParams.keys()].some(key=>/token|secret|session|password|code|auth/i.test(key)))error('invalid_url');u.hash='';return u.href;}
 export function robotsAllows(text,target){
  const groups=[];let agents=[],rules=[],delay=0,hasRule=false;
  function save(){if(agents.length)groups.push({agents,rules,delay});agents=[];rules=[];delay=0;hasRule=false;}
@@ -44,16 +45,30 @@ export function visiblePageText(html){
  const body=html.replace(/<(script|style|noscript|nav|footer|header|aside|form|template|svg)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,' ').replace(/<!--[^]*?-->/g,' ').replace(/<[^>]*>/g,' ').replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/&#(x[0-9a-f]+|\d+);/gi,(_,n)=>{const cp=n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):Number(n);return cp>31&&cp<=0x10ffff?String.fromCodePoint(cp):' ';}).replace(/\s+/g,' ').trim();
  return {title,text:body.slice(0,50000),partial:body.length>50000};
 }
-export async function readQueuedPage(row,fetcher=fetch,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))){
- const data=JSON.parse(row.data),bases=(data.officialBases||[]).filter(v=>typeof v==='string'&&/^[a-z0-9.-]+$/.test(v)&&v.includes('.')&&!/^\d+(?:\.\d+){3}$/.test(v));
+export async function readQueuedPage(row,fetcher=fetch,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),requestBudget={remaining:PUBLIC_PAGE_REQUEST_LIMIT}){
  const record={id:row.id,url:row.url,title:'',text:'',status:'fetch_failed',readAt:new Date().toISOString(),limitations:['Server HTML/text extraction only; dynamic content and hidden layout may require separate review.']};
  try{
-  let url=safe(row.url,bases);const policies=new Map();
+  let data;try{data=JSON.parse(row.data);}catch{error('invalid_url');}
+  const bases=(Array.isArray(data?.officialBases)?data.officialBases:[]).filter(v=>typeof v==='string'&&/^[a-z0-9.-]+$/.test(v)&&v.includes('.')&&!/^\d+(?:\.\d+){3}$/.test(v));
+  const boundedFetch=async(url,options)=>{if(!Number.isInteger(requestBudget?.remaining)||requestBudget.remaining<=0)error('request_budget_exhausted');requestBudget.remaining--;return fetcher(url,options);};
+  // Some sites redirect /robots.txt to a canonical HTTPS host. Follow only the
+  // same approved domain, with a shared budget covering robots and page reads.
+  async function robotsPolicy(origin){
+   let target=origin+'/robots.txt';
+   for(let hop=0;hop<3;hop++){
+    const response=await boundedFetch(target,{headers:{'User-Agent':AGENT,Accept:'text/plain'},redirect:'manual',signal:AbortSignal.timeout(8000)});
+    if(response.status>=300&&response.status<400){const location=response.headers.get('Location');await response.body?.cancel();if(!location||hop===2)error('robots_unavailable');target=safe(new URL(location,target).href,bases);continue;}
+    if(response.status===401||response.status===403){await response.body?.cancel();error('robots_blocked');}
+    if(![200,404].includes(response.status)){await response.body?.cancel();error('robots_unavailable');}
+    const text=response.status===404?'':await bounded(response,64000);if(response.status===404)await response.body?.cancel();if(/<html/i.test(text.slice(0,500)))error('robots_unavailable');return {text,canonicalOrigin:new URL(target).pathname==='/robots.txt'&&!new URL(target).search?new URL(target).origin:null};
+   }
+   error('robots_unavailable');
+  }
+  let url=safe(row.url,bases);const policies=requestBudget.policies instanceof Map?requestBudget.policies:(requestBudget.policies=new Map());
   for(let hop=0;hop<3;hop++){
-   const origin=new URL(url).origin;let policy=policies.get(origin);
-   if(!policy){const robots=await fetcher(origin+'/robots.txt',{headers:{'User-Agent':AGENT,Accept:'text/plain'},redirect:'manual',signal:AbortSignal.timeout(8000)});if(robots.status===401||robots.status===403){await robots.body?.cancel();error('robots_blocked');}if(![200,404].includes(robots.status)){await robots.body?.cancel();error('robots_unavailable');}const text=robots.status===404?'':await bounded(robots,64000);if(robots.status===404)await robots.body?.cancel();if(/<html/i.test(text.slice(0,500)))error('robots_unavailable');policy=text;policies.set(origin,policy);}
-   const permission=robotsAllows(policy,url);if(!permission.allowed)error('robots_blocked');if(permission.delay>30)error('crawl_delay_exceeds_budget');if(permission.delay)await sleep(permission.delay*1000);
-   const response=await fetcher(url,{headers:{'User-Agent':AGENT,Accept:'text/html,text/plain'},redirect:'manual',signal:AbortSignal.timeout(10000)});
+   const origin=new URL(url).origin;if(!policies.has(origin)){const policy=await robotsPolicy(origin);policies.set(origin,policy.text);if(policy.canonicalOrigin)policies.set(policy.canonicalOrigin,policy.text);}
+   const permission=robotsAllows(policies.get(origin),url);if(!permission.allowed)error('robots_blocked');if(permission.delay>30)error('crawl_delay_exceeds_budget');if(permission.delay)await sleep(permission.delay*1000);
+   const response=await boundedFetch(url,{headers:{'User-Agent':AGENT,Accept:'text/html,text/plain'},redirect:'manual',signal:AbortSignal.timeout(10000)});
    if(response.status>=300&&response.status<400){const location=response.headers.get('Location');await response.body?.cancel();if(!location||hop===2)error('redirect_limit');url=safe(new URL(location,url).href,bases);continue;}
    if(!response.ok){await response.body?.cancel();error(response.status===401||response.status===403?'access_denied':response.status>=500||[408,425,429].includes(response.status)?'http_error':'http_rejected');}
    const contentType=response.headers.get('Content-Type')||'';record.contentType=contentType;
@@ -64,7 +79,7 @@ export async function readQueuedPage(row,fetcher=fetch,sleep=ms=>new Promise(res
    record.enrichment=extractPublicContacts({...(/html/i.test(contentType)?{html:body}:{text:parsed.text}),sourceURL:url,readAt:record.readAt});
    if(parsed.partial)record.limitations.push('Only the first 50000 text characters were evaluated.');return record;
   }
- }catch(e){record.status=/^(invalid_url|body_too_large|empty_text|robots_blocked|robots_unavailable|crawl_delay_exceeds_budget|redirect_limit|access_denied|http_error|http_rejected|pdf_reader_required|unsupported_content)$/.test(e.message)?e.message:'fetch_failed';}
+ }catch(e){record.status=/^(invalid_url|body_too_large|empty_text|robots_blocked|robots_unavailable|crawl_delay_exceeds_budget|redirect_limit|access_denied|http_error|http_rejected|pdf_reader_required|unsupported_content|request_budget_exhausted)$/.test(e.message)?e.message:'fetch_failed';}
  return record;
 }
 export async function dispatchPublicPageReading(env,fetcher=fetch,now=Date.now()){
@@ -76,7 +91,7 @@ export async function dispatchPublicPageReading(env,fetcher=fetch,now=Date.now()
  for(let i=0;i<2;i++){
   // Keep a previous successful status/evidence visible while a refresh holds its lease.
   // Legacy successful rows with available_at=0 still obey the seven-day read_at age.
-  const eligible="lease_until<=? AND available_at<=? AND (status IN ('pending','reading','fetch_failed','robots_unavailable','http_error','reading_storage_failed') AND attempts<3 OR (status IN ('read','read_partial') AND (attempts<3 OR lease_until=0) AND (read_at<=? OR json_extract(data,'$.refreshRequested')=1)))";
+  const eligible="lease_until<=? AND available_at<=? AND (status IN ('pending','reading','fetch_failed','robots_unavailable','http_error','request_budget_exhausted','reading_storage_failed') AND attempts<3 OR (status IN ('read','read_partial') AND (attempts<3 OR lease_until=0) AND (read_at<=? OR json_extract(data,'$.refreshRequested')=1)))";
   const cutoff=new Date(now-PUBLIC_PAGE_REFRESH_MS).toISOString();
   const clinicalText="lower(title||' '||coalesce(json_extract(data,'$.labels'),''))";
   const clinical=`(${clinicalText} LIKE '%general pract%' OR ${clinicalText} LIKE '%medical officer%' OR ${clinicalText} LIKE '%rural generalist%' OR ${clinicalText} LIKE '%level 1%' OR instr(' '||replace(replace(${clinicalText},'-',' '),'\"',' ')||' ',' gp ')>0)`;

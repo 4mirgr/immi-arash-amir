@@ -85,7 +85,13 @@ export async function sendRecipientBatch({api,person,prepared,isActive=()=>true,
    if(sent.status==='sent'){report(results,entry,{status:'sent',queueId,gmailMessageId:sent.gmailMessageId||null},onProgress,isActive);continue;}
    const status=['sending','delivery_unknown'].includes(sent.status)?'delivery_unknown':'failed';report(results,entry,{status,queueId,reason:sent.reason||sent.status||'dispatch_outcome_unconfirmed'},onProgress,isActive);return finish(results,true,prepared.entries);
   }catch(error){
-   if(isActive()!==true){report(results,entry,{status:stage==='dispatch'?'delivery_unknown':'cancelled',queueId,reason:'batch_context_changed'},onProgress,isActive);return finish(results,true,prepared.entries);}
+   if(isActive()!==true){
+    // Losing the UI context cannot cancel a mutation already submitted to the
+    // server. Preserve a confirmed queue, and disclose an unconfirmed queue or
+    // delivery instead of implying that it disappeared safely.
+    const status=stage==='dispatch'?'delivery_unknown':stage==='queue'?'queue_unknown':queueId?'queued':'cancelled';
+    report(results,entry,{status,queueId,reason:'batch_context_changed'},onProgress,isActive);return finish(results,true,prepared.entries);
+   }
    const status=stage==='dispatch'?'delivery_unknown':stage==='queue'&&uncertain(error)?'queue_unknown':'failed';report(results,entry,{status,queueId,reason:reason(error)},onProgress,isActive);return finish(results,true,prepared.entries);
   }
  }

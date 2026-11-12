@@ -47,7 +47,9 @@ export function rankMessage(text,direction='received'){
  const explained=(priority,reasons)=>({priority,reasons:[...reasons,...(current.excludedHistory?['quoted_history_excluded_from_analysis']:[]),...(current.excludedSignature?['signature_excluded_from_analysis']:[]),'rule_based_review_required']});
  const rejection=/\b(not interested|no (?:current )?(?:vacanc(?:y|ies)|positions|openings)|unsuccessful|unfortunately|we regret|cannot (?:offer|provide|sponsor)|unable to (?:offer|provide|sponsor|proceed)|not able to (?:offer|provide|sponsor)|do not (?:offer|provide|sponsor)|not (?:offer(?:ing)?|provid(?:e|ing)) (?:visa )?sponsor)/;
  const negatedInvitation=/\b(?:unable to|not able to|cannot|can't|can not|will not|won't|do not|don't|not)\s+(?:[a-z]+\s+){0,3}(?:interview(?:ing)?|offer(?:ing)?|arrange|schedule|book|call|sponsor|proceed)\b|\b(?:interview|call|meeting|job offer)\s+(?:is |are )?(?:not (?:possible|available|offered)|unavailable)\b|\bno\s+(?:interview|job offer|call|meeting)\b/;
- if(rejection.test(lower)||negatedInvitation.test(lower))return explained('weak',['rejection_or_unavailable_position_signal']);
+ const supervision='(?:(?:level|tier)\\s*(?:1|one)\\s+)?supervision',sponsorship='(?:visa\\s+)?sponsorship',support='(?:'+supervision+'|'+sponsorship+')';
+ const unavailableSupport=new RegExp('\\b(?:no\\s+'+support+'|neither\\s+'+support+'\\s+nor\\s+'+support+')\\s+(?:(?:is|are)\\s+)?(?:currently\\s+)?available\\b');
+ if(rejection.test(lower)||negatedInvitation.test(lower)||unavailableSupport.test(lower))return explained('weak',['rejection_or_unavailable_position_signal']);
  const strong=[['interview',/\binterview\b/],['offer',/\b(?:job offer|offer of employment|employment offer)\b/],['call',/\b(?:arrange|schedule|book) (?:a |an )?(?:call|meeting)\b/],['sponsorship',/\bsponsorship (?:is )?available\b/],['supervision',/\bsupervision (?:is )?available\b/]].filter(([,pattern])=>pattern.test(lower)).map(([name])=>name);
  if(strong.length)return explained('strong',strong.map(v=>'positive_'+v+'_signal'));
  if(/\b(application (?:received|under review)|review (?:your|the) application|send (?:us )?(?:your )?(?:cv|resume)|further information|more information)\b/.test(lower))return explained('medium',['application_or_information_request_signal']);
@@ -210,10 +212,12 @@ export async function handleGoogleMailRequest(request,env,context,fetcher=fetch,
    if(!Number.isInteger(limit)||limit<1||limit>100||!Number.isInteger(offset)||offset<0||offset>10000)throw new MailError(400,'invalid_pagination');
    // Owner and verified Google subject are mandatory. Relevance examines a bounded
    // recent cache window, never silently scans all imported contacts or all Gmail.
-   const result=await db.prepare("SELECT data FROM google_mail_messages WHERE owner_id=? AND google_sub=? AND (?='all' OR priority=?) AND (?='' OR instr(lower(data),?)>0) ORDER BY message_date DESC LIMIT 500").bind(owner,subject,priority,priority,q,q).all();
-   const cached=(result.results||[]).map(r=>JSON.parse(r.data)),matches=await matchedClinicSenders(context,cached);
+   const result=await db.prepare("SELECT data FROM google_mail_messages WHERE owner_id=? AND google_sub=? AND (?='' OR instr(lower(data),?)>0) ORDER BY message_date DESC LIMIT 500").bind(owner,subject,q,q).all();
+   // Apply the current rules to already cached messages too. Filtering on the
+   // persisted priority first would retain old false positives indefinitely.
+   const cached=(result.results||[]).map(r=>{const message=JSON.parse(r.data);return {...message,...rankMessage(String(message.subject||'')+'\n'+String(message.plainBody||message.snippet||'').slice(0,8000),message.direction)};}),matches=await matchedClinicSenders(context,cached);
    const reviewed=cached.map(message=>({...message,projectRelevance:classifyProjectMessage(message,matches)}));
-   const filtered=reviewed.filter(message=>(scope==='all'||message.projectRelevance.related)&&(topic==='all'||message.projectRelevance.topics.includes(topic)));
+   const filtered=reviewed.filter(message=>(priority==='all'||message.priority===priority)&&(scope==='all'||message.projectRelevance.related)&&(topic==='all'||message.projectRelevance.topics.includes(topic)));
    filtered.sort(order==='newest'?(a,b)=>b.dateTimestamp-a.dateTimestamp:order==='special'?(a,b)=>Number(b.projectRelevance.special)-Number(a.projectRelevance.special)||b.projectRelevance.score-a.projectRelevance.score||b.dateTimestamp-a.dateTimestamp:(a,b)=>b.projectRelevance.score-a.projectRelevance.score||b.dateTimestamp-a.dateTimestamp);
    const state=await row(db,'SELECT last_synced_at,coverage,pending_ids,page_token FROM google_mail_sync WHERE owner_id=? AND google_sub=?',owner,subject);
    return json({messages:filtered.slice(offset,offset+limit),sync:{lastSyncedAt:state?.last_synced_at?new Date(state.last_synced_at).toISOString():null,coverage:state?.coverage||'not_synced',pendingCount:pendingIds(state?.pending_ids).length,moreHistory:!!state?.page_token},analysis:'rule_based',scope,order,topic,reviewedCacheWindow:cached.length,cacheWindowLimit:500,matchedWithinWindow:filtered.length,more:offset+limit<filtered.length,sourceMatching:{status:matches.status,candidateEmails:matches.candidateEmails||0,candidateDomains:matches.candidateDomains||0},sendingEnabled:false,limit,offset});

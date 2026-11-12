@@ -1,7 +1,7 @@
 // Imported URLs remain private leads. Public reading neither creates a vacancy
 // nor grants permission to contact anyone. Original spreadsheet contacts are not
 // promoted into source-published evidence or shared with another workspace.
-import {readQueuedPage} from './public-page-worker.mjs';
+import {readQueuedPage,PUBLIC_PAGE_REQUEST_LIMIT} from './public-page-worker.mjs';
 import {checkAutomationMembership} from './automation-membership.mjs';
 export const CLINIC_BANK_REFRESH_MS=7*86400000;
 export const CLINIC_BANK_RUN_LIMIT=2;
@@ -21,8 +21,9 @@ const clean=(v,max)=>typeof v==='string'?v.replace(/[\x00-\x1f<>]/g,' ').trim().
 async function leadId(owner,url){return 'bank_'+[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(owner+'\n'+url)))].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,32);}
 function provenance(item){const p=item.provenance;if(!p||typeof p!=='object'||Array.isArray(p))return {};return{sourceFile:clean(p.sourceFile,180),sourceSheet:clean(p.sourceSheet,100),...(Number.isInteger(p.sourceRow)&&p.sourceRow>0&&p.sourceRow<10000000?{sourceRow:p.sourceRow}:{})};}
 export function clinicBankView(row,at=Date.now()){
- const result=parse(row.result_json),contacts=Array.isArray(result.contacts)?result.contacts:[];
- return{id:row.id,name:row.name,url:row.url,status:row.status,readAt:row.read_at,lastSuccessAt:row.last_success_at,nextRefreshAt:new Date(Number(row.available_at)||at).toISOString(),contacts,newEmailCount:row.new_email_count||0,stale:!['public_contacts_found','public_page_read'].includes(row.status)||!row.read_at||at-Date.parse(row.read_at)>CLINIC_BANK_REFRESH_MS,leadOnly:true,vacancyVerified:false,sendingApproved:false,sourceStatus:result.sourceStatus||null};
+ const result=parse(row.result_json),contacts=Array.isArray(result.contacts)?result.contacts:[],successful=['public_contacts_found','public_page_read'].includes(row.status);
+ const readAt=result.contactsReadAt||row.last_success_at||(successful?row.read_at:null),readStamp=Date.parse(readAt);
+ return{id:row.id,name:row.name,url:row.url,status:row.status,readAt,lastAttemptAt:result.lastAttempt?.readAt||row.read_at||null,lastSuccessAt:row.last_success_at,nextRefreshAt:new Date(Number(row.available_at)||at).toISOString(),contacts,newEmailCount:row.new_email_count||0,stale:!successful||!Number.isFinite(readStamp)||readStamp>at||at-readStamp>CLINIC_BANK_REFRESH_MS,leadOnly:true,vacancyVerified:false,sendingApproved:false,sourceStatus:result.sourceStatus||null};
 }
 export async function handleClinicBankRequest(request,env,context){
  const u=new URL(request.url);if(!u.pathname.startsWith(BASE+'/'))return null;
@@ -77,13 +78,31 @@ export async function dispatchClinicBankReading(env,fetcher=fetch,at=Date.now(),
     }
     const url=clinicBankURL(row.url);
     if(!UUID.test(row.owner_id)||!url)result={status:'invalid_url',enrichment:{contacts:[]}};
-    else result=await readQueuedPage({id:row.id,url,data:JSON.stringify({officialBases:[new URL(url).hostname]})},fetcher);
-    const read=['read','read_partial'].includes(result.status),contacts=read?(result.enrichment?.contacts||[]).slice(0,100):[];
-    const previous=new Set((parse(row.result_json).contacts||[]).filter(c=>c.type==='email').map(c=>String(c.value).toLowerCase()));
-    const newEmails=contacts.filter(c=>c.type==='email'&&!previous.has(String(c.value).toLowerCase())).length;
+    else{
+     const base=new URL(url).hostname.replace(/^www\./,''),budget={remaining:PUBLIC_PAGE_REQUEST_LIMIT};
+     result=await readQueuedPage({id:row.id,url,data:JSON.stringify({officialBases:[base]})},fetcher,undefined,budget);
+     if(['read','read_partial'].includes(result.status)&&!(result.enrichment?.contacts||[]).some(contact=>contact.type==='email')){
+      const candidates=(result.enrichment?.followLinks||[]).filter(link=>clinicBankURL(link.url)&&/contact|team|staff|about/i.test(new URL(link.url).pathname+' '+String(link.label||'')));
+      const follow=candidates.find(link=>/contact/i.test(new URL(link.url).pathname+' '+String(link.label||'')))||candidates[0];
+      if(follow&&budget.remaining>=2){
+       const linked=await readQueuedPage({id:row.id,url:follow.url,data:JSON.stringify({officialBases:[base]})},fetcher,undefined,budget);
+       result.linkedReadings=[{url:follow.url,sourceURL:linked.finalUrl||follow.url,status:linked.status,readAt:linked.readAt}];
+       if(['read','read_partial'].includes(linked.status))result.enrichment.contacts=[...(result.enrichment?.contacts||[]),...(linked.enrichment?.contacts||[]).map(contact=>({...contact,sourceRelation:'linked_page'}))];
+      }
+     }
+    }
+    const read=['read','read_partial'].includes(result.status),previousResult=parse(row.result_json),previousContacts=Array.isArray(previousResult.contacts)?previousResult.contacts:[];
+    // A failed refresh must not erase the last published observations. Retain
+    // their original source/quote and receipt, while the failure status makes
+    // the entire observation explicitly stale and never sending-approved.
+    const contacts=read?(result.enrichment?.contacts||[]).slice(0,100):previousContacts.slice(0,100);
+    const previous=new Set(previousContacts.filter(c=>c.type==='email').map(c=>String(c.value).toLowerCase()));
+    const newEmails=read?contacts.filter(c=>c.type==='email'&&!previous.has(String(c.value).toLowerCase())).length:0;
     const status=read?(contacts.length?'public_contacts_found':'public_page_read'):result.status;
     const attempts=read?0:row.attempts+1,next=at+(read?CLINIC_BANK_REFRESH_MS:attempts<3?86400000:CLINIC_BANK_REFRESH_MS),now=new Date(at).toISOString();
-    await db.prepare('UPDATE clinic_bank_leads SET status=?,attempts=?,available_at=?,lease_until=0,read_at=?,last_success_at=CASE WHEN ? THEN ? ELSE last_success_at END,result_json=?,new_email_count=?,updated_at=? WHERE id=? AND owner_id=? AND lease_until=?').bind(status,attempts,next,now,read?1:0,now,JSON.stringify({sourceStatus:result.status,sourceURL:result.finalUrl||row.url,title:clean(result.title,500),contacts,limitations:result.limitations||[]}),newEmails,now,row.id,row.owner_id,at+180000).run();
+    const contactsReadAt=read?now:previousResult.contactsReadAt||row.last_success_at||null;
+    const snapshot={sourceStatus:result.status,sourceURL:read?result.finalUrl||row.url:previousResult.sourceURL||row.url,title:read?clean(result.title,500):previousResult.title||'',contacts,contactsReadAt,linkedReadings:read?result.linkedReadings||[]:previousResult.linkedReadings||[],limitations:result.limitations||[],lastAttempt:{readAt:now,status:result.status,sourceURL:result.finalUrl||row.url}};
+    await db.prepare('UPDATE clinic_bank_leads SET status=?,attempts=?,available_at=?,lease_until=0,read_at=?,last_success_at=CASE WHEN ? THEN ? ELSE last_success_at END,result_json=?,new_email_count=?,updated_at=? WHERE id=? AND owner_id=? AND lease_until=?').bind(status,attempts,next,now,read?1:0,now,JSON.stringify(snapshot),newEmails,now,row.id,row.owner_id,at+180000).run();
     receipts.push({id:row.id,status,newEmails});
    }catch{
     // Release the lease with a durable backoff, without claiming a read succeeded.

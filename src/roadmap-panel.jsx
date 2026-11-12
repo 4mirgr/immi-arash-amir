@@ -1,3 +1,4 @@
+import {evidenceDeadlineValue,evidenceDeadlineCutoff,evidenceClosed} from '../cloud/evidence-deadline.mjs';
 import {translateUIString} from './ui-translations.mjs';
 import {interfaceLanguage,interfaceLocale} from './interface-locale.mjs';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -15,9 +16,8 @@ const countryNames = {AU:'استرالیا',IT:'ایتالیا',IR:'ایران',
 const safeURL = value => {try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password&&(!u.port||u.port==='443')?u.href:null;}catch{return null;}};
 const date = value => {const d=new Date(value);return value&&!Number.isNaN(d.getTime())?d.toLocaleDateString(interfaceLocale('fa-IR'),{timeZone:'Asia/Tehran'}):text(value)||'ثبت نشده';};
 const included = (item, category) => item.group ? item.group===category : category==='study'?item.type==='study':category==='development'?['development','event'].includes(item.type):!['study','development','event'].includes(item.type);
-const deadlineValue = item => typeof item.deadline==='string'?item.deadline:item.deadline?.date;
-const deadlineTime = item => {const value=Date.parse(deadlineValue(item));return Number.isFinite(value)?value:null;};
-const isClosed = item => ['closed','expired'].includes(item.status)||['closed','expired'].includes(item.deadline?.status)||(deadlineTime(item)!==null&&deadlineTime(item)+86400000<Date.now());
+const deadlineValue=evidenceDeadlineValue;
+const deadlineTime=evidenceDeadlineCutoff;
 const needsReview = item => !!item.review || /requires|unknown|blocked|monitoring|unavailable/.test([item.status,item.deadline?.status].filter(Boolean).join(' '));
 const short = (value,max=175) => {const original=text(value),s=interfaceLanguage()==='en'?translateUIString(original):original;return s.length>max?s.slice(0,max).replace(/\s+\S*$/,'')+'…':s;};
 const sortNotes = {important:'اولویت با هشدار بازبینی منبع، سپس مهلت نزدیکِ نگذشته است؛ این چینش احتمال قبولی نیست.',newest:'ابتدا تاریخ جدیدترِ بررسی منبع، سپس مهلت جدیدتر نمایش داده می‌شود.',relevant:'ابتدا موارد اختصاصی همین کاربر و قابل پیگیری، سپس موارد مشترک یا بسته نمایش داده می‌شوند؛ امتیاز پذیرش محاسبه نمی‌شود.'};
@@ -42,6 +42,9 @@ function FundingHighlight({funding}) {
 
 export function RoadmapPanel({person,category='pathways',notify=()=>{},cloud=true}) {
   const profile=typeof person==='string'?person:person?.id;
+  const [clock,setClock]=useState(Date.now);
+  const isClosed=item=>evidenceClosed(item,clock);
+  useEffect(()=>{const tick=()=>{if(document.visibilityState==='visible')setClock(Date.now());};const timer=setInterval(tick,60000);document.addEventListener('visibilitychange',tick);return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',tick);};},[]);
   const [result,setResult]=useState(null),[requestState,setRequestState]=useState(null),[actionStates,setActionStates]=useState(null),[notes,setNotes]=useState(null),[busy,setBusy]=useState(null),[actionError,setActionError]=useState(null);
   const [filters,setFilters]=useState({profile,category,query:'',country:'all',status:'all',sort:'important'});
   const identity=useRef({profile,epoch:0}),mounted=useRef(false),requestId=useRef(0);
@@ -88,7 +91,7 @@ export function RoadmapPanel({person,category='pathways',notify=()=>{},cloud=tru
       const soon=i=>isClosed(i)?Number.POSITIVE_INFINITY:deadlineTime(i)??Number.POSITIVE_INFINITY;
       return Number(alertB)-Number(alertA)||Number(isClosed(a))-Number(isClosed(b))||soon(a)-soon(b)||Number(b.audience===profile)-Number(a.audience===profile)||text(a.id).localeCompare(text(b.id));
     });
-  },[workspace,category,profile,selected.query,selected.country,selected.status,selected.sort,updates]);
+  },[workspace,category,profile,selected.query,selected.country,selected.status,selected.sort,updates,clock]);
   if(!allowed)return <section className="panel"><h3>{headings[category]||headings.pathways}</h3><p>این بخش برای فضای کاری فعلی در دسترس نیست.</p></section>;
   const analysis=workspace?.analysis||{};
   return <div dir="rtl" style={{display:'grid',gap:'1rem',minWidth:0}}>
