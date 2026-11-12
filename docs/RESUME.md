@@ -33,7 +33,7 @@ Contact/discovery engine: read docs/PUBLIC-CONTACT-ENGINE.md selectively. New pu
 
 
 ## 2026-11-12 — local reviewed skills and automatic maintenance
-The user-supplied library index is now root `CODEX-EXTENDED-LIBRARY.md`; do bounded rg, not full reads. Two local skills in `.agents/skills/` wrap pinned code-reviewer/GitHub-Actions documents with licenses and hashes. `scripts/check_skills.py` validates references without executing third-party code. See `docs/AUTOMATIC-MAINTENANCE.fa.md` for exact triggers, scopes and recovery.
+The user-supplied library index is now root `CODEX-EXTENDED-LIBRARY.md`; do bounded rg, not full reads. Two local skills in `.agents/skills/` wrap pinned code-reviewer/GitHub-Actions documents with licenses and hashes. `scripts/check_skills.py` validates references without executing third-party code. See `docs/AUTOMATIC-MAINTENANCE.fa.md` for exact triggers, scopes and recovery; verified audit/release receipts: `docs/LIBRARY-REVIEW-2026-11-12.fa.md`.
 
 Daily + push/PR checks now include synthetic browser/session/English/reflow/funding/team/mail tests and read-only production authentication probes. Weekly/manual patch maintenance calculates a temporary npm lock candidate with scripts disabled, refuses any minor/major/transitive/package/origin/manifest drift, then applies only a fully tested lockfile without force or overriding moved main. No cloud secrets are added to CI. Future Worker code changes still require authorized Cloudflare deployment; pushing source alone does not deploy its backend. Existing five discovery/transport crons remain independent.
 
