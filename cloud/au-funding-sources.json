@@ -1,0 +1,172 @@
+[
+  {
+    "id": "au-funding-monash-rtp",
+    "name": "Monash University RTP Stipend",
+    "title": "Monash University RTP Stipend",
+    "institution": "Monash University",
+    "organizationName": "Monash University",
+    "country": "AU",
+    "state": "VIC",
+    "profileScope": "amir",
+    "trust": "official",
+    "sourceType": "official",
+    "feedUrl": "https://www.monash.edu/study/fees-scholarships/scholarships/find-a-scholarship/research-training-program-scholarship",
+    "evidenceUrl": "https://www.monash.edu/study/fees-scholarships/scholarships/find-a-scholarship/research-training-program-scholarship",
+    "url": "https://www.monash.edu/study/fees-scholarships/scholarships/find-a-scholarship/research-training-program-scholarship",
+    "allowedHosts": [
+      "www.monash.edu"
+    ],
+    "adapter": "au_funding_catalog_html",
+    "executable": true,
+    "requiresRobots": true,
+    "degreeTypes": [
+      "Research Masters",
+      "PhD"
+    ],
+    "identityAnchor": "Research Training Program",
+    "summary": "Competitive stipend; international tuition support is a separate scholarship and must be confirmed.",
+    "requirements": [
+      "Admission and English requirements",
+      "Research outputs and prior research experience",
+      "International tuition award needed alongside stipend"
+    ],
+    "catalogKind": "program",
+    "reviewedAt": "2026-11-12"
+  },
+  {
+    "id": "au-funding-sydney-rtp",
+    "name": "University of Sydney International RTP",
+    "title": "University of Sydney International RTP",
+    "institution": "University of Sydney",
+    "organizationName": "University of Sydney",
+    "country": "AU",
+    "state": "NSW",
+    "profileScope": "amir",
+    "trust": "official",
+    "sourceType": "official",
+    "feedUrl": "https://www.sydney.edu.au/scholarships/australian-government-research-training-program/rtp-international.html",
+    "evidenceUrl": "https://www.sydney.edu.au/scholarships/australian-government-research-training-program/rtp-international.html",
+    "url": "https://www.sydney.edu.au/scholarships/australian-government-research-training-program/rtp-international.html",
+    "allowedHosts": [
+      "www.sydney.edu.au"
+    ],
+    "adapter": "au_funding_catalog_html",
+    "executable": true,
+    "requiresRobots": true,
+    "degreeTypes": [
+      "Research Masters",
+      "PhD"
+    ],
+    "identityAnchor": "RTP",
+    "summary": "Competitive international research scholarship. Read the specific round, stipend, fee-offset and admission conditions together.",
+    "requirements": [
+      "Higher degree by research admission",
+      "Separate scholarship application and documents",
+      "Research proposal and supervisor"
+    ],
+    "catalogKind": "program",
+    "reviewedAt": "2026-11-12"
+  },
+  {
+    "id": "au-funding-melbourne-grs",
+    "name": "Melbourne Graduate Research Scholarships",
+    "title": "Melbourne Graduate Research Scholarships",
+    "institution": "University of Melbourne",
+    "organizationName": "University of Melbourne",
+    "country": "AU",
+    "state": "VIC",
+    "profileScope": "amir",
+    "trust": "official",
+    "sourceType": "official",
+    "feedUrl": "https://scholarships.unimelb.edu.au/awards/graduate-research-scholarships",
+    "evidenceUrl": "https://scholarships.unimelb.edu.au/awards/graduate-research-scholarships",
+    "url": "https://scholarships.unimelb.edu.au/awards/graduate-research-scholarships",
+    "allowedHosts": [
+      "scholarships.unimelb.edu.au"
+    ],
+    "adapter": "au_funding_catalog_html",
+    "executable": true,
+    "requiresRobots": true,
+    "degreeTypes": [
+      "Research Masters",
+      "PhD"
+    ],
+    "identityAnchor": "Graduate Research Scholarships",
+    "summary": "Stipend-and-fee awards and fee-offset-only awards are different. Automatic consideration is competitive and course deadlines apply.",
+    "requirements": [
+      "Research degree admission",
+      "Faculty/course application deadline",
+      "Evidence of research potential"
+    ],
+    "catalogKind": "program",
+    "reviewedAt": "2026-11-12"
+  },
+  {
+    "id": "au-funding-unisq-international",
+    "name": "UniSQ International Stipend and Fees Scholarship",
+    "title": "UniSQ International Stipend and Fees Scholarship",
+    "institution": "University of Southern Queensland",
+    "organizationName": "University of Southern Queensland",
+    "country": "AU",
+    "state": "QLD",
+    "profileScope": "amir",
+    "trust": "official",
+    "sourceType": "official",
+    "feedUrl": "https://www.unisq.edu.au/scholarships/international-stipend-res-scholarship-dphd",
+    "evidenceUrl": "https://www.unisq.edu.au/scholarships/international-stipend-res-scholarship-dphd",
+    "url": "https://www.unisq.edu.au/scholarships/international-stipend-res-scholarship-dphd",
+    "allowedHosts": [
+      "www.unisq.edu.au"
+    ],
+    "adapter": "au_funding_catalog_html",
+    "executable": true,
+    "requiresRobots": true,
+    "degreeTypes": [
+      "PhD"
+    ],
+    "identityAnchor": "International Stipend",
+    "summary": "Stipend and tuition offered together for the specified intake. Research must align with a UniSQ flagship area.",
+    "requirements": [
+      "First Class Honours or equivalent",
+      "Full-time on-campus PhD admission",
+      "Supervisor and flagship alignment",
+      "Separate admission process"
+    ],
+    "catalogKind": "program",
+    "reviewedAt": "2026-11-12"
+  },
+  {
+    "id": "au-funding-latrobe-baker",
+    "name": "Baker cardiovascular and diabetes PhD scholarships",
+    "title": "Baker cardiovascular and diabetes PhD scholarships",
+    "institution": "La Trobe University / Baker Institute",
+    "organizationName": "La Trobe University / Baker Institute",
+    "country": "AU",
+    "state": "VIC",
+    "profileScope": "amir",
+    "trust": "official",
+    "sourceType": "official",
+    "feedUrl": "https://www.latrobe.edu.au/study/scholarships/other/phd-scholarship-baker-department-of-cardiovascular-research,-translation-and-implementation",
+    "evidenceUrl": "https://www.latrobe.edu.au/study/scholarships/other/phd-scholarship-baker-department-of-cardiovascular-research,-translation-and-implementation",
+    "url": "https://www.latrobe.edu.au/study/scholarships/other/phd-scholarship-baker-department-of-cardiovascular-research,-translation-and-implementation",
+    "allowedHosts": [
+      "www.latrobe.edu.au"
+    ],
+    "adapter": "au_funding_catalog_html",
+    "executable": true,
+    "requiresRobots": true,
+    "degreeTypes": [
+      "PhD"
+    ],
+    "identityAnchor": "Baker Department",
+    "summary": "Two PhD scholarships for cardiovascular disease, diabetes and public health research. Discuss a project and obtain supervisor approval before the expression of interest.",
+    "requirements": [
+      "Meet PhD admission requirements",
+      "Significant research assessed at research-Masters standard of 75 or above is prioritised",
+      "Supervisor approval",
+      "PhD proposal, CV and academic transcript"
+    ],
+    "catalogKind": "specific_call",
+    "reviewedAt": "2026-11-12"
+  }
+]

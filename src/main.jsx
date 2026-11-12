@@ -66,6 +66,8 @@ const PesciPractice=deferredPanel(()=>import("./pesci-practice"),"PesciPractice"
 const JobOpportunitiesPanel=deferredPanel(()=>import("./job-opportunities-panel"),"JobOpportunitiesPanel");
 const ExtractedEvidence=deferredPanel(()=>import("./extracted-evidence"),"ExtractedEvidence");
 const RoadmapPanel=deferredPanel(()=>import("./roadmap-panel"),"RoadmapPanel");
+const ResearchFundingPanel=deferredPanel(()=>import("./research-funding-panel"),"ResearchFundingPanel");
+const TeamBoard=deferredPanel(()=>import("./team-board"),"TeamBoard");
 const nav = [
   ["overview", "نمای کلی", LayoutDashboard],
   ["opportunities", "رصد فرصت‌ها", Search],
@@ -75,6 +77,8 @@ const nav = [
   ["linkedin", "لینکدین و شبکه‌سازی", Linkedin],
   ["roadmap", "تحلیل مسیر و برنامه", ShieldCheck],
   ["study", "تحصیل و فاند", GraduationCap],
+  ["funding", "فاند استرالیا", GraduationCap],
+  ["team", "همکاری مشترک", Users],
   ["development", "مهارت‌ها و رویدادها", Calendar],
   ["sources", "منابع و مسیرها", BookOpen],
   ["automation", "اتوماسیون و AI", Command],
@@ -442,7 +446,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
                 )}
               </h1>
               <p>
-                {({overview:"مسیر کاری یا تحصیلی خودتان را انتخاب کنید و قدم بعدی را پیش ببرید.",opportunities:"آگهی‌ها را فیلتر کنید؛ شرایط، اطلاعات تماس و روش درخواست هر مورد را ببینید.",mail:"ایمیل‌های مرتبط را بخوانید و با قالب و رزومهٔ خودتان پاسخ یا درخواست آماده کنید.",cv:"اطلاعات رزومه را مرور کنید، نسخه ذخیره کنید و فایل مناسب درخواست را بگیرید.",roadmap:"شرایط مسیر را با پروندهٔ خودتان مقایسه کنید و کارهای لازم را مشخص کنید.",study:"فرصت‌های تحصیلی و پژوهشی را با شرایط پذیرش، مهلت و کمک‌هزینه بررسی کنید.",development:"دوره‌ها و رویدادهایی را پیدا کنید که به هدف حرفه‌ای شما کمک می‌کنند.",linkedin:"پروفایل، متن پست‌ها و ارتباطات هدف را مدیریت کنید؛ نوع دسترسی هر بخش مشخص است.",pesci:"کیس بالینی انتخاب کنید و ارائهٔ انگلیسی و خودبازبینی را تمرین کنید.",sources:"ببینید آگهی‌ها و راهنمای مسیر از کدام منابع آمده‌اند و آخرین بررسی چه بوده است.",automation:"وضعیت سرویس‌ها، اعلان تلگرام و ابزارهای کمکی همین حساب را مدیریت کنید.",settings:"حساب‌ها را متصل کنید و قالب‌های ایمیل، رزومهٔ پیش‌فرض و برنامه‌هایتان را تنظیم کنید."})[tab]}
+                {({overview:"مسیر کاری یا تحصیلی خودتان را انتخاب کنید و قدم بعدی را پیش ببرید.",opportunities:"آگهی‌ها را فیلتر کنید؛ شرایط، اطلاعات تماس و روش درخواست هر مورد را ببینید.",mail:"ایمیل‌های مرتبط را بخوانید و با قالب و رزومهٔ خودتان پاسخ یا درخواست آماده کنید.",cv:"اطلاعات رزومه را مرور کنید، نسخه ذخیره کنید و فایل مناسب درخواست را بگیرید.",roadmap:"شرایط مسیر را با پروندهٔ خودتان مقایسه کنید و کارهای لازم را مشخص کنید.",funding:"بورس‌های پژوهشی استرالیا و مدارک لازم را بررسی کنید؛ برنامهٔ آمادگی شما خصوصی است.",team:"فقط کارهایی که آگاهانه منتشر می‌کنید مشترک هستند؛ حساب‌های شخصی جدا می‌مانند.",study:"فرصت‌های تحصیلی و پژوهشی را با شرایط پذیرش، مهلت و کمک‌هزینه بررسی کنید.",development:"دوره‌ها و رویدادهایی را پیدا کنید که به هدف حرفه‌ای شما کمک می‌کنند.",linkedin:"پروفایل، متن پست‌ها و ارتباطات هدف را مدیریت کنید؛ نوع دسترسی هر بخش مشخص است.",pesci:"کیس بالینی انتخاب کنید و ارائهٔ انگلیسی و خودبازبینی را تمرین کنید.",sources:"ببینید آگهی‌ها و راهنمای مسیر از کدام منابع آمده‌اند و آخرین بررسی چه بوده است.",automation:"وضعیت سرویس‌ها، اعلان تلگرام و ابزارهای کمکی همین حساب را مدیریت کنید.",settings:"حساب‌ها را متصل کنید و قالب‌های ایمیل، رزومهٔ پیش‌فرض و برنامه‌هایتان را تنظیم کنید."})[tab]}
               </p>
             </div>
             <button className="secondary" onClick={refresh}>
@@ -860,6 +864,8 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
             ) : (
               <RoadmapPanel person={person} category="pathways" notify={notify} cloud={cloud}/>
             ))}
+          {tab === "funding" && person === "amir" && <ResearchFundingPanel key={person} person={person} notify={notify}/>}
+          {tab === "team" && <TeamBoard key={person} person={person} notify={notify}/>}
           {tab === "linkedin" && <LinkedInWorkspace person={person} notify={notify}/> }
           {tab === "sources" && <><ExtractedEvidence person={person} section="all" country="AU"/>{person==="amir"&&<ExtractedEvidence person={person} section="all" country="IT"/>}</>}
           {tab === "cv" && <ExtractedEvidence person={person} section="development" country="AU"/>}

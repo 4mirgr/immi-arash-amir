@@ -19,7 +19,7 @@ function fetchFixture(log=[]){return async(url,options)=>{log.push({url,options}
 
 test('registry covers all Australian jurisdictions honestly and Italy only Amir',()=>{
  assert.deepEqual([...new Set(SOURCE_REGISTRY.filter(s=>s.country==='AU'&&s.state!=='UNKNOWN').map(s=>s.state))].sort(),['ACT','NSW','NT','QLD','SA','TAS','VIC','WA']);
- assert.equal(SOURCE_REGISTRY.filter(s=>s.executable).length,30);
+ assert.equal(SOURCE_REGISTRY.filter(s=>s.executable).length,35);
  assert(SOURCE_REGISTRY.filter(s=>s.country==='IT').every(s=>s.profileScope==='amir'));
  assert(SOURCE_REGISTRY.filter(s=>!s.executable).every(s=>s.reason&&s.configurationStatus!=='executable'));
 });

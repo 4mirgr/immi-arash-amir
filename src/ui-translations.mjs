@@ -1,3 +1,6 @@
+import {EN_RESEARCH_BRIDGE_EVIDENCE} from './locales/en-research-bridge-evidence.mjs';
+import {EN_RESEARCH_FUNDING} from './locales/en-research-funding.mjs';
+import {EN_TEAM_BOARD} from './locales/en-team-board.mjs';
 // Local interface labels only. No remote provider, source-content translation or
 // changes to React elements, form values, events, or application data.
 import {EN_CORE} from './locales/en-core.mjs';
@@ -10,6 +13,10 @@ import {EN_OPPORTUNITY_ACTIONS} from './locales/en-opportunity-actions.mjs';
 import {EN_CLINIC_BANK} from './locales/en-clinic-bank.mjs';
 import {EN_AUDIT_STATUS} from './locales/en-audit-status.mjs';
 const pairs=`
+فاند استرالیا|Australia research funding
+همکاری مشترک|Shared tasks
+بورس‌های پژوهشی استرالیا و مدارک لازم را بررسی کنید؛ برنامهٔ آمادگی شما خصوصی است.|Review Australian research funding and requirements; your preparation plan stays private.
+فقط کارهایی که آگاهانه منتشر می‌کنید مشترک هستند؛ حساب‌های شخصی جدا می‌مانند.|Only tasks you explicitly publish are shared; personal accounts remain separate.
 نمای کلی|Overview
 رصد فرصت‌ها|Opportunity search
 مرکز مکاتبات|Correspondence
@@ -441,7 +448,7 @@ Google، ایمیل دوم و قالب‌های مکاتبه|Google, secondary e
 درخواست ایمیل و رزومه|Email and CV application
 
 `;
-export const UI_TRANSLATIONS=Object.freeze({...Object.fromEntries(pairs.trim().split('\n').filter(line=>line.includes('|')).map(line=>{const at=line.indexOf('|');return [line.slice(0,at),line.slice(at+1)];})),...EN_CORE,...EN_OPPORTUNITIES,...EN_WORKFLOWS,...EN_EVIDENCE,...EN_SEND_CONTROLS,...EN_LINKEDIN_ACTIONS,...EN_OPPORTUNITY_ACTIONS,...EN_CLINIC_BANK,...EN_AUDIT_STATUS,'و':'and','مورد':'items','حساب تقویم':'Calendar account','دکتر امیر هوشنگ گرامی':'Dr Amir Houshang Gerami','امیر هوشنگ گرامی':'Amir Houshang Gerami','نویسه':'characters','ستاره':'stars','؛ روی دستگاه خودتان نگه دارید.':'; keep it on your device.','؛ آمار پیشرفته و شبکهٔ کامل مجوز جدا می‌خواهند':'; advanced analytics and the full network require separate permissions','روی دستگاه خودتان نگه دارید.':'keep it on your device.','آمار پیشرفته و شبکهٔ کامل مجوز جدا می‌خواهند':'advanced analytics and the full network require separate permissions'});
+export const UI_TRANSLATIONS=Object.freeze({...Object.fromEntries(pairs.trim().split('\n').filter(line=>line.includes('|')).map(line=>{const at=line.indexOf('|');return [line.slice(0,at),line.slice(at+1)];})),...EN_CORE,...EN_OPPORTUNITIES,...EN_WORKFLOWS,...EN_EVIDENCE,...EN_SEND_CONTROLS,...EN_LINKEDIN_ACTIONS,...EN_OPPORTUNITY_ACTIONS,...EN_CLINIC_BANK,...EN_AUDIT_STATUS,...EN_RESEARCH_BRIDGE_EVIDENCE,...EN_RESEARCH_FUNDING,...EN_TEAM_BOARD,'و':'and','مورد':'items','حساب تقویم':'Calendar account','دکتر امیر هوشنگ گرامی':'Dr Amir Houshang Gerami','امیر هوشنگ گرامی':'Amir Houshang Gerami','نویسه':'characters','ستاره':'stars','؛ روی دستگاه خودتان نگه دارید.':'; keep it on your device.','؛ آمار پیشرفته و شبکهٔ کامل مجوز جدا می‌خواهند':'; advanced analytics and the full network require separate permissions','روی دستگاه خودتان نگه دارید.':'keep it on your device.','آمار پیشرفته و شبکهٔ کامل مجوز جدا می‌خواهند':'advanced analytics and the full network require separate permissions'});
 const PRIVATE='[data-no-translate],pre,blockquote,code,script,style,textarea,[contenteditable="true"],.message-snippet,.message-body,.cv-preview,.source-quote,.evidence-quote,.arash-opportunity-full-text,[data-private]';
 const ATTRS=['aria-label','placeholder','title','alt'];
 const ARABIC=/[\u0600-\u06ff]/;

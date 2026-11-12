@@ -10,11 +10,11 @@ function useInterfaceLanguage(){
 }
 export function MobileWorkspaceNavigation({person,items,tab,onNavigate,tones}){
  const english=useInterfaceLanguage(),[open,setOpen]=useState(false),root=useRef(null),toggle=useRef(null);
- const available=items.filter(([id])=>person==='arash'?id!=='study':id!=='pesci');
+ const available=items.filter(([id])=>person==='arash'?!['study','funding'].includes(id):id!=='pesci');
  const title=label=>english?(UI_TRANSLATIONS[label]||label):label;
  const groups=[
-  [person==='arash'?'کار و آمادگی':'مسیرهای اصلی',person==='arash'?'Work and preparation':'Main pathways',person==='arash'?['overview','opportunities','mail','cv','pesci','roadmap']:['overview','roadmap','study','opportunities','mail','cv']],
-  ['رشد حرفه‌ای','Professional development',['linkedin','development']],
+  [person==='arash'?'کار و آمادگی':'مسیرهای اصلی',person==='arash'?'Work and preparation':'Main pathways',person==='arash'?['overview','opportunities','mail','cv','pesci','roadmap']:['overview','roadmap','funding','study','opportunities','mail','cv']],
+  ['رشد حرفه‌ای','Professional development',['linkedin','development','team']],
   ['اتصال‌ها و ابزارها','Connections and tools',['sources','automation','settings']],
  ];
  function close(focus=false){setOpen(false);if(focus)requestAnimationFrame(()=>toggle.current?.focus());}

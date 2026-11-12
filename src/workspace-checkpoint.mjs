@@ -2,14 +2,14 @@
 // source quotes, review hashes, recipients or permission to send.
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const OPP=/^opp_[a-f0-9]{32}$/;
-const TABS=['overview','opportunities','mail','cv','pesci','linkedin','roadmap','study','development','sources','automation','settings'];
+const TABS=['overview','opportunities','mail','cv','pesci','linkedin','roadmap','funding','team','study','development','sources','automation','settings'];
 const TTL=7*86400000;
 function key(owner,profile,section){return UUID.test(owner||'')&&['arash','amir'].includes(profile)&&['navigation','opportunities'].includes(section)?`masir-ui:v1:${owner}:${profile}:${section}`:null;}
 function sanitize(section,value,profile){
  if(!value||typeof value!=='object'||Array.isArray(value))return null;
  const out={};
  const one=(name,values)=>{if(values.includes(value[name]))out[name]=value[name];};
- if(section==='navigation'){one('tab',TABS.filter(tab=>profile!=='arash'||tab!=='study'));}
+ if(section==='navigation'){one('tab',TABS.filter(tab=>profile!=='arash'||!['study','funding'].includes(tab)));}
  else{
   one('country',profile==='amir'?['AU','IT']:['AU']);one('state',['all','NSW','QLD','VIC','WA','SA','TAS','NT','ACT']);
   one('kind',['all','vacancy','employment_register']);one('clinicalFocus',['all','medical','gp']);one('sort',['fit','newest','deadline']);

@@ -21,3 +21,6 @@ attachments/
 worker-dist/
 
 supabase/.temp/
+
+# Source HTML readings and seed snapshots stay outside version control.
+data/au-funding-readings/

@@ -32,6 +32,15 @@ Per-opportunity mail: docs/OPPORTUNITY-MAIL.md. New authenticated router precede
 Contact/discovery engine: read docs/PUBLIC-CONTACT-ENGINE.md selectively. New public enrichment and AI-budget schemas are mandatory ONLY inOPPORTUNITY_DB. Extractor version2 supports flattenedtext. New23source registry includesgp-expanded-sources;3sources/hour ~8hrotation. PublicAIquote selection4attempts/day excludesprivateCV/mail andmustvalidateverbatimsource. Relatedcontacts keepindependentproof; privateCVreadinessAPIonly, neverpersistpublic. Oneclickmailafterpreview/review mustrefusereused/ambiguousqueue andchangedGoogleidentity.
 
 
+## 2026-11-12 — Australian research bridge and shared tasks
+- Entry points: `research-funding.mjs` (Amir only), `research-funding-panel.jsx`, `team-board.mjs/jsx`; English catalogs merged. New desktop/mobile/checkpoint menu IDs `funding` (Amir only), `team` (both).
+- Five official funding source adapters (`au-funding-sources.*`) join existing hourly3source rotation;35 executable sources, no extra cron. Actual page text/quotes/deadlines/hash stored separately in OPPORTUNITY_DB `au_funding_pages`; generic programmes never enter the vacancy stream. Latest failed attempt blocks an open-call assertion;14day evidence-age limit. Seed HTML/rows remain ignored outside Git.
+- GOOGLE_DB `research_funding_plans` stores private12task preparation; current full-funding goal is tuition plus living stipend. Authenticated own saved CV is read completely for transparent topic overlap, without returning its text or asserting eligibility. Research and clinical/visa decisions remain independent.
+- GOOGLE_DB `team_board_tasks` stores ONLY explicitly shared tasks. Verified creator/assignee status changes; cap40; explicit consent resets after draft edits. Separate Google/mail/CV stays private. Meeting links and owner-imported ICS do not connect Google/Teams or send invitations.
+- New schemas `au-funding-schema.sql` (OPPORTUNITY_DB), `research-funding-schema.sql` + `team-board-schema.sql` (GOOGLE_DB) applied additively2026-11-12. Five actual public publisher snapshots seeded. Owner export adds own private funding plan and own authored shared tasks, retaining existing100row/2MB limitations.
+- Strategy/evidence: `cloud/research-bridge-evidence.json`, `docs/research/AU-RESEARCH-BRIDGE-2026-11-12.fa.md`. Baker/La Trobe cardiovascular/diabetes PhD2027 call closes8Jan2027; research entry and possible deferral need confirmation against training completion. Sydney programme's18Dec2026 round deadline is shown separately, never as a globally open project.
+- Checks: focused backend/privacy/source/checkpoint/export tests, English+mobile component tests including actual public evidence, and isolated `/aus/` build. Deployment receipt is recorded in the delivery note once verified.
+
 ## 2026-11-05 — خوانایی و اتصال دامنهٔ جدید
 
 پنل امیر با کارت‌های شیشه‌ای و مسیرهای رنگی، منوهای جمع‌شونده و فونت Vazirmatn بازطراحی شد. تقویم و مدارک تمام‌عرض و سه بخش بازشونده دارد. راهنمای کوتاه بخش‌ها، اتصال شخصی تلگرام و تغییر زبان محلی فارسی/انگلیسی اضافه شدند؛ ترجمهٔ رابط کامل نیست و محتوای خصوصی ترجمه نمی‌شود.

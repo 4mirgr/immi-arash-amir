@@ -2,7 +2,7 @@ import {interfaceLocale} from './interface-locale.mjs';
 import React from 'react';
 import {ArrowLeft,BriefcaseBusiness,GraduationCap,Mail,FileText,ChevronDown,ChevronLeft,ShieldCheck,Activity} from 'lucide-react';
 
-export const ARASH_TONES={overview:'green',opportunities:'green',mail:'cyan',cv:'amber',pesci:'violet',linkedin:'cyan',roadmap:'amber',development:'violet',sources:'cyan',automation:'amber',settings:'cyan'};
+export const ARASH_TONES={team:'cyan',overview:'green',opportunities:'green',mail:'cyan',cv:'amber',pesci:'violet',linkedin:'cyan',roadmap:'amber',development:'violet',sources:'cyan',automation:'amber',settings:'cyan'};
 export function WorkspaceFold({enabled=true,title,hint,tone='cyan',children}){
  if(!enabled)return <>{children}</>;
  return <details className={'arash-fold neon-'+tone}><summary><span className="neon-marker"/><span><strong>{title}</strong>{hint&&<small>{hint}</small>}</span><ChevronDown size={18} className="fold-chevron"/></summary><div className="fold-content">{children}</div></details>;
@@ -12,7 +12,7 @@ export function ArashNavigation({items,tab,onNavigate}){
  return <nav className="arash-navigation" aria-label="منوی پنل آرش">
   <span className="nav-caption">کارهای اصلی</span>
   {items.filter(([id])=>['overview','opportunities','mail','cv','pesci'].includes(id)).map(item)}
-  <details className="nav-fold neon-cyan" open={['linkedin','roadmap','development'].includes(tab)||undefined}><summary><span className="neon-marker"/>رشد حرفه‌ای و برنامه<ChevronDown size={15}/></summary>{items.filter(([id])=>['linkedin','roadmap','development'].includes(id)).map(item)}</details>
+  <details className="nav-fold neon-cyan" open={['linkedin','roadmap','development','team'].includes(tab)||undefined}><summary><span className="neon-marker"/>رشد حرفه‌ای و برنامه<ChevronDown size={15}/></summary>{items.filter(([id])=>['linkedin','roadmap','development','team'].includes(id)).map(item)}</details>
   <details className="nav-fold neon-amber" open={['sources','automation','settings'].includes(tab)||undefined}><summary><span className="neon-marker"/>منابع، اتصال‌ها و ابزارها<ChevronDown size={15}/></summary>{items.filter(([id])=>['sources','automation','settings'].includes(id)).map(item)}</details>
  </nav>;
 }

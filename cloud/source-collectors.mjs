@@ -9,7 +9,8 @@ import {RURAL_SOURCE_DEFINITIONS,normalizeRuralSourceRecords} from './rural-sour
 import {sourceAutomationStatus} from './source-automation.mjs';
 import {plainJobText,pageUpDate} from './job-opportunities.mjs';
 import {upsertOpportunityBatch} from './opportunity-store.mjs';
-export const SOURCE_REGISTRY=Object.freeze([...registry,...RURAL_SOURCE_DEFINITIONS,...ITALY_SOURCE_DEFINITIONS,...AU_SOURCE_DEFINITIONS,...GP_EXPANDED_SOURCE_DEFINITIONS,...GP_REVIEWED_SOURCE_DEFINITIONS].map(source=>Object.freeze({...source,allowedHosts:Object.freeze([...source.allowedHosts])})));
+import {AU_FUNDING_SOURCE_DEFINITIONS,storeFundingSourcePage,FundingSourceError} from './au-funding-sources.mjs';
+export const SOURCE_REGISTRY=Object.freeze([...registry,...RURAL_SOURCE_DEFINITIONS,...ITALY_SOURCE_DEFINITIONS,...AU_SOURCE_DEFINITIONS,...GP_EXPANDED_SOURCE_DEFINITIONS,...GP_REVIEWED_SOURCE_DEFINITIONS,...AU_FUNDING_SOURCE_DEFINITIONS].map(source=>Object.freeze({...source,allowedHosts:Object.freeze([...source.allowedHosts])})));
 const ACTIVE=SOURCE_REGISTRY.filter(s=>s.executable);
 const MAX_BYTES=3000000, MAX_CALLS=3, MAX_RECORDS=100, PER_SOURCE=40;
 const SUCCESS_COOLDOWN=3*60*60*1000, FAILURE_COOLDOWN=6*60*60*1000;
@@ -119,6 +120,7 @@ async function rss(source,body){
 }
 export async function normalizeSourceRecords(input,body){
  const source=canonicalSource(input);if(typeof body!=='string'||new TextEncoder().encode(body).length>MAX_BYTES)fail('source_response_too_large');
+ if(source.adapter==='au_funding_catalog_html')return []; // Catalog programs never become job editions.
  const records=source.adapter==='gp_reviewed_html'?normalizeReviewedGpSourceRecords(source,body):source.adapter.startsWith('gp_')?await normalizeExpandedGpSourceRecords(source,body):source.adapter.startsWith('italy_')?await normalizeItalySourceRecords(source,body):source.adapter.startsWith('au_')?await normalizeAuSourceRecords(source,body):source.adapter.startsWith('rural_')?await normalizeRuralSourceRecords(source,body):source.adapter==='bologna_rss'?await rss(source,body):source.adapter==='nt_public_search'?ntPublicSearch(source,body):source.adapter==='careerpages_public_html'?await careerpages(source,body):source.adapter==='smartrecruiters_university'?smartrecruiters(source,body):pageup(source,body);
  for(const row of records)validateSourceUrl(row.url,source);
  return records;
@@ -159,6 +161,12 @@ async function collectOne(db,source,fetcher,remaining,now){
    // Match the prior successful observation timestamp rather than renewing every
    // record ever seen at this source (removed and historical editions stay old).
    if(!headers['If-None-Match']||!Number.isFinite(claim.last_success_at)||!['updated','not_modified'].includes(claim.status)||claim.partial||claim.record_cursor)fail('source_unexpected_not_modified');
+   if(source.adapter==='au_funding_catalog_html'){
+    const prior=await first(db,'SELECT source_id FROM au_funding_pages WHERE source_id=?',source.id);
+    if(!prior)fail('funding_snapshot_missing');
+    await run(db,"UPDATE registered_source_checks SET status='not_modified',last_success_at=?,next_check_at=?,last_error_code=NULL,imported_records=0 WHERE source_id=? AND lock_token=?",now,now+SUCCESS_COOLDOWN,source.id,lock);
+    return {sourceId:source.id,status:'not_modified',imported:0,programPagesRead:0,observationScope:'previous_body_unchanged_read_time_preserved'};
+   }
    const writes=await db.batch([
     stmt(db,`UPDATE opportunity_editions AS current SET last_seen_at=? WHERE current.source_id=? AND current.last_seen_at=? AND current.status NOT IN ('closed','source_removed','future') AND (current.closing_at IS NULL OR julianday(current.closing_at)>julianday(?)) AND (current.published_at IS NULL OR julianday(current.published_at)<=julianday(?)) AND CASE WHEN json_valid(current.data) THEN json_extract(current.data,'$.sourceUrl') END=? AND NOT EXISTS (SELECT 1 FROM opportunity_editions next WHERE next.source_id=current.source_id AND next.external_id=current.external_id AND (next.first_seen_at>current.first_seen_at OR (next.first_seen_at=current.first_seen_at AND next.rowid>current.rowid))) AND EXISTS(SELECT 1 FROM registered_source_checks checks WHERE checks.source_id=current.source_id AND checks.lock_token=?)`,iso(now),source.id,iso(claim.last_success_at),iso(now),iso(now),source.feedUrl,lock),
     stmt(db,"UPDATE registered_source_checks SET status='not_modified',last_success_at=?,next_check_at=?,last_error_code=NULL,imported_records=0 WHERE source_id=? AND lock_token=?",now,now+SUCCESS_COOLDOWN,source.id,lock)
@@ -166,7 +174,14 @@ async function collectOne(db,source,fetcher,remaining,now){
    return {sourceId:source.id,status:'not_modified',imported:0,refreshedObservations:writes?.[0]?.meta?.changes??null,observationScope:'latest_receipt_current_editions_only'};
   }
   if(!response.ok)fail(response.status===429?'source_rate_limited':response.status===403?'source_access_denied':'source_http_error');
-  const records=await normalizeSourceRecords(source,await boundedText(response));
+  const body=await boundedText(response);
+  if(source.adapter==='au_funding_catalog_html'){
+   await storeFundingSourcePage(db,source,body,now);
+   let etag=response.headers.get('etag');if(!etag||etag.length>=1000||/[\r\n]/.test(etag))etag=null;
+   await run(db,"UPDATE registered_source_checks SET status='updated',etag=?,last_success_at=?,next_check_at=?,last_error_code=NULL,imported_records=0,record_cursor=0,partial=0 WHERE source_id=? AND lock_token=?",etag,now,now+SUCCESS_COOLDOWN,source.id,lock);
+   return {sourceId:source.id,status:'updated',imported:0,programPagesRead:1,partial:false};
+  }
+  const records=await normalizeSourceRecords(source,body);
   const start=claim.record_cursor<records.length?claim.record_cursor:0;
   const selected=records.slice(start,start+Math.min(PER_SOURCE,remaining));
   const partial=start+selected.length<records.length, nextCursor=partial?start+selected.length:0;
@@ -174,7 +189,7 @@ async function collectOne(db,source,fetcher,remaining,now){
   let etag=response.headers.get('etag');if(!etag||etag.length>=1000||/[\r\n]/.test(etag))etag=null;
   await run(db,"UPDATE registered_source_checks SET status='updated',etag=?,last_success_at=?,next_check_at=?,last_error_code=NULL,imported_records=?,record_cursor=?,partial=? WHERE source_id=? AND lock_token=?",etag,now,now+(partial?15*60*1000:SUCCESS_COOLDOWN),selected.length,nextCursor,Number(partial),source.id,lock);
   return {...imported,sourceId:source.id,status:'updated',imported:selected.length,matchingRecords:records.length,partial,nextCursor};
- }catch(error){const code=error instanceof SourceError||error instanceof ReviewedGpSourceError?error.code:'collector_failed';await run(db,"UPDATE registered_source_checks SET status='failed',last_error_code=?,next_check_at=? WHERE source_id=? AND lock_token=?",code,now+FAILURE_COOLDOWN,source.id,lock);return {sourceId:source.id,status:'failed',error:code,imported:0};}
+ }catch(error){const code=error instanceof SourceError||error instanceof ReviewedGpSourceError||error instanceof FundingSourceError?error.code:'collector_failed';await run(db,"UPDATE registered_source_checks SET status='failed',last_error_code=?,next_check_at=? WHERE source_id=? AND lock_token=?",code,now+FAILURE_COOLDOWN,source.id,lock);return {sourceId:source.id,status:'failed',error:code,imported:0};}
  finally{await run(db,'UPDATE registered_source_checks SET lock_token=NULL,lock_until=0 WHERE source_id=? AND lock_token=?',source.id,lock);}
 }
 export async function collectRegisteredSources(env,fetcher=fetch){
@@ -209,7 +224,7 @@ export async function handleRegisteredSourcesRequest(request,env,context,fetcher
    const receipt=await collectRegisteredSources(env,fetcher);
    // Shared public collector may refresh IT sources; private workspace response must not expose them.
    if(context.profileId==='arash'){
-    receipt.sources=receipt.sources.filter(r=>SOURCE_REGISTRY.find(s=>s.id===r.sourceId)?.country!=='IT');
+    receipt.sources=receipt.sources.filter(r=>{const source=SOURCE_REGISTRY.find(s=>s.id===r.sourceId);return source?.country!=='IT'&&source?.profileScope!=='amir';});
     receipt.imported=receipt.sources.reduce((sum,row)=>sum+(row.imported||0),0);
     receipt.status=receipt.sources.some(row=>row.status==='failed')?'partial_failure':'completed';
    }

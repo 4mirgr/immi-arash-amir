@@ -1,3 +1,5 @@
+import {handleResearchFundingRequest} from './research-funding.mjs';
+import {handleTeamBoardRequest} from './team-board.mjs';
 import {createDocx} from './docx.mjs';
 import {GoogleError,handleGoogleCallback,handleGoogleLaunch,googleStartOriginAllowed,handleGoogleRequest,googleStatus} from './google-oauth.mjs';
 import {handleGoogleMailRequest,getOwnedMailReplyContext} from './google-mail.mjs';
@@ -92,6 +94,8 @@ export function createHandler(fetcher = fetch) {
       if (!['arash','amir'].includes(profileId)) throw new ApiError(403, 'Account has not been provisioned for this workspace');
       const requestedProfile = url.searchParams.get('profile');
       if (requestedProfile && requestedProfile !== profileId) throw new ApiError(403, 'Profile access denied');
+      if(url.pathname==='/api/research-funding'||url.pathname.startsWith('/api/research-funding/'))return handleResearchFundingRequest(request,env,{userId:user.id,profileId,rest});
+      if(url.pathname==='/api/team-board'||url.pathname.startsWith('/api/team-board/'))return handleTeamBoardRequest(request,env,{userId:user.id,profileId});
       if(url.pathname.startsWith('/api/clinic-bank/'))return await handleClinicBankRequest(request,env,{userId:user.id,profileId})||json({error:'Not found'},404);
       if(url.pathname==='/api/research/pages')return await handlePublicPagesRequest(request,env,{userId:user.id,profileId})||json({error:'Not found'},404);
       if(url.pathname==='/api/discovery/universities')return await handleUniversityCatalogueRequest(request,env,{userId:user.id,profileId})||json({error:'Not found'},404);

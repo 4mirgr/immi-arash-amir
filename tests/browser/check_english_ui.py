@@ -39,6 +39,8 @@ with sync_playwright() as p:
   elif path=='/api/google/status':data={'configured':True,'connected':False,'status':'not_connected','capabilities':{}}
   elif path=='/api/opportunities':data={'opportunities':[],'total':0}
   elif path=='/api/opportunities/sources':data={'sources':[],'automation':{'observed':True,'status':'completed','overdue':False}}
+  elif path=='/api/team-board':data={'profileId':who,'tasks':[],'taskLimit':40,'canCreate':True,'sharing':'explicit_tasks_only','providerConnectionsShared':False}
+  elif path=='/api/research-funding':data={'profileId':'amir','catalog':[],'plan':{'preferredDegree':'either','tasks':[]},'strategy':{}}
   elif path=='/api/roadmap':data=roadmaps[who]
   elif path=='/api/pesci/practice':data={'profileId':who,'cases':[],'attempts':[],'library':[]}
   elif path in ['/api/cv/versions','/api/presets','/api/drafts']:data=[]
@@ -60,7 +62,7 @@ with sync_playwright() as p:
   owner['name']=who;page.evaluate('window.__owner('+json.dumps(who)+')');page.wait_for_timeout(150)
   for width in [1440,390]:
    page.set_viewport_size({'width':width,'height':1000})
-   for tab in ['overview','opportunities','mail','cv','pesci' if who=='arash' else 'study','linkedin','roadmap','development','sources','automation','settings']:
+   for tab in ['overview','opportunities','mail','cv','pesci' if who=='arash' else 'study','linkedin','roadmap','development','sources','automation','settings','team']+(['funding'] if who=='amir' else []):
     page.evaluate('window.__tab('+json.dumps(tab)+')');page.wait_for_timeout(150)
     # All secondary UI prose belongs to the selected screen; no provider buttons clicked.
     page.locator('details').evaluate_all('(nodes)=>nodes.forEach(n=>n.open=true)');snapshot(tab,width)
