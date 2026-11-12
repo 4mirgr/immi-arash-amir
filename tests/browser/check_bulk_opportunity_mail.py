@@ -69,7 +69,7 @@ with sync_playwright() as p:
  assert page.locator('.bulk-mail-final>details').count()>=3
  assert not page.get_by_role('button',name='ارسال پیام‌های بازبینی‌شده',exact=True).is_enabled()
  page.get_by_role('checkbox',name='متن، گیرنده و رزومهٔ همهٔ پیام‌های آماده را بررسی کردم؛ فقط همین ۳ پیام ارسال شوند.').check()
- page.screenshot(path='/workspace/scratch/bulk-opportunity-ui/preview-390.png',full_page=True)
+ page.screenshot(path=str(root/'preview-390.png'),full_page=True)
  page.get_by_role('button',name='ارسال پیام‌های بازبینی‌شده',exact=True).click()
  page.get_by_text('این نوبت مصرف شد؛ پیام قبلی یا نتیجهٔ نامشخص خودکار دوباره ارسال نمی‌شود. وضعیت هر نشانی را پیش از اقدام تازه بررسی کنید.').wait_for()
  page.wait_for_function('document.querySelectorAll(".bulk-mail-results p").length===3')
