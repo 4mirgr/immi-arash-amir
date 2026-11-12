@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
-import {rankMessage,handleGoogleMailRequest} from '../cloud/google-mail.mjs';
+import {rankMessage,handleGoogleMailRequest,refreshCachedReplyRank} from '../cloud/google-mail.mjs';
 import {prepareRecipientBatch,sendRecipientBatch} from '../src/opportunity-recipient-batch.mjs';
 const opportunityId='opp_'+'a'.repeat(32),presetId='11111111-1111-4111-8111-111111111111',cvVersionId='22222222-2222-4222-8222-222222222222',queueId='33333333-3333-4333-8333-333333333333';
 function fixture(changeAt){
@@ -42,11 +42,11 @@ test('explicit unavailable supervision and sponsorship cannot become positive re
 });
 
 
-test('cached historical priorities are reevaluated before filtering without provider reads or cross-owner data',async()=>{
+test('affected cached refusals are reevaluated before filtering without provider reads or cross-owner data',async()=>{
  const sqlite=new DatabaseSync(':memory:');sqlite.exec(readFileSync(new URL('../cloud/google-mail-schema.sql',import.meta.url),'utf8'));
  const writes=[];const binding={prepare(sql){return{bind(...args){return{async first(){return sqlite.prepare(sql).get(...args)||null;},async all(){return{results:sqlite.prepare(sql).all(...args)};},async run(){writes.push(sql);return{meta:sqlite.prepare(sql).run(...args)};}};}};}};
  const seed=(owner,id,body,priority,subject='sub-'+owner)=>{const value={id,threadId:'thread-'+id,subject:'GP recruitment',plainBody:body,snippet:body,priority,reasons:['obsolete-rule'],direction:'received',from:'clinic@example.invalid',labels:[],dateTimestamp:100};sqlite.prepare('INSERT INTO google_mail_messages VALUES(?,?,?,?,?,?,?,?)').run(owner,subject,id,value.threadId,100,priority,JSON.stringify(value),100);};
- for(const owner of ['arash-owner','amir-owner']){seed(owner,'refusal-'+owner,'No supervision is available.','strong');seed(owner,'invitation-'+owner,'Please arrange a call to discuss the GP position.','weak');}
+ for(const owner of ['arash-owner','amir-owner']){seed(owner,'refusal-'+owner,'No supervision is available.','strong');seed(owner,'invitation-'+owner,'Please arrange a call to discuss the GP position.','strong');}
  seed('arash-owner','old-google-identity','Please arrange a call.','strong','replaced-subject');
  for(const person of ['arash','amir']){
   const context={userId:person+'-owner',profileId:person},provider=async()=>({accessToken:'synthetic-only',subject:'sub-'+context.userId,scopes:['https://www.googleapis.com/auth/gmail.readonly']});
@@ -55,4 +55,15 @@ test('cached historical priorities are reevaluated before filtering without prov
   const weak=await get('weak');assert.deepEqual(weak.messages.map(x=>x.id),['refusal-'+context.userId]);assert(!weak.messages[0].reasons.some(x=>x.startsWith('positive_')));
  }
  assert.equal(writes.length,0);sqlite.close();
+});
+
+
+test('cache migration does not rerank unaffected rows and limits analysis to suspect strong messages',()=>{
+ let calls=0;const analyze=(text,direction)=>{calls++;return rankMessage(text,direction);};
+ const unaffected=Array.from({length:500},(_,i)=>({priority:i%2?'weak':'strong',subject:'GP recruitment',plainBody:'General medical information. '.repeat(300),reasons:['persisted']}));
+ for(const message of unaffected)assert.equal(refreshCachedReplyRank(message,analyze),message);
+ const weakNegative={priority:'weak',plainBody:'No supervision is available.'};assert.equal(refreshCachedReplyRank(weakNegative,analyze),weakNegative);assert.equal(calls,0);
+ const refusal={priority:'strong',plainBody:'No supervision is available.'};assert.equal(refreshCachedReplyRank(refusal,analyze).priority,'weak');assert.equal(calls,1);
+ const quoted={priority:'strong',plainBody:'Please arrange a call.\nOn Tuesday Applicant wrote:\n> No supervision is available.'};const result=refreshCachedReplyRank(quoted,analyze);assert.equal(result.priority,'strong');assert(result.reasons.includes('quoted_history_excluded_from_analysis'));assert.equal(calls,2);
+ const outOfWindow={priority:'strong',plainBody:'x'.repeat(8000)+' No supervision is available.'};assert.equal(refreshCachedReplyRank(outOfWindow,analyze),outOfWindow);assert.equal(calls,2);
 });

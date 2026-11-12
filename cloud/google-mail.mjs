@@ -1,6 +1,9 @@
 import {getGoogleAccess} from './google-oauth.mjs';
 
 const MAX_BODY=32768, MAX_RESPONSE=1500000, MAX_PENDING=2000;
+const SUPERVISION_SUPPORT='(?:(?:level|tier)\\s*(?:1|one)\\s+)?supervision',SPONSORSHIP_SUPPORT='(?:visa\\s+)?sponsorship',AVAILABILITY_SUPPORT='(?:'+SUPERVISION_SUPPORT+'|'+SPONSORSHIP_SUPPORT+')';
+const UNAVAILABLE_SUPPORT=new RegExp('\\b(?:no\\s+'+AVAILABILITY_SUPPORT+'|neither\\s+'+AVAILABILITY_SUPPORT+'\\s+nor\\s+'+AVAILABILITY_SUPPORT+')\\s+(?:(?:is|are)\\s+)?(?:currently\\s+)?available\\b','i');
+
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 class MailError extends Error{constructor(status,code){super(code);this.status=status;this.code=code;}}
 const clean=value=>String(value||'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'');
@@ -47,13 +50,22 @@ export function rankMessage(text,direction='received'){
  const explained=(priority,reasons)=>({priority,reasons:[...reasons,...(current.excludedHistory?['quoted_history_excluded_from_analysis']:[]),...(current.excludedSignature?['signature_excluded_from_analysis']:[]),'rule_based_review_required']});
  const rejection=/\b(not interested|no (?:current )?(?:vacanc(?:y|ies)|positions|openings)|unsuccessful|unfortunately|we regret|cannot (?:offer|provide|sponsor)|unable to (?:offer|provide|sponsor|proceed)|not able to (?:offer|provide|sponsor)|do not (?:offer|provide|sponsor)|not (?:offer(?:ing)?|provid(?:e|ing)) (?:visa )?sponsor)/;
  const negatedInvitation=/\b(?:unable to|not able to|cannot|can't|can not|will not|won't|do not|don't|not)\s+(?:[a-z]+\s+){0,3}(?:interview(?:ing)?|offer(?:ing)?|arrange|schedule|book|call|sponsor|proceed)\b|\b(?:interview|call|meeting|job offer)\s+(?:is |are )?(?:not (?:possible|available|offered)|unavailable)\b|\bno\s+(?:interview|job offer|call|meeting)\b/;
- const supervision='(?:(?:level|tier)\\s*(?:1|one)\\s+)?supervision',sponsorship='(?:visa\\s+)?sponsorship',support='(?:'+supervision+'|'+sponsorship+')';
- const unavailableSupport=new RegExp('\\b(?:no\\s+'+support+'|neither\\s+'+support+'\\s+nor\\s+'+support+')\\s+(?:(?:is|are)\\s+)?(?:currently\\s+)?available\\b');
- if(rejection.test(lower)||negatedInvitation.test(lower)||unavailableSupport.test(lower))return explained('weak',['rejection_or_unavailable_position_signal']);
+ if(rejection.test(lower)||negatedInvitation.test(lower)||UNAVAILABLE_SUPPORT.test(lower))return explained('weak',['rejection_or_unavailable_position_signal']);
  const strong=[['interview',/\binterview\b/],['offer',/\b(?:job offer|offer of employment|employment offer)\b/],['call',/\b(?:arrange|schedule|book) (?:a |an )?(?:call|meeting)\b/],['sponsorship',/\bsponsorship (?:is )?available\b/],['supervision',/\bsupervision (?:is )?available\b/]].filter(([,pattern])=>pattern.test(lower)).map(([name])=>name);
  if(strong.length)return explained('strong',strong.map(v=>'positive_'+v+'_signal'));
  if(/\b(application (?:received|under review)|review (?:your|the) application|send (?:us )?(?:your )?(?:cv|resume)|further information|more information)\b/.test(lower))return explained('medium',['application_or_information_request_signal']);
  return explained('weak',['no_explicit_positive_signal']);
+}
+
+// Migrate only the cached false positives affected by the new availability rule.
+// Most reads reuse their persisted classification; no new provider read or write.
+export function refreshCachedReplyRank(message,rank=rankMessage){
+ if(message?.priority!=='strong')return message;
+ const text=String(message.subject||'')+'\n'+String(message.plainBody||message.snippet||'').slice(0,8000);
+ if(!UNAVAILABLE_SUPPORT.test(text))return message;
+ // A suspect phrase in quoted history is not current intent. Keep the same
+ // latest-reply/signature exclusion used for newly received messages.
+ return {...message,...rank(text,message.direction)};
 }
 const CONSUMER_MAIL_DOMAINS=new Set(['gmail.com','googlemail.com','yahoo.com','yahoo.co.uk','outlook.com','hotmail.com','live.com','icloud.com','aol.com']);
 const PROJECT_QUERY='{PESCI AHPRA AMC RACP RACGP ACRRM "medical registration" "medical officer" "general practitioner" "physician" "registrar" "clinical fellowship" "visa sponsorship" "PhD" "scholarship" "research grant" "medical conference" "clinical research" "IELTS" "OET"} -in:spam -in:trash';
@@ -215,7 +227,7 @@ export async function handleGoogleMailRequest(request,env,context,fetcher=fetch,
    const result=await db.prepare("SELECT data FROM google_mail_messages WHERE owner_id=? AND google_sub=? AND (?='' OR instr(lower(data),?)>0) ORDER BY message_date DESC LIMIT 500").bind(owner,subject,q,q).all();
    // Apply the current rules to already cached messages too. Filtering on the
    // persisted priority first would retain old false positives indefinitely.
-   const cached=(result.results||[]).map(r=>{const message=JSON.parse(r.data);return {...message,...rankMessage(String(message.subject||'')+'\n'+String(message.plainBody||message.snippet||'').slice(0,8000),message.direction)};}),matches=await matchedClinicSenders(context,cached);
+   const cached=(result.results||[]).map(r=>refreshCachedReplyRank(JSON.parse(r.data))),matches=await matchedClinicSenders(context,cached);
    const reviewed=cached.map(message=>({...message,projectRelevance:classifyProjectMessage(message,matches)}));
    const filtered=reviewed.filter(message=>(priority==='all'||message.priority===priority)&&(scope==='all'||message.projectRelevance.related)&&(topic==='all'||message.projectRelevance.topics.includes(topic)));
    filtered.sort(order==='newest'?(a,b)=>b.dateTimestamp-a.dateTimestamp:order==='special'?(a,b)=>Number(b.projectRelevance.special)-Number(a.projectRelevance.special)||b.projectRelevance.score-a.projectRelevance.score||b.dateTimestamp-a.dateTimestamp:(a,b)=>b.projectRelevance.score-a.projectRelevance.score||b.dateTimestamp-a.dateTimestamp);
