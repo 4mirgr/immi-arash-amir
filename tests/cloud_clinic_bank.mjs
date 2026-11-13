@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
-import {clinicBankURL,handleClinicBankRequest,dispatchClinicBankReading,CLINIC_BANK_REFRESH_MS} from '../cloud/clinic-bank.mjs';
+import {clinicBankURL,handleClinicBankRequest,dispatchClinicBankReading,CLINIC_BANK_REFRESH_MS,clinicBankClinicalExcerpt} from '../cloud/clinic-bank.mjs';
 const owner='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',other='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',origin='https://app.example';
 function fixture(){
  const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../cloud/clinic-bank-schema.sql',import.meta.url),'utf8'));
@@ -47,4 +47,18 @@ test('scheduled website reading fails closed when membership is inactive or unav
  const{env,db}=fixture();await api(env,'import',{method:'POST',body:input});let n=0;const at=Date.parse('2026-11-11T00:00:00Z');
  const run=await dispatchClinicBankReading(env,()=>{n++;throw Error('must not fetch');},at,async()=>({active:false,reason:'owner_inactive'}));assert.equal(run.processed,1);assert.equal(n,0);
  const row=db.prepare('SELECT * FROM clinic_bank_leads').get();assert.equal(row.status,'owner_inactive');assert.equal(row.read_at,null);assert.equal(row.lease_until,0);assert.equal(row.available_at,at+86400000);
+});
+
+test('already-read public service excerpts are bounded and retained without additional HTTP or patient narratives',async()=>{
+ const {env,db}=fixture();await api(env,'import',{method:'POST',body:input});const at=Date.parse('2026-11-13T00:00:00Z');let calls=0;
+ const service='Our clinic provides chronic disease management and preventive care.';
+ await dispatchClinicBankReading(env,async url=>{calls++;return url.endsWith('/robots.txt')?new Response(null,{status:404}):new Response('<title>Synthetic Medical Practice</title><main>'+service+' My daughter receives treatment and our clinic provides diabetes care. Testimonial: the clinic provides care for my diagnosed condition. Contact jobs@clinic.example for enquiries.</main>',{headers:{'Content-Type':'text/html'}});},at,member);
+ assert.equal(calls,2);const first=db.prepare('SELECT * FROM clinic_bank_leads').get(),data=JSON.parse(first.result_json);assert.equal(data.clinicalText,service);assert.equal(data.clinicalSourceURL,'https://clinic.example/');assert.equal(data.clinicalReadAt,new Date(at).toISOString());assert.equal(data.clinicalScope,'bounded_public_service_statements_not_full_page');assert(!data.clinicalText.includes('daughter'));assert(!data.clinicalText.includes('Testimonial'));
+ await dispatchClinicBankReading(env,async()=>new Response('Unavailable',{status:503}),at+CLINIC_BANK_REFRESH_MS,member);const failed=JSON.parse(db.prepare('SELECT result_json FROM clinic_bank_leads').get().result_json);assert.equal(failed.clinicalText,data.clinicalText);assert.equal(failed.clinicalReadAt,data.clinicalReadAt);assert.equal(failed.clinicalSourceURL,data.clinicalSourceURL);
+});
+
+test('clinical evidence is a bounded subset of generic service statements, never a full-page cache',()=>{
+ const statements=Array.from({length:16},(_,i)=>'Our clinic provides chronic disease care through service '+i+'.');
+ const excerpt=clinicBankClinicalExcerpt(statements.join('\n'));assert.equal(excerpt.split('\n').length,12);assert(!excerpt.includes('service 15'));assert.equal(clinicBankClinicalExcerpt('x'.repeat(12000)+' Our clinic provides chronic disease care.'),'');
+ assert.equal(clinicBankClinicalExcerpt('My husband says the clinic provides diabetes treatment. I receive care and the clinic provides support. Testimonial: our clinic provides community care.'),'');
 });

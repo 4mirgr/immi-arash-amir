@@ -1,3 +1,4 @@
+import {handleClinicEnquiryRequest} from './clinic-enquiry.mjs';
 import {handleResearchFundingRequest} from './research-funding.mjs';
 import {handleTeamBoardRequest} from './team-board.mjs';
 import {createDocx} from './docx.mjs';
@@ -96,6 +97,7 @@ export function createHandler(fetcher = fetch) {
       if (requestedProfile && requestedProfile !== profileId) throw new ApiError(403, 'Profile access denied');
       if(url.pathname==='/api/research-funding'||url.pathname.startsWith('/api/research-funding/'))return handleResearchFundingRequest(request,env,{userId:user.id,profileId,rest});
       if(url.pathname==='/api/team-board'||url.pathname.startsWith('/api/team-board/'))return handleTeamBoardRequest(request,env,{userId:user.id,profileId});
+      if(url.pathname==='/api/clinic-bank/enquiry')return await handleClinicEnquiryRequest(request,env,{userId:user.id,profileId,rest});
       if(url.pathname.startsWith('/api/clinic-bank/'))return await handleClinicBankRequest(request,env,{userId:user.id,profileId})||json({error:'Not found'},404);
       if(url.pathname==='/api/research/pages')return await handlePublicPagesRequest(request,env,{userId:user.id,profileId})||json({error:'Not found'},404);
       if(url.pathname==='/api/discovery/universities')return await handleUniversityCatalogueRequest(request,env,{userId:user.id,profileId})||json({error:'Not found'},404);
@@ -107,7 +109,7 @@ export function createHandler(fetcher = fetch) {
       if(url.pathname==='/api/mail-automation'||url.pathname.startsWith('/api/mail-automation/'))return await handleMailAutomationRequest(request,env,{userId:user.id,profileId,rest},fetcher)||json({error:'Not found'},404);
       if(url.pathname.startsWith('/api/telegram/'))return await handleTelegramRequest(request,env,{userId:user.id,profileId,rest},fetcher)||json({error:'Not found'},404);
       if(url.pathname.startsWith('/api/backup/drive/'))return await handleBackupDriveRequest(request,env,{userId:user.id,profileId},fetcher)||json({error:'Not found'},404);
-      if(url.pathname==='/api/backup/export')return await handleOwnerBackupRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
+      if(url.pathname==='/api/backup/export'||url.pathname.startsWith('/api/backup/export/'))return await handleOwnerBackupRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
       if(url.pathname==='/api/pesci/practice'||url.pathname.startsWith('/api/pesci/practice/'))return await handlePesciPracticeRequest(request,env,{userId:user.id,profileId});
       if(url.pathname==='/api/roadmap'||url.pathname==='/api/roadmap/actions'){
         return await handleRoadmapRequest(request,env,{userId:user.id,profileId,rest});

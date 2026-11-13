@@ -1,0 +1,100 @@
+name: Deploy verified AUS Worker
+on:
+  workflow_run:
+    workflows: [checks]
+    types: [completed]
+permissions:
+  contents: read
+concurrency:
+  group: aus-existing-worker-deployment
+  cancel-in-progress: false
+jobs:
+  configuration:
+    # workflow_run may receive privileged context: reject forks and PR runs
+    # before checking out code or reading the deployment credential.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      configured: ${{ steps.config.outputs.configured }}
+    steps:
+      - name: Check deployment configuration without exposing the token
+        id: config
+        env:
+          AUS_CLOUDFLARE_API_TOKEN: ${{ secrets.AUS_CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$AUS_CLOUDFLARE_API_TOKEN" ]]; then
+            echo 'configured=false' >> "$GITHUB_OUTPUT"
+            echo '## Worker deployment is not configured' >> "$GITHUB_STEP_SUMMARY"
+            echo 'No deployment was attempted. Add the scoped AUS_CLOUDFLARE_API_TOKEN repository secret, then rerun the successful main-push checks.' >> "$GITHUB_STEP_SUMMARY"
+            echo '::notice::Worker deployment not configured; deploy job will be skipped.'
+          else
+            echo 'configured=true' >> "$GITHUB_OUTPUT"
+          fi
+  deploy:
+    needs: configuration
+    if: needs.configuration.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Verify current main and already reviewed SQL baseline
+        env:
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ github.token }}
+          AUS_WORKER_SCHEMA_BASELINE: ${{ vars.AUS_WORKER_SCHEMA_BASELINE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          from scripts.deploy_worker import verify_checkout, SCHEMA_BASELINE
+          verify_checkout(Path.cwd(), os.environ['EXPECTED_SHA'], os.environ.get('AUS_WORKER_SCHEMA_BASELINE') or SCHEMA_BASELINE)
+          PY
+      - name: Rebuild the successful verified commit without package scripts
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npm run build
+          node scripts/build_worker.mjs
+      - name: Deploy the existing Worker once and verify configuration
+        env:
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          AUS_CLOUDFLARE_API_TOKEN: ${{ secrets.AUS_CLOUDFLARE_API_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          AUS_WORKER_SCHEMA_BASELINE: ${{ vars.AUS_WORKER_SCHEMA_BASELINE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          python scripts/deploy_worker.py --expected-sha "$EXPECTED_SHA" > "$RUNNER_TEMP/aus-worker-receipt.json"
+          python - <<'PY'
+          from pathlib import Path
+          import json,os
+          data=json.loads((Path(os.environ['RUNNER_TEMP'])/'aus-worker-receipt.json').read_text())
+          summary=Path(os.environ['GITHUB_STEP_SUMMARY'])
+          with summary.open('a') as out:
+              out.write('## Existing AUS Worker deployed\n')
+              out.write('Commit: `'+data['commit']+'`\n\n')
+              out.write('Deployment: `'+data['deploymentId']+'`\n\n')
+              out.write('Verified: eight secret bindings and five schedules preserved.\n')
+          PY

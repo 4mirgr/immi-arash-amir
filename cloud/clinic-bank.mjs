@@ -18,6 +18,21 @@ export function clinicBankURL(value){
  }catch{return null;}
 }
 const clean=(v,max)=>typeof v==='string'?v.replace(/[\x00-\x1f<>]/g,' ').trim().slice(0,max):'';
+// Save only bounded generic service statements from the already-read public
+// publisher page. Do not retain full pages, testimonials or patient narratives.
+export function clinicBankClinicalExcerpt(value,pageTitle=''){
+ if(typeof value!=='string')return '';
+ let visible=value.replace(/<[^>]*>/g,' ').trim();
+ if(typeof pageTitle==='string'&&pageTitle.trim()&&visible.startsWith(pageTitle.trim()))visible=visible.slice(pageTitle.trim().length).trimStart();
+ const statements=[],seen=new Set();
+ for(const part of visible.slice(0,12000).split(/\n+|(?<=[.!?])\s+/)){
+  const line=part.replace(/[\x00-\x1f<>]/g,' ').replace(/\s+/g,' ').trim();
+  if(line.length<25||line.length>600||seen.has(line)||/ignore.{0,50}instructions?|system prompt|api[ _-]?key|password|credit.?card|javascript:/i.test(line)||/\b(?:no|not|never|without|unable|cannot|can't|testimonial|diagnosed|diagnosis|case report|patient story|I|my|mine|Mr|Mrs|Ms|Miss|DOB)\b|\b\d{1,3}[- ]year[- ]old\b/i.test(line))continue;
+  if(!/\b(?:provides?|offers?|delivers?|specialises?|specializes?|treats?|manages?|supports?)\b/i.test(line)||!/\b(?:general practice|family medicine|patient|chronic|preventive|diabetes|wound|emergency|acute|community|multidisciplinary|clinical|teaching)\b/i.test(line))continue;
+  seen.add(line);statements.push(line);if(statements.length>=12)break;
+ }
+ return statements.join('\n');
+}
 async function leadId(owner,url){return 'bank_'+[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(owner+'\n'+url)))].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,32);}
 function provenance(item){const p=item.provenance;if(!p||typeof p!=='object'||Array.isArray(p))return {};return{sourceFile:clean(p.sourceFile,180),sourceSheet:clean(p.sourceSheet,100),...(Number.isInteger(p.sourceRow)&&p.sourceRow>0&&p.sourceRow<10000000?{sourceRow:p.sourceRow}:{})};}
 export function clinicBankView(row,at=Date.now()){
@@ -101,7 +116,10 @@ export async function dispatchClinicBankReading(env,fetcher=fetch,at=Date.now(),
     const status=read?(contacts.length?'public_contacts_found':'public_page_read'):result.status;
     const attempts=read?0:row.attempts+1,next=at+(read?CLINIC_BANK_REFRESH_MS:attempts<3?86400000:CLINIC_BANK_REFRESH_MS),now=new Date(at).toISOString();
     const contactsReadAt=read?now:previousResult.contactsReadAt||row.last_success_at||null;
-    const snapshot={sourceStatus:result.status,sourceURL:read?result.finalUrl||row.url:previousResult.sourceURL||row.url,title:read?clean(result.title,500):previousResult.title||'',contacts,contactsReadAt,linkedReadings:read?result.linkedReadings||[]:previousResult.linkedReadings||[],limitations:result.limitations||[],lastAttempt:{readAt:now,status:result.status,sourceURL:result.finalUrl||row.url}};
+    const clinicalSource=read?clinicBankURL(result.finalUrl||row.url):null;
+    const clinicalText=read&&clinicalSource&&new URL(clinicalSource).hostname.replace(/^www\./,'')===new URL(row.url).hostname.replace(/^www\./,'')?clinicBankClinicalExcerpt(result.text,result.title):'';
+    const clinicalEvidence=read?{clinicalText,clinicalSourceURL:clinicalText?clinicalSource:null,clinicalReadAt:clinicalText?now:null,clinicalScope:'bounded_public_service_statements_not_full_page'}:{clinicalText:previousResult.clinicalText||'',clinicalSourceURL:previousResult.clinicalSourceURL||null,clinicalReadAt:previousResult.clinicalReadAt||null,clinicalScope:previousResult.clinicalScope||'not_recorded'};
+    const snapshot={sourceStatus:result.status,sourceURL:read?result.finalUrl||row.url:previousResult.sourceURL||row.url,title:read?clean(result.title,500):previousResult.title||'',contacts,contactsReadAt,...clinicalEvidence,linkedReadings:read?result.linkedReadings||[]:previousResult.linkedReadings||[],limitations:result.limitations||[],lastAttempt:{readAt:now,status:result.status,sourceURL:result.finalUrl||row.url}};
     await db.prepare('UPDATE clinic_bank_leads SET status=?,attempts=?,available_at=?,lease_until=0,read_at=?,last_success_at=CASE WHEN ? THEN ? ELSE last_success_at END,result_json=?,new_email_count=?,updated_at=? WHERE id=? AND owner_id=? AND lease_until=?').bind(status,attempts,next,now,read?1:0,now,JSON.stringify(snapshot),newEmails,now,row.id,row.owner_id,at+180000).run();
     receipts.push({id:row.id,status,newEmails});
    }catch{

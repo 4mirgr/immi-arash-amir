@@ -9,7 +9,7 @@ from importlib.metadata import version
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ['check_sync_continuity.py','check_english_ui.py','check_ui_accessibility_reflow.py',
-          'check_research_funding.py','check_team_board.py','check_bulk_opportunity_mail.py']
+          'check_research_funding.py','check_team_board.py','check_bulk_opportunity_mail.py','check_clinic_enquiry.py','check_paged_backup.py']
 
 
 def run() -> None:

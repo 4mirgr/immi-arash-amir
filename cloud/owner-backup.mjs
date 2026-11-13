@@ -1,9 +1,10 @@
+import {handleOwnerBackupPagesRequest} from './owner-backup-pages.mjs';
 // Authenticated owner export only. Provider grants/keys and received-mail caches are excluded.
 const SUPABASE_TABLES=['immi_profiles','immi_settings','immi_cv_versions','immi_cv_defaults','immi_presets','immi_preset_defaults','immi_drafts'];
 const PRIVATE_TABLES=['research_funding_plans','linkedin_sections','linkedin_drafts','linkedin_posts','linkedin_metrics','linkedin_contacts','linkedin_network_targets','linkedin_publish_attempts','roadmap_actions','pesci_practice_sessions','ai_assistant_runs','mail_automation_settings','mail_automation_jobs','mail_automation_suppressions','mail_automation_events','gp_workflow_settings','gp_opportunity_progress','clinic_bank_leads'];
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'}});
 export async function handleOwnerBackupRequest(request,env,context){
- const url=new URL(request.url);if(url.pathname!=='/api/backup/export')return null;
+ const url=new URL(request.url);if(url.pathname.startsWith('/api/backup/export/'))return handleOwnerBackupPagesRequest(request,env,context);if(url.pathname!=='/api/backup/export')return null;
  try{
   if(typeof context?.userId!=='string'||!context.userId||context.userId.includes(':')||!['amir','arash'].includes(context.profileId)||typeof context.rest!=='function')return json({error:'workspace_required'},403);
   if(url.searchParams.has('profile')&&url.searchParams.get('profile')!==context.profileId)return json({error:'profile_access_denied'},403);

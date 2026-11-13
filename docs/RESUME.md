@@ -32,6 +32,15 @@ Per-opportunity mail: docs/OPPORTUNITY-MAIL.md. New authenticated router precede
 Contact/discovery engine: read docs/PUBLIC-CONTACT-ENGINE.md selectively. New public enrichment and AI-budget schemas are mandatory ONLY inOPPORTUNITY_DB. Extractor version2 supports flattenedtext. New23source registry includesgp-expanded-sources;3sources/hour ~8hrotation. PublicAIquote selection4attempts/day excludesprivateCV/mail andmustvalidateverbatimsource. Relatedcontacts keepindependentproof; privateCVreadinessAPIonly, neverpersistpublic. Oneclickmailafterpreview/review mustrefusereused/ambiguousqueue andchangedGoogleidentity.
 
 
+## 2026-11-13 — outstanding-work progress
+Current authoritative status/dependencies rewritten in `docs/STATUS.fa.md` and `docs/REMAINING.fa.md`; old Google/LinkedIn/Telegram/domain setup requests are historical. Metadata observed both doctors' baseLinkedIn andTelegram,2AmirGoogle+1ArashGoogle; Amirsecondary lacksDrive, Arashsecondary absent. Storedconnected is not fresh provideroperation verification.
+
+New `/api/backup/export/manifest` + `/page` owner-signed paginated export and `src/paged-backup.jsx` encrypted all-parts download/verification remove the legacy100rowlimit for supportedcollectionpages (300page/64MiBclient caps). Keep legacyexport/Drive limits honest; no restore,credentials,approval replay or unattendedcloudbackup. See BACKUP-NEXT-2026-11-13.fa.md. Reusable `.mjs` helper and `.jsx` component sharebasename: importcomponentwith explicit.jsx.
+
+New review-only `/api/clinic-bank/enquiry` and per-bankrowdisclosure prepare4paragraphcopy from currentpublishedcontact/name/serviceevidence+own CV/writing; no newqueues/sends. Normal bankreads retain only boundedgenericservicestatements withsource/time, no extraHTTP; oldrows upgradeon nextread, failedrefreshstalegate remains. Source CHN ACT `gp_chn_listing_html` joins existing3/hourrotation (36executable); source hasno verifiedsponsoredLevel1match. See docs/research/ACT-CHN-SOURCE-2026-11-13.md.
+
+`.github/workflows/deploy-worker.yml` + scripts/deploy_worker.py are ready for fixed existingWorker; guardedtrusted-successful-main checks, moved-main/SQL-baseline checks,8secrets/5cronpreserved. Requiresowner-added AUS_CLOUDFLARE_API_TOKEN; absentsecret explicitlyunconfigured/skips. No new schema, no tokencreation/paidresource/providerwrite in development. User guide docs/WORKER-CI.fa.md.
+
 ## 2026-11-12 — local reviewed skills and automatic maintenance
 The user-supplied library index is now root `CODEX-EXTENDED-LIBRARY.md`; do bounded rg, not full reads. Two local skills in `.agents/skills/` wrap pinned code-reviewer/GitHub-Actions documents with licenses and hashes. `scripts/check_skills.py` validates references without executing third-party code. See `docs/AUTOMATIC-MAINTENANCE.fa.md` for exact triggers, scopes and recovery; verified audit/release receipts: `docs/LIBRARY-REVIEW-2026-11-12.fa.md`.
 

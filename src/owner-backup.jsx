@@ -1,3 +1,4 @@
+import {PagedBackup} from './paged-backup.jsx';
 import {interfaceLocale} from './interface-locale.mjs';
 import {googleAccountLabel} from './google-account-labels.mjs';
 import React,{useLayoutEffect,useRef,useState} from 'react';
@@ -111,5 +112,6 @@ export function OwnerBackup({person,notify=()=>{}}){
    <p className="section-help">سپس باید روی یک نسخهٔ جدا و آزمایشی امتحان کنیم که اطلاعات واقعاً برمی‌گردند و دو حساب جدا می‌مانند. این کار با بررسی فایل در مرورگر فرق دارد و نباید روی اطلاعات اصلی سایت انجام شود.</p>
   </details>
   {state.error&&<p className="notice" role="alert"><MixedText>{state.error}</MixedText></p>}{state.summary&&<Summary record={state.summary}/>}
+ <PagedBackup key={owner} person={owner} notify={notify}/>
  </section>;
 }
