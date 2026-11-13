@@ -33,7 +33,7 @@ Contact/discovery engine: read docs/PUBLIC-CONTACT-ENGINE.md selectively. New pu
 
 
 ## 2026-11-13 — outstanding-work progress
-Current authoritative status/dependencies rewritten in `docs/STATUS.fa.md` and `docs/REMAINING.fa.md`; old Google/LinkedIn/Telegram/domain setup requests are historical. Metadata observed both doctors' baseLinkedIn andTelegram,2AmirGoogle+1ArashGoogle; Amirsecondary lacksDrive, Arashsecondary absent. Storedconnected is not fresh provideroperation verification.
+Verified release/limits: `docs/DELIVERY-2026-11-13.fa.md`. Current authoritative status/dependencies rewritten in `docs/STATUS.fa.md` and `docs/REMAINING.fa.md`; old Google/LinkedIn/Telegram/domain setup requests are historical. Metadata observed both doctors' baseLinkedIn andTelegram,2AmirGoogle+1ArashGoogle; Amirsecondary lacksDrive, Arashsecondary absent. Storedconnected is not fresh provideroperation verification.
 
 New `/api/backup/export/manifest` + `/page` owner-signed paginated export and `src/paged-backup.jsx` encrypted all-parts download/verification remove the legacy100rowlimit for supportedcollectionpages (300page/64MiBclient caps). Keep legacyexport/Drive limits honest; no restore,credentials,approval replay or unattendedcloudbackup. See BACKUP-NEXT-2026-11-13.fa.md. Reusable `.mjs` helper and `.jsx` component sharebasename: importcomponentwith explicit.jsx.
 
