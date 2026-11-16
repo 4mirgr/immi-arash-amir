@@ -1,6 +1,6 @@
 # Canonical goals and acceptance map
 
-User mandate: two independent doctor workspaces, shared public clinic/opportunity knowledge, fastest realistic Australia migration progress; free plans first, parallel agents with exclusive files, short role-specific context. Persian RTL, distinct GP/PESCI versus internal-medicine/research objectives. Eventual .ir domain, measured Iran accessibility and legitimate server-side routing; no guarantee of third-party availability.
+User mandate: two independent doctor workspaces, shared public clinic/opportunity knowledge, fastest realistic Australia migration progress; free plans first, parallel agents with exclusive files, short role-specific context. Persian RTL, distinct GP/PESCI versus internal-medicine/research objectives. Latest operational evidence and Arash repair: [2026-11-16](ARASH-REPAIR-2026-11-16.fa.md). Eventual .ir domain, measured Iran accessibility and legitimate server-side routing; no guarantee of third-party availability.
 
 | Area | Goal | Current implementation / remaining boundary |
 |---|---|---|

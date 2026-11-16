@@ -59,5 +59,5 @@ Implementation review complete; final live diagnosis and deployment receipts are
 ### Task5: Integrate, verify and publish
 **Files:** root-owned router/catalog/docs/deployment only after agent interfaces stabilize.
 - [x] Run focused tests, full Node/Python, language/mobile/actual composer browser workflows and public builds.
-- [ ] Deploy preserving8secret bindings,5crons and data; update only AUS pin in the separate website host after its gates.
-- [ ] Verify main-domain assets/private boundary; report actual connection findings and exact owner-consent actions. No claim that every clinic was fully researched or real email sent.
+- [x] Deploy preserving8secret bindings,5crons and data; update only AUS pin in the separate website host after its gates.
+- [x] Verify main-domain assets/private boundary; report actual connection findings and exact owner-consent actions. No claim that every clinic was fully researched or real email sent.
