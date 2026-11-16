@@ -1,0 +1,4 @@
+.arash-route-grid.arash-job-first{grid-template-columns:minmax(0,1fr)}
+.arash-job-first .arash-route{min-height:0}
+.arash-connect-action{justify-self:start;display:inline-flex;align-items:center;gap:8px;min-height:44px}
+@media(max-width:640px){.arash-connect-action{justify-self:stretch;justify-content:center}}

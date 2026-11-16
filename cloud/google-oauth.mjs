@@ -40,7 +40,7 @@ function authorizationUrl(env,id,redirect,state,verifierHash,purpose=null,reques
  if(isSecondaryGoogleOwner(id)&&expectedIdentity?.email)params.set('login_hint',expectedIdentity.email);
  return AUTH_URL+'?'+params;
 }
-function owner(context){if(!context?.userId||!['arash','amir'].includes(context.profileId))throw new GoogleError(403,'owner_required','An authenticated workspace owner is required');return context.userId;}
+function owner(context){if(typeof context?.userId!=='string'||!context.userId||!['arash','amir'].includes(context.profileId))throw new GoogleError(403,'owner_required','An authenticated workspace owner is required');return context.userId;}
 function secondaryEmail(env){const value=typeof env.GOOGLE_SECONDARY_EMAIL==='string'?env.GOOGLE_SECONDARY_EMAIL.trim().toLowerCase():'';if(!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value))throw new GoogleError(503,'secondary_setup_required','The secondary mailbox setup is incomplete');return value;}
 function assertMailboxIdentity(env,id,email,profileId){if(!isSecondaryGoogleOwner(id))return;if(!['amir','arash'].includes(profileId)||typeof email!=='string'||!/^([^\s@<>]+)@[^\s@<>]+$/.test(email)||(profileId==='amir'&&email.toLowerCase()!==secondaryEmail(env)))throw new GoogleError(409,'identity_mailbox_mismatch','Select the connected secondary Google account');}
 
@@ -55,24 +55,35 @@ export async function encryptGoogleSecret(env,ownerBinding,value){
 export async function decryptGoogleSecret(env,ownerBinding,envelope){
  try{const [version,iv,cipher,...extra]=String(envelope).split('.');if(version!=='v1'||extra.length||unb64(iv).length!==12)throw Error();const raw=await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(iv),additionalData:bytes(ownerBinding)},await encryptionKey(env),unb64(cipher));return JSON.parse(new TextDecoder().decode(raw));}catch(error){if(error instanceof GoogleError)throw error;throw new GoogleError(409,'reconnect_required','Google connection must be renewed');}
 }
-async function responseJson(response){const text=await response.text();if(text.length>65536)throw new GoogleError(502,'provider_unavailable','Google returned an invalid response');try{return JSON.parse(text);}catch{throw new GoogleError(502,'provider_unavailable','Google returned an invalid response');}}
-async function googleFetch(fetcher,url,options){try{return await fetcher(url,{...options,signal:AbortSignal.timeout(15000)});}catch{throw new GoogleError(502,'provider_unavailable','Google is temporarily unavailable');}}
+async function responseJson(response){
+ if(Number(response.headers.get('Content-Length')||0)>65536)throw new GoogleError(502,'provider_unavailable','Google returned an invalid response');
+ const reader=response.body?.getReader();if(!reader)throw new GoogleError(502,'provider_unavailable','Google returned an invalid response');
+ const chunks=[];let size=0;
+ try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>65536){await reader.cancel();throw new GoogleError(502,'provider_unavailable','Google returned an invalid response');}chunks.push(value);}}catch(error){if(error instanceof GoogleError)throw error;throw new GoogleError(502,'provider_unavailable','Google returned an invalid response');}finally{reader.releaseLock();}
+ const raw=new Uint8Array(size);let offset=0;for(const chunk of chunks){raw.set(chunk,offset);offset+=chunk.length;}
+ try{const value=JSON.parse(new TextDecoder().decode(raw));if(!value||typeof value!=='object'||Array.isArray(value))throw Error();return value;}catch{throw new GoogleError(502,'provider_unavailable','Google returned an invalid response');}
+}
+async function googleFetch(fetcher,url,options){
+ let response;try{response=await fetcher(url,{...options,signal:AbortSignal.timeout(15000),redirect:'manual'});}catch{throw new GoogleError(502,'provider_unavailable','Google is temporarily unavailable');}
+ if(response.redirected||response.status>=300&&response.status<400){await response.body?.cancel();throw new GoogleError(502,'provider_redirect_rejected','Google redirected unexpectedly');}return response;
+}
 const form=body=>({method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body).toString()});
 const scopeList=value=>typeof value==='string'?[...new Set(value.split(/\s+/).filter(Boolean))]:[];
 async function account(env,id){return env.GOOGLE_DB.prepare('SELECT * FROM google_accounts WHERE owner_id=?').bind(id).first();}
 async function reconnect(env,id,snapshot){await env.GOOGLE_DB.prepare("UPDATE google_accounts SET status='reconnect_required',updated_at=? WHERE owner_id=? AND google_sub=? AND token_cipher=?").bind(now(),id,snapshot.google_sub,snapshot.token_cipher).run();}
-export async function getGoogleAccess(env,userId,fetcher=fetch){
+export async function getGoogleAccess(env,userId,fetcher=fetch,options={}){
  configured(env);if(typeof userId!=='string'||!userId)throw new GoogleError(403,'owner_required','An authenticated workspace owner is required');
  const row=await account(env,userId);
  if(!row)throw new GoogleError(409,'not_connected','Connect your own Google account first');
  assertMailboxIdentity(env,userId,row.email,row.profile_id);
  if(row.status!=='connected')throw new GoogleError(409,'reconnect_required','Google connection must be renewed');
  let tokens;try{tokens=await decryptGoogleSecret(env,userId,row.token_cipher);}catch(e){if(e.code==='reconnect_required')await reconnect(env,userId,row);throw e;}
- if(row.expires_at<=now()+60000){
+ const forceRefresh=options.forceRefresh===true&&(!options.rejectedAccessToken||tokens.access_token===options.rejectedAccessToken);
+ if(forceRefresh||!tokens.access_token||!Number.isFinite(Number(row.expires_at))||Number(row.expires_at)<=now()+60000){
   if(!tokens.refresh_token){await reconnect(env,userId,row);throw new GoogleError(409,'reconnect_required','Google connection must be renewed');}
   const result=await googleFetch(fetcher,TOKEN_URL,form({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,refresh_token:tokens.refresh_token,grant_type:'refresh_token'}));
   const payload=await responseJson(result);
-  if(!result.ok){if(payload.error==='invalid_grant'){await reconnect(env,userId,row);throw new GoogleError(409,'reconnect_required','Google connection must be renewed');}throw new GoogleError(502,'provider_unavailable','Google token refresh could not be completed');}
+  if(!result.ok){if(payload.error==='invalid_grant'){await reconnect(env,userId,row);throw new GoogleError(409,'reconnect_required','Google connection must be renewed');}if(payload.error==='invalid_client'||payload.error==='unauthorized_client')throw new GoogleError(503,'google_client_setup_required','Google application credentials need administrator attention');throw new GoogleError(502,'provider_unavailable','Google token refresh could not be completed');}
   if(typeof payload.access_token!=='string'||!payload.access_token||!Number.isFinite(Number(payload.expires_in))||Number(payload.expires_in)<=0)throw new GoogleError(502,'provider_unavailable','Google returned an invalid grant');
   tokens={access_token:payload.access_token,refresh_token:payload.refresh_token||tokens.refresh_token};
   const scopes=payload.scope?scopeList(payload.scope):JSON.parse(row.scopes_json);
@@ -85,7 +96,7 @@ export async function getGoogleAccess(env,userId,fetcher=fetch){
  return {accessToken:tokens.access_token,email:row.email,subject:row.google_sub,scopes:JSON.parse(row.scopes_json)};
 }
 export async function googleStatus(env,id,profileId=null){
- const unavailable=(missing=[],status='setup_required')=>({configured:false,connected:false,status,missing,email:null,scopes:[],capabilities:{gmailRead:false,gmailSend:false,calendar:false,drive:false,backupDrive:false}});
+ const unavailable=(missing=[],status='setup_required')=>({configured:false,connected:false,status,missing,email:null,scopes:[],capabilities:{gmailRead:false,gmailSend:false,calendar:false,drive:false,backupDrive:false},verification:{state:'setup_required',checkedAt:null,code:status,retryable:false,recoveryAction:'contact_administrator'}});
  const absent=missing(env);if(absent.length)return unavailable(absent);
  try{configured(env);await encryptionKey(env);}catch{return unavailable();}
  const row=await account(env,id),profile=profileId||row?.profile_id;
@@ -95,13 +106,84 @@ export async function googleStatus(env,id,profileId=null){
   if(profile==='amir'){try{secondaryEmail(env);}catch{return unavailable(['GOOGLE_SECONDARY_EMAIL']);}}
   if(row){try{assertMailboxIdentity(env,id,row.email,profile);}catch{return unavailable([],'identity_mailbox_mismatch');}}
  }
- const scopes=row?JSON.parse(row.scopes_json):[];
- return {configured:true,connected:row?.status==='connected',status:row?.status||'not_connected',email:row?.email||null,scopes,capabilities:{gmailRead:scopes.includes(GOOGLE_SCOPES[3]),gmailSend:scopes.includes(GOOGLE_SCOPES[4]),calendar:scopes.includes(GOOGLE_SCOPES[5]),drive:!isSecondaryGoogleOwner(id)&&scopes.includes(GOOGLE_SCOPES[6]),backupDrive:isSecondaryGoogleOwner(id)&&scopes.includes(GOOGLE_SCOPES[6])}};
+ const scopes=row?JSON.parse(row.scopes_json):[],connected=row?.status==='connected',status=row?.status||'not_connected';
+ return {configured:true,connected,status,email:row?.email||null,scopes,capabilities:{gmailRead:connected&&scopes.includes(GOOGLE_SCOPES[3]),gmailSend:connected&&scopes.includes(GOOGLE_SCOPES[4]),calendar:connected&&scopes.includes(GOOGLE_SCOPES[5]),drive:connected&&!isSecondaryGoogleOwner(id)&&scopes.includes(GOOGLE_SCOPES[6]),backupDrive:connected&&isSecondaryGoogleOwner(id)&&scopes.includes(GOOGLE_SCOPES[6])},verification:{state:connected?'not_checked':row?'reconnect_required':'not_connected',checkedAt:null,code:connected?null:status,retryable:false,recoveryAction:connected?'verify_connection':row?'reconnect_google':'connect_google'}};
+}
+const serviceKeys=['gmailRead','gmailSend','calendar','drive','backupDrive'];
+const serviceCheck=(state,code=null)=>({state,code});
+function providerCheckFailure(status,payload){
+ const reasons=[payload?.error?.status,...(Array.isArray(payload?.error?.errors)?payload.error.errors.map(item=>item?.reason):[])];
+ if(status===429||status>=500||reasons.some(reason=>['rateLimitExceeded','userRateLimitExceeded','quotaExceeded','dailyLimitExceeded','RESOURCE_EXHAUSTED'].includes(reason)))return serviceCheck('temporary_failure','provider_unavailable');
+ if(status===403&&reasons.some(reason=>['accessNotConfigured','serviceDisabled','SERVICE_DISABLED'].includes(reason)))return serviceCheck('api_disabled','google_api_disabled');
+ if(status===403)return serviceCheck('permission_required','google_permission_required');
+ if(status===401)return serviceCheck('permission_required','google_access_rejected');
+ return serviceCheck('temporary_failure','provider_unavailable');
+}
+// Explicit owner-authenticated support check, never part of the cheap status poll.
+// Read-only provider probes discard mail/calendar/Drive content. A scope record
+// is not a sending test, and transient failures never erase a stored grant.
+export async function verifyGoogleConnection(env,id,profileId,fetcher=fetch){
+ owner({userId:id,profileId});
+ const before=missing(env).length?null:await account(env,id);
+ if(before&&before.profile_id!==profileId)throw new GoogleError(403,'owner_required','Google account does not belong to this workspace');
+ const initial=await googleStatus(env,id,profileId),checkedAt=new Date().toISOString();
+ const serviceChecks=Object.fromEntries(serviceKeys.map(key=>[key,serviceCheck(initial.capabilities[key]?'not_checked':'not_granted')]));
+ const result=(status,state,code,recoveryAction,retryable=false)=>({...status,serviceChecks,verification:{state,checkedAt,code,retryable,recoveryAction}});
+ if(!initial.configured||!initial.connected)return result(initial,initial.verification.state,initial.verification.code,initial.verification.recoveryAction);
+ let access,snapshot,forcedRefresh=false;
+ const captureSnapshot=async()=>{
+  snapshot=await account(env,id);
+  if(!snapshot||snapshot.status!=='connected'||snapshot.profile_id!==profileId||snapshot.google_sub!==access.subject||(await decryptGoogleSecret(env,id,snapshot.token_cipher)).access_token!==access.accessToken)throw new GoogleError(409,'connection_changed','Google connection changed; verify again');
+ };
+ const refreshRejectedAccess=async()=>{forcedRefresh=true;access=await getGoogleAccess(env,id,fetcher,{forceRefresh:true,rejectedAccessToken:access.accessToken});await captureSnapshot();};
+ const verifyIdentity=async()=>{
+  let response=await googleFetch(fetcher,USERINFO_URL,{headers:{Authorization:'Bearer '+access.accessToken}});
+  if(response.status===401&&!forcedRefresh){await response.body?.cancel();await refreshRejectedAccess();response=await googleFetch(fetcher,USERINFO_URL,{headers:{Authorization:'Bearer '+access.accessToken}});}
+  if(!response.ok){await response.body?.cancel();if(response.status===401){await reconnect(env,id,snapshot);throw new GoogleError(409,'reconnect_required','Google connection must be renewed');}throw new GoogleError(502,'provider_unavailable','Google verification is temporarily unavailable');}
+  const identity=await responseJson(response);
+  if(typeof identity.sub!=='string'||!identity.sub||typeof identity.email!=='string'||!identity.email||typeof identity.email_verified!=='boolean')throw new GoogleError(502,'provider_unavailable','Google returned an invalid identity response');
+  if(identity.sub!==access.subject||identity.email_verified!==true||identity.email.toLowerCase()!==access.email.toLowerCase()){await reconnect(env,id,snapshot);throw new GoogleError(409,'identity_mailbox_mismatch','Google identity no longer matches this workspace');}
+ };
+ try{
+  access=await getGoogleAccess(env,id,fetcher);
+  await captureSnapshot();await verifyIdentity();
+  const probes=[['gmailRead',GOOGLE_SCOPES[3],'https://gmail.googleapis.com/gmail/v1/users/me/profile'],['calendar',GOOGLE_SCOPES[5],'https://www.googleapis.com/calendar/v3/calendars/primary/events?maxResults=1&fields=kind'],[isSecondaryGoogleOwner(id)?'backupDrive':'drive',GOOGLE_SCOPES[6],'https://www.googleapis.com/drive/v3/files?pageSize=1&fields=kind']];
+  for(const key of serviceKeys)serviceChecks[key]=serviceCheck('not_granted');
+  if(access.scopes.includes(GOOGLE_SCOPES[4]))serviceChecks.gmailSend=serviceCheck('scope_recorded');
+  for(const [key,scope,url] of probes){
+   if(!access.scopes.includes(scope))continue;
+   let response;
+   try{response=await googleFetch(fetcher,url,{headers:{Authorization:'Bearer '+access.accessToken}});}
+   catch(error){if(!(error instanceof GoogleError))throw error;serviceChecks[key]=serviceCheck('temporary_failure',error.code==='provider_redirect_rejected'?'provider_redirect_rejected':'provider_unavailable');continue;}
+   if(response.status===401&&!forcedRefresh){await response.body?.cancel();await refreshRejectedAccess();await verifyIdentity();if(!access.scopes.includes(scope)){serviceChecks[key]=serviceCheck('not_granted');continue;}response=await googleFetch(fetcher,url,{headers:{Authorization:'Bearer '+access.accessToken}});}
+   if(response.ok){await response.body?.cancel();serviceChecks[key]=serviceCheck('available');}else{let payload=null;try{payload=await responseJson(response);}catch{}serviceChecks[key]=providerCheckFailure(response.status,payload);}
+  }
+  for(const [key,scope] of [['gmailRead',GOOGLE_SCOPES[3]],['calendar',GOOGLE_SCOPES[5]],[isSecondaryGoogleOwner(id)?'backupDrive':'drive',GOOGLE_SCOPES[6]]])if(!access.scopes.includes(scope))serviceChecks[key]=serviceCheck('not_granted');
+  serviceChecks.gmailSend=serviceCheck(access.scopes.includes(GOOGLE_SCOPES[4])?'scope_recorded':'not_granted');
+  const current=await account(env,id);if(!current||current.status!=='connected'||current.google_sub!==snapshot.google_sub||current.token_cipher!==snapshot.token_cipher)throw new GoogleError(409,'connection_changed','Google connection changed; verify again');
+  const status=await googleStatus(env,id,profileId);
+  for(const key of serviceKeys)if(['permission_required','api_disabled','not_granted'].includes(serviceChecks[key].state))status.capabilities[key]=false;
+  const failures=Object.values(serviceChecks).filter(check=>!['available','scope_recorded','not_granted'].includes(check.state));
+  return result(status,failures.length?'partial':'verified',failures[0]?.code||null,failures.length?(failures.some(check=>check.state==='api_disabled')?'contact_administrator':failures.some(check=>check.state==='permission_required')?'approve_service_permission':'retry_verification'):'none',failures.some(check=>check.state==='temporary_failure'));
+ }catch(error){
+  if(!(error instanceof GoogleError))throw error;
+  const current=await googleStatus(env,id,profileId);
+  if(['reconnect_required','identity_mailbox_mismatch'].includes(error.code)&&!current.connected)return result(current,'reconnect_required',error.code,'reconnect_google');
+  if(error.code==='not_connected')return result(current,'not_connected',error.code,'connect_google');
+  if(['setup_required','google_client_setup_required'].includes(error.code))return result(current,'setup_required',error.code,'contact_administrator');
+  return result(current,'temporary_failure',['reconnect_required','identity_mailbox_mismatch','connection_changed'].includes(error.code)?'connection_changed':error.code,'retry_verification',true);
+ }
 }
 export async function handleGoogleRequest(request,env,context,fetcher=fetch){
  const url=new URL(request.url);const id=owner(context);
  if(request.method==='GET'&&url.pathname==='/api/google/status')return json(await googleStatus(env,id,context.profileId));
  if(request.method==='POST'&&request.headers.has('Origin')&&request.headers.get('Origin')!==url.origin&&!(url.pathname==='/api/google/start'&&googleStartOriginAllowed(request,env)))throw new GoogleError(403,'origin_rejected','Origin rejected');
+ if(request.method==='POST'&&url.pathname==='/api/google/verify'){
+  if(Number(request.headers.get('Content-Length')||0)>1024)throw new GoogleError(413,'payload_too_large','Connection verification accepts an empty object');
+  const raw=await request.text();let input;try{if(bytes(raw).length>1024)throw Error();input=JSON.parse(raw||'{}');}catch{throw new GoogleError(400,'invalid_payload','Connection verification accepts an empty object');}
+  if(!input||Array.isArray(input)||typeof input!=='object'||Object.keys(input).length)throw new GoogleError(400,'invalid_payload','Connection verification accepts an empty object');
+  return json(await verifyGoogleConnection(env,id,context.profileId,fetcher));
+ }
  if(request.method==='POST'&&url.pathname==='/api/google/start'){
   const language=url.searchParams.has('language')?url.searchParams.get('language'):'fa';if(!['fa','en'].includes(language)||url.searchParams.getAll('language').length>1)throw new GoogleError(400,'invalid_language','Unsupported interface language');
   const purpose=url.searchParams.get('purpose');if(purpose!==null&&(!['backup','calendar'].includes(purpose)||!isSecondaryGoogleOwner(id)))throw new GoogleError(400,'invalid_purpose','Additional service authorization requires the secondary account owner');

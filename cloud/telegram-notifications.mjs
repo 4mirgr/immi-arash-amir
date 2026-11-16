@@ -32,18 +32,60 @@ async function sendClaim(env,row,receipt,text,fetcher,automatic=false){
  try{await stmt(env.GOOGLE_DB,"UPDATE telegram_notification_receipts SET status=?,telegram_message_id=? WHERE id=? AND owner_id=? AND status='sending'",status,messageId,receipt.id,row.owner_id).run();}catch{status='delivery_unknown';}
  return {id:receipt.id,status};
 }
+async function telegramStatus(env,id,profileId){
+ const absent=missing(env);let ready=!absent.length;try{config(env);}catch{ready=false;}
+ const stored=env.GOOGLE_DB?await account(env,id):null,identityMismatch=Boolean(stored&&stored.profile_id!==profileId),row=identityMismatch?null:stored;
+ const bot=env.GOOGLE_DB?await stmt(env.GOOGLE_DB,"SELECT * FROM telegram_bot_state WHERE id='bot'").first():null;
+ const cfg=ready?config(env):null,validRegistration=Boolean(ready&&bot?.registration_hash===await registrationHash(env,cfg.webhook));
+ const status=!ready?'setup_required':identityMismatch?'identity_mismatch':!row?'not_connected':!validRegistration?'webhook_setup_required':!row.enabled?'notifications_disabled':'linked';
+ const recoveryAction=!ready||identityMismatch?'contact_administrator':!validRegistration?(profileId==='amir'?'setup_webhook':'contact_administrator'):!row?'connect_telegram':!row.enabled?'enable_notifications':'verify_connection';
+ return {profileId,configured:ready,missing:absent,connected:Boolean(row),enabled:Boolean(row?.enabled),notificationsActive:Boolean(ready&&row?.enabled&&validRegistration),status,chatHint:row?'••••'+row.chat_id.slice(-4):null,quietStart:row?.quiet_start??22,quietEnd:row?.quiet_end??8,timeZone:'Asia/Tehran',dailyLimit:DAILY_LIMIT,perRunLimit:GLOBAL_RUN_LIMIT,botUsername:ready&&bot?.identity_hash===await hash(env.TELEGRAM_BOT_TOKEN)?bot.username:null,webhookRegistered:validRegistration,canSetupWebhook:profileId==='amir',scope:'new_public_opportunities_only',automaticEmailSending:false,verification:{state:ready&&!identityMismatch?'not_checked':'setup_required',checkedAt:null,code:status==='linked'?null:status,retryable:false,recoveryAction}};
+}
+// Three read-only Bot API checks at most, with no chat messages, webhook writes,
+// token logging or changes to an owner's existing notification preferences.
+export async function verifyTelegramConnection(env,id,profileId,fetcher=fetch){
+ owner({userId:id,profileId});
+ const initial=await telegramStatus(env,id,profileId),checkedAt=new Date().toISOString(),serviceChecks={bot:{state:'not_checked',code:null},webhook:{state:'not_checked',code:null},chat:{state:'not_checked',code:null}};
+ if(initial.status==='identity_mismatch')fail(403,'profile_access_denied');
+ const result=(status,state,code,recoveryAction,retryable=false)=>({...status,serviceChecks,verification:{state,checkedAt,code,retryable,recoveryAction}});
+ if(!initial.configured)return result(initial,'setup_required','telegram_setup_required','contact_administrator');
+ if(!initial.connected)return result(initial,'not_connected','telegram_not_connected','connect_telegram');
+ const snapshot=await account(env,id),cfg=config(env);
+ try{
+  const bot=await provider(env,'getMe',{},fetcher);
+  if(!bot.ok){if([401,404].includes(bot.status))return result({...initial,notificationsActive:false},'setup_required','telegram_bot_credentials_invalid','contact_administrator');fail(502,'telegram_unavailable');}
+  if(bot.result?.is_bot!==true||!/^\w{5,32}$/.test(bot.result?.username||''))fail(502,'telegram_identity_invalid');
+  serviceChecks.bot={state:'available',code:null};
+  const webhook=await provider(env,'getWebhookInfo',{},fetcher);
+  if(!webhook.ok)fail(502,'telegram_unavailable');
+  const validWebhook=webhook.result?.url===cfg.webhook;
+  const errorAt=Number(webhook.result?.last_error_date)*1000,recentWebhookError=validWebhook&&Number.isFinite(errorAt)&&errorAt>Date.now()-86400000&&errorAt<=Date.now()+60000;
+  serviceChecks.webhook=!validWebhook?{state:'setup_required',code:'telegram_webhook_setup_required'}:recentWebhookError?{state:'temporary_failure',code:'telegram_webhook_delivery_error'}:{state:'available',code:null};
+  const beforeChat=await account(env,id);if(!beforeChat||beforeChat.chat_id!==snapshot.chat_id||beforeChat.profile_id!==profileId)fail(409,'connection_changed');
+  const chat=await provider(env,'getChat',{chat_id:snapshot.chat_id},fetcher);
+  if(chat.ok&&String(chat.result?.id)===snapshot.chat_id&&chat.result?.type==='private')serviceChecks.chat={state:'available',code:null};
+  else if([400,403,404].includes(chat.status))serviceChecks.chat={state:'unavailable',code:'telegram_chat_unavailable'};
+  else fail(502,'telegram_unavailable');
+  const current=await telegramStatus(env,id,profileId),currentRow=await account(env,id);
+  if(!currentRow||currentRow.chat_id!==snapshot.chat_id||currentRow.profile_id!==profileId)fail(409,'connection_changed');
+  const healthyChat=serviceChecks.chat.state==='available',active=healthyChat&&validWebhook&&!recentWebhookError&&current.enabled;
+  const status={...current,botUsername:bot.result.username,webhookRegistered:validWebhook,notificationsActive:active,status:!validWebhook?'webhook_setup_required':!healthyChat?'chat_unavailable':!current.enabled?'notifications_disabled':'linked'};
+  if(!validWebhook)return result(status,'partial','telegram_webhook_setup_required',profileId==='amir'?'setup_webhook':'contact_administrator');
+  if(!healthyChat)return result(status,'partial','telegram_chat_unavailable','restart_telegram_bot');
+  if(recentWebhookError)return result(status,'partial','telegram_webhook_delivery_error','retry_verification',true);
+  return result(status,'verified',null,current.enabled?'none':'enable_notifications');
+ }catch(error){if(!(error instanceof TelegramError))throw error;const current=await telegramStatus(env,id,profileId);return result(current,'temporary_failure',error.code,'retry_verification',true);}
+}
 export async function handleTelegramRequest(request,env,context,fetcher=fetch){
  const url=new URL(request.url),path=url.pathname;if(!path.startsWith('/api/telegram/'))return null;if(path===WEBHOOK_PATH)return null;
  try{
   const id=owner(context);if(url.searchParams.has('profile')&&url.searchParams.get('profile')!==context.profileId)fail(403,'profile_access_denied');
   if(request.method!=='GET'&&request.headers.has('Origin')&&request.headers.get('Origin')!==url.origin)fail(403,'origin_rejected');
   if(path==='/api/telegram/status'&&request.method==='GET'){
-   const absent=missing(env);let ready=!absent.length;try{config(env);}catch{ready=false;}
-   const row=env.GOOGLE_DB?await account(env,id):null,bot=env.GOOGLE_DB?await stmt(env.GOOGLE_DB,"SELECT * FROM telegram_bot_state WHERE id='bot'").first():null;
-   const cfg=ready?config(env):null,validRegistration=Boolean(ready&&bot?.registration_hash===await registrationHash(env,cfg.webhook));
-   return json({profileId:context.profileId,configured:ready,missing:absent,connected:Boolean(row),enabled:Boolean(row?.enabled),chatHint:row?'••••'+row.chat_id.slice(-4):null,quietStart:row?.quiet_start??22,quietEnd:row?.quiet_end??8,timeZone:'Asia/Tehran',dailyLimit:DAILY_LIMIT,perRunLimit:GLOBAL_RUN_LIMIT,botUsername:ready&&bot?.identity_hash===await hash(env.TELEGRAM_BOT_TOKEN)?bot.username:null,webhookRegistered:validRegistration,canSetupWebhook:context.profileId==='amir',scope:'new_public_opportunities_only',automaticEmailSending:false});
+   return json(await telegramStatus(env,id,context.profileId));
   }
   if(request.method!=='POST')fail(405,'method_not_allowed');const body=await input(request);
+  if(path==='/api/telegram/verify'){exactKeys(body,[]);return json(await verifyTelegramConnection(env,id,context.profileId,fetcher));}
   if(path==='/api/telegram/disconnect'){exactKeys(body,[]);if(!env.GOOGLE_DB)fail(503,'telegram_setup_required');await stmt(env.GOOGLE_DB,'DELETE FROM telegram_accounts WHERE owner_id=?',id).run();await stmt(env.GOOGLE_DB,'DELETE FROM telegram_link_states WHERE owner_id=?',id).run();return json({connected:false,enabled:false,providerRevocationConfirmed:false});}
   const cfg=config(env);
   if(path==='/api/telegram/setup-webhook'){
@@ -54,7 +96,7 @@ export async function handleTelegramRequest(request,env,context,fetcher=fetch){
   if(path==='/api/telegram/link-code'){
    exactKeys(body,[]);const now=Date.now(),username=await getBot(env,fetcher,now),nonce=random();await stmt(env.GOOGLE_DB,'DELETE FROM telegram_link_states WHERE owner_id=? OR expires_at<?',id,now).run();await stmt(env.GOOGLE_DB,'INSERT INTO telegram_link_states(nonce_hash,owner_id,profile_id,expires_at) VALUES(?,?,?,?)',await hash(nonce),id,context.profileId,now+600000).run();return json({profileId:context.profileId,deepLink:'https://t.me/'+username+'?start='+nonce,expiresAt:new Date(now+600000).toISOString(),messagesSent:false});
   }
-  const row=await account(env,id);if(!row)fail(409,'telegram_not_connected');
+  const row=await account(env,id);if(!row)fail(409,'telegram_not_connected');if(row.profile_id!==context.profileId)fail(403,'profile_access_denied');
   if(path==='/api/telegram/settings'){
    exactKeys(body,['enabled','quietStart','quietEnd']);if(typeof body.enabled!=='boolean'||body.quietStart!==undefined&&(!Number.isInteger(body.quietStart)||body.quietStart<0||body.quietStart>23)||body.quietEnd!==undefined&&(!Number.isInteger(body.quietEnd)||body.quietEnd<0||body.quietEnd>23))fail(400,'invalid_notification_settings');
    const at=Date.now(),since=body.enabled&&!row.enabled?new Date(at).toISOString():row.enabled_since;await stmt(env.GOOGLE_DB,'UPDATE telegram_accounts SET enabled=?,enabled_since=?,quiet_start=?,quiet_end=?,updated_at=? WHERE owner_id=?',body.enabled?1:0,since,body.quietStart??row.quiet_start,body.quietEnd??row.quiet_end,at,id).run();return json({enabled:body.enabled,quietStart:body.quietStart??row.quiet_start,quietEnd:body.quietEnd??row.quiet_end,messagesSent:false});

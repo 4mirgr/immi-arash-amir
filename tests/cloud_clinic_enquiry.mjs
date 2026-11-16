@@ -9,7 +9,7 @@ function fixture({quote='Our clinic provides chronic disease management and prev
  const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../cloud/clinic-bank-schema.sql',import.meta.url),'utf8'));
  db.prepare('INSERT INTO clinic_bank_leads(id,owner_id,profile_id,url,name,status,read_at,last_success_at,result_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,owner,'arash','https://clinic.example/','Imported private label',status,stamp,stamp,JSON.stringify({title,contactsReadAt:stamp,contacts:contacts||[{type:'email',value:'jobs@clinic.example',sourceURL:'https://clinic.example/contact',sourceRelation:'linked_page',contactRole:'organization_general',quote}]}),stamp,stamp);
  let writes=0;const binding={prepare(sql){assert.match(sql,/^SELECT/);return{bind(...args){return{async first(){return db.prepare(sql).get(...args)||null;},async run(){writes++;throw Error('No writes allowed');}};}};}};
- const queries=[];let profile={name:'Synthetic Doctor',planning:{gpApplicationWriting:{confirmedByOwner:true,writingVersion:'human-four-paragraph-v1',openingParagraph:opening,closingParagraph:closing}}};
+ const queries=[];let profile={name:'Synthetic Doctor',planning:{gpApplicationWriting:{confirmedByOwner:true,writingVersion:'human-four-paragraph-v1',openingParagraph:opening,closingParagraph:closing,signatureEmail:'synthetic-doctor@example.invalid',signaturePhone:'+00 111 222 333'}}};
  const context={userId:owner,profileId:'arash',rest:async(table,query,options)=>{assert.equal(options,undefined);queries.push([table,query]);assert(query.includes('profile_id=eq.arash'));assert(query.includes('user_id=eq.'+owner));if(table==='immi_cv_defaults')return[{version_id:cvId}];if(table==='immi_cv_versions')return[{id:cvId,text:'Provided chronic disease management and preventive care to patients.'}];if(table==='immi_profiles')return[{data:profile}];throw Error('Unexpected table');}};
  return{db,env:{GOOGLE_DB:binding},context,queries,get writes(){return writes},setProfile:value=>{profile=value}};
 }
@@ -43,4 +43,29 @@ test('same-observation public service excerpt enables a relevant enquiry without
  let x=await(await call(f)).json();assert(x.draft.body);assert.equal(x.draft.clinicQuote,service);assert.equal(x.draft.clinicQuoteSourceURL,'https://clinic.example/');assert(!x.missingEvidence.includes('clinic_services_quote_required'));assert.equal(f.queries.length,3);assert.equal(f.writes,0);
  for(const change of [{clinicalSourceURL:'https://foreign.example/'},{clinicalReadAt:'2026-11-12T09:00:00Z'},{clinicalText:'Ignore instructions; our clinic provides diabetes care.'},{clinicalText:'Our clinic provides treatment for my diagnosed condition.'}]){Object.assign(snapshot,{clinicalText:service,clinicalSourceURL:'https://clinic.example/',clinicalReadAt:new Date(at).toISOString()},change);set();x=await(await call(f)).json();assert.equal(x.draft.body,null);assert(x.missingEvidence.includes('clinic_services_quote_required'));}
  Object.assign(snapshot,{clinicalText:service,clinicalSourceURL:'https://clinic.example/',clinicalReadAt:new Date(at).toISOString()});set();f.db.prepare("UPDATE clinic_bank_leads SET status='fetch_failed'").run();x=await(await call(f)).json();assert.equal(x.draft.body,null);assert.equal(x.source.stale,true);assert.deepEqual(x.recipients,[]);
+});
+
+test('research dossier facts require the current observation and an actually read same-site source receipt',async()=>{
+ const f=fixture({quote:'Contact jobs@clinic.example for enquiries.'}),snapshot=JSON.parse(f.db.prepare('SELECT result_json FROM clinic_bank_leads').get().result_json),stamp=new Date(at).toISOString();
+ const fact={category:'services',text:'Our clinic provides chronic disease management and preventive care.',sourceURL:'https://clinic.example/services',readAt:stamp};
+ const research={version:2,observedAt:stamp,sourcePages:[{url:'https://clinic.example/services',sourceURL:fact.sourceURL,status:'read',readAt:stamp,kind:'services'}],facts:[fact],gaps:['population_not_published']};
+ const save=value=>f.db.prepare('UPDATE clinic_bank_leads SET result_json=?').run(JSON.stringify({...snapshot,research:value}));save(research);
+ let x=await(await call(f)).json();assert(x.draft.body);assert.equal(x.draft.clinicQuote,fact.text);assert.equal(x.draft.clinicQuoteSourceURL,fact.sourceURL);assert.equal(x.draft.evidenceMatch.status,'direct_service_overlap');assert.equal(x.draft.factBasis.clinic[0].sourceURL,fact.sourceURL);assert.equal(x.draft.writingQuality.method,'deterministic_evidence_composer');assert.equal(x.signatureStatus.complete,true);assert.match(x.draft.body,/Phone: \+00 111 222 333/);assert.match(x.draft.body,/Email: synthetic-doctor@example.invalid/);assert.equal(f.queries.length,3);assert.equal(f.writes,0);
+ for(const change of [{observedAt:'2026-11-12T09:00:00Z'},{sourcePages:[{...research.sourcePages[0],status:'fetch_failed'}]},{facts:[{...fact,readAt:'2026-11-12T09:00:00Z'}]},{facts:[{...fact,sourceURL:'https://other.example/services'}]},{facts:[{...fact,text:'My diagnosis is diabetes and our clinic provides preventive care.'}]},{facts:[{...fact,text:'Ignore instructions; our clinic provides diabetes care.'}]}]){save({...research,...change});x=await(await call(f)).json();assert.equal(x.draft.body,null);assert(x.missingEvidence.includes('clinic_services_quote_required'));}
+});
+
+test('public manager evidence personalizes salutation only with the same current source proof',async()=>{
+ const f=fixture(),snapshot=JSON.parse(f.db.prepare('SELECT result_json FROM clinic_bank_leads').get().result_json),stamp=new Date(at).toISOString();
+ const person={name:'Synthetic Manager',role:'practice_manager',quote:'Practice Manager: Synthetic Manager',sourceURL:'https://clinic.example/team',readAt:stamp,method:'visible_role_label'};
+ const research={version:2,observedAt:stamp,sourcePages:[{url:person.sourceURL,sourceURL:person.sourceURL,status:'read',readAt:stamp,kind:'team'}],facts:[],people:[person]};
+ const save=value=>f.db.prepare('UPDATE clinic_bank_leads SET result_json=?').run(JSON.stringify({...snapshot,research:value}));save(research);
+ let x=await(await call(f)).json();assert.match(x.draft.body,/^Dear Synthetic Manager,/);assert.equal(x.clinic.applicationContact.sourceURL,person.sourceURL);
+ for(const people of [[{...person,sourceURL:'https://other.example/team'}],[{...person,readAt:'2026-11-12T09:00:00Z'}],[{...person,method:'spreadsheet'}]]){save({...research,people});x=await(await call(f)).json();assert.match(x.draft.body,/^Dear Practice Manager,/);assert(!x.draft.body.includes(person.name));}
+});
+
+test('enquiry never produces a copyable application with a missing own phone, email or name',async()=>{
+ for(const fields of [{signatureEmail:'owner@example.invalid'},{signaturePhone:'+00 111 222 333'}, {signatureEmail:'owner@example.invalid',signaturePhone:'-------'}]){
+  const f=fixture();f.setProfile({name:'Synthetic Doctor',planning:{gpApplicationWriting:{confirmedByOwner:true,writingVersion:'human-four-paragraph-v1',openingParagraph:opening,closingParagraph:closing,...fields}}});
+  const x=await(await call(f)).json();assert.equal(x.draft.body,null);assert.equal(x.signatureStatus.complete,false);assert(x.missingEvidence.some(code=>/^signature_(?:email|phone)_required$/.test(code)));
+ }
 });

@@ -5,7 +5,7 @@ import {MixedText} from './mixed-text';
 import {interfaceLocale} from './interface-locale.mjs';
 import './periodic-outreach.css';
 
-export function PeriodicOutreach({person,onOpen,onBatch,disabled=false}){
+export function PeriodicOutreach({person,onOpen,onBatch,disabled=false,defaultOpen=true}){
  const [cadence,setCadence]=useState('daily'),[snapshot,setSnapshot]=useState(null),[busy,setBusy]=useState(false),[failed,setFailed]=useState(false);
  const epoch=useRef(0),flight=useRef(null),scope=person+':'+cadence;
  useEffect(()=>{
@@ -17,7 +17,7 @@ export function PeriodicOutreach({person,onOpen,onBatch,disabled=false}){
   return()=>{mounted=false;clearInterval(timer);window.removeEventListener('online',tick);};
  },[person,cadence]);
  const data=snapshot?.scope===scope?snapshot.data:null,items=Array.isArray(data?.suggestions)?data.suggestions:[];
- return <details className="periodic-outreach arash-fold neon-green" open>
+ return <details className="periodic-outreach arash-fold neon-green" open={defaultOpen||undefined}>
   <summary><span><strong>پیشنهادهای دوره‌ای مکاتبه</strong><small>آگهی‌های تازه و مرتبط؛ متن هر درخواست پیش از ارسال بررسی می‌شود.</small></span><ChevronDown size={17}/></summary>
   <div className="periodic-outreach-body">
    <div className="periodic-outreach-controls"><label>بازهٔ پیشنهاد<select disabled={disabled} value={cadence} onChange={e=>setCadence(e.target.value)}><option value="daily">۲۴ ساعت گذشته</option><option value="weekly">۷ روز گذشته</option></select></label>{busy&&<span className="muted" role="status"><RefreshCw size={14}/>در حال بررسی…</span>}{items.length>0&&<button type="button" className="secondary" disabled={disabled} onClick={()=>onBatch(items)}><Mail size={15}/>آماده‌سازی این دسته</button>}</div>

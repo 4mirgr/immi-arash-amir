@@ -1,0 +1,10 @@
+.connection-health {display:grid;gap:.55rem;margin-block:.65rem;padding:.75rem;border:1px solid var(--line,#28415b);border-radius:12px;min-width:0;}
+.connection-health-row {display:flex;align-items:center;gap:.65rem;justify-content:space-between;flex-wrap:wrap;}
+.connection-health .status {white-space:normal;line-height:1.7;}
+.connection-health details {min-width:0;}
+.connection-health summary {cursor:pointer;font-weight:600;}
+.connection-health ul {margin-block:.6rem 0;padding-inline-start:1.3rem;}
+.connection-health li {margin-block:.35rem;overflow-wrap:anywhere;}
+.connection-health button {min-height:40px;white-space:normal;}
+.connection-health .section-help {margin:0;}
+@media(max-width:540px){.connection-health-row {align-items:stretch;}.connection-health-row>button {flex:1 0 100%;}.connection-health {padding:.65rem;}}

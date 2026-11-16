@@ -29,7 +29,7 @@ export async function handleAiAssistantRequest(request,env,context){
   if(url.pathname==='/api/ai/status'&&request.method==='GET'){
    if(!env.GOOGLE_DB)return json({configured:false,enabled:false,model:AI_MODEL,status:'setup_required',history:[],limitations:['No inference service or private history is accessed until storage and binding are configured.']});
    await stmt(env.GOOGLE_DB,'DELETE FROM ai_assistant_runs WHERE owner_id=? AND created_at<?',owner,new Date(Date.now()-14*86400000).toISOString()).run();
-   const rows=(await stmt(env.GOOGLE_DB,"SELECT * FROM ai_assistant_runs WHERE owner_id=? AND status='completed' ORDER BY created_at DESC,rowid DESC LIMIT 10",owner).all()).results||[];
+   const rows=(await stmt(env.GOOGLE_DB,"SELECT * FROM ai_assistant_runs WHERE owner_id=? AND status='completed' AND id NOT LIKE 'academic_%' ORDER BY created_at DESC,rowid DESC LIMIT 10",owner).all()).results||[];
    return json({profileId,configured:configured(env),enabled:configured(env),model:AI_MODEL,status:configured(env)?'ready':'setup_required',quota:await quota(env.GOOGLE_DB,owner),history:rows.map(row=>runView(row,true)),maxInputCharacters:MAX_INPUT,maxOutputTokens:MAX_OUTPUT,privateContextAutomatic:false,limitations:['پاسخ مدل پیش‌نویس تأییدنشده است و نتیجهٔ رسمی ارزیابی یا آزمون نیست.','متن واردشده برای پردازش به Workers AI فرستاده می‌شود؛ دریافت خودکار CV یا ایمیل انجام نمی‌شود.','هیچ پیام، پست، ثبت‌نام یا تغییر رزومه‌ای از این بخش اجرا نمی‌شود.']});
   }
   if(url.pathname!=='/api/ai/analyze'||request.method!=='POST')return json({error:'method_not_allowed'},405);

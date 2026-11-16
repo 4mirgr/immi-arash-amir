@@ -2,7 +2,7 @@
 const MAX_INPUT=1000000,MAX_CONTACTS=20,MAX_PEOPLE=10;
 const EMAIL=/[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?\.[a-zA-Z]{2,}/g;
 const PRIVATE_PATH=/(?:^|\/)(?:login|logout|signin|sign-in|auth|oauth|account|admin|wp-admin|candidate|register|registration|apply|application|submit|delete|remove|save|update|checkout|messages?|messaging|inbox|direct)(?:\/|$)/i;
-const FOLLOW=/(?:jobs?|careers?|vacanc|contact|about|team|clinic|supervis|funding|admission|recruit|lavora|contatti|concorsi|bandi|dipartiment)/i;
+const FOLLOW=/(?:jobs?|careers?|vacanc|contact|about|team|clinic|supervis|services?|treatments?|training|teaching|education|funding|admission|recruit|lavora|contatti|concorsi|bandi|dipartiment)/i;
 const SOCIAL=/(?:^|\.)(?:linkedin\.com|facebook\.com|instagram\.com|twitter\.com|x\.com|youtube\.com)$/;
 const VOID=new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
 const DROP=new Set(['script','style','noscript','template','svg','nav','form','head','button']);
@@ -139,7 +139,7 @@ export function extractPublicContacts({html='',text='',sourceURL,readAt}={}){
  for(const link of parsed.links){
   if(link.navigationOnly){
    const url=publicURL(link.href,source);if(!url)continue;const target=new URL(url);
-   if(target.hostname===host&&url!==source&&!follow.has(url)&&result.followLinks.length<6&&!/\.(?:pdf|docx?|xlsx?|zip)(?:$|\?)/i.test(target.pathname)&&/\b(?:contact|about|team|staff)\b/i.test(target.pathname+' '+link.label)){follow.add(url);result.followLinks.push({url,label:link.label.slice(0,180),sourceURL:source,depth:1,navigationOnly:true});}
+   if(target.hostname===host&&url!==source&&!follow.has(url)&&result.followLinks.length<6&&!/\.(?:pdf|docx?|xlsx?|zip)(?:$|\?)/i.test(target.pathname)&&/\b(?:contact|about|team|staff|services?|treatments?|training|teaching|education|careers?|recruitment|jobs?)\b/i.test((target.pathname+' '+link.label).replace(/[-_/]+/g,' '))){follow.add(url);result.followLinks.push({url,label:link.label.slice(0,180),sourceURL:source,depth:1,navigationOnly:true});}
    continue;
   }
   const quote=link.label||link.href,context=link.context||quote,contactRole=role(quote,link.footer)===null?null:role(context,link.footer);

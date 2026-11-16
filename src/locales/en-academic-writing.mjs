@@ -1,0 +1,18 @@
+export const EN_ACADEMIC_WRITING={
+ 'ویرایش حرفه‌ای بندهای دوم و سوم':'Professional editing of paragraphs two and three',
+ 'با زدن این دکمه، فقط شواهد منتخب کلینیک و بخش مرتبط رزومهٔ خودتان برای پرداخت متن به Workers AI فرستاده می‌شوند. مدل Qwen3 پیشنهاد می‌دهد؛ شما دقت و لحن را پیش از ارسال بازبینی می‌کنید.':'This button sends only your selected clinic evidence and relevant CV excerpt to Workers AI. Qwen3 suggests wording; review accuracy and tone before sending.',
+ 'معرفی، جملهٔ پایانی و اطلاعات تماس ثابت می‌مانند. این ویرایش از سهمیهٔ محدود روزانهٔ دستیار استفاده می‌کند و متن تأییدشده را دوباره پردازش نمی‌کند.':'Your introduction, closing and contact details stay fixed. Editing shares the assistant’s daily allowance; an unchanged saved draft is reused.',
+ 'برای حفظ متنِ آشناییِ تأییدشده، ویرایش هوشمند این نامه فعال نیست؛ نسخهٔ مستند فعلی را بازبینی کنید.':'AI editing is unavailable while a confirmed contact reference is selected. Review the current evidence-based draft.',
+ 'ابتدا درستی شواهد کلینیک و سابقهٔ رزومه را تأیید کنید.':'First confirm the clinic evidence and your CV excerpt.',
+ 'در حال پرداخت متن…':'Editing the draft…',
+ 'پرداخت حرفه‌ای متن':'Polish the wording',
+ 'سهمیهٔ امروزِ ویرایش هوشمند تمام شده است؛ متن مستند فعلی همچنان قابل استفاده است.':'Today’s AI allowance is exhausted. Your current evidence-based draft remains available.',
+ 'متن پیشنهادی از بررسی‌های اولیه عبور نکرد؛ متن قبلی حفظ شد.':'The suggestion failed the basic checks. Your previous draft is preserved.',
+ 'ویرایش هوشمند اکنون در دسترس نیست؛ متن قبلی حفظ شد.':'AI editing is temporarily unavailable. Your previous draft is preserved.',
+ 'اطلاعات کلینیک یا رزومه تغییر کرده است؛ نامه را دوباره آماده کنید.':'The clinic evidence or CV has changed. Prepare the letter again.',
+ 'ویرایش همین نامه در حال انجام است؛ کمی بعد دوباره بررسی کنید.':'This letter is being edited. Check again shortly.',
+ 'ویرایش هوشمند کامل نشد؛ متن قبلی حفظ شد.':'AI editing did not complete. Your previous draft is preserved.',
+ 'نام کامل آرش در پروفایل لازم است.':'Arash’s full name is required in his profile.',
+ 'ایمیل تماسِ امضای نامه را در پروفایل آرش تکمیل کنید.':'Complete the signature email in Arash’s profile.',
+ 'تلفن تماسِ امضای نامه را در پروفایل آرش تکمیل کنید.':'Complete the signature phone number in Arash’s profile.',
+};

@@ -126,8 +126,18 @@ export function normalizeMessage(raw){
  const snippet=trimBytes(clean(raw.snippet).replace(/<[^>]*>/g,''),2000);
  return {rfcMessageId,replyTo:header(raw.payload,'reply-to'),id:raw.id,threadId:gmailId(raw.threadId)?raw.threadId:raw.id,from,subject,date:safeDate?new Date(safeDate).toISOString():null,dateTimestamp:safeDate,snippet,plainBody,hasPlainBody:!!plainBody,labels,direction,...rankMessage(subject+'\n'+(plainBody||snippet),direction),extractedEmails:extractEmails(from+'\n'+header(raw.payload,'reply-to')+'\n'+plainBody)};
 }
-async function googleJson(fetcher,accessToken,path){
- let response;try{response=await fetcher('https://gmail.googleapis.com/gmail/v1/users/me/'+path,{headers:{Authorization:'Bearer '+accessToken},signal:AbortSignal.timeout(12000)});}catch{throw new MailError(502,'gmail_unavailable');}
+async function googleJson(fetcher,accessToken,path,recovery=null){
+ const read=async()=>{try{return await fetcher('https://gmail.googleapis.com/gmail/v1/users/me/'+path,{headers:{Authorization:'Bearer '+(recovery?.access.accessToken||accessToken)},signal:AbortSignal.timeout(12000),redirect:'manual'});}catch{throw new MailError(502,'gmail_unavailable');}};
+ let response=await read();
+ // Retry only this rejected provider GET, once for the whole mailbox operation.
+ // Never restart synchronization, repeat a cache write or borrow another slot.
+ if(response.status===401&&recovery&&!recovery.refreshed){
+  await response.body?.cancel();recovery.refreshed=true;
+  const renewed=await recovery.accessProvider(recovery.env,recovery.owner,fetcher,{forceRefresh:true,rejectedAccessToken:recovery.access.accessToken});
+  if(renewed.subject!==recovery.access.subject)throw new MailError(409,'connection_changed');
+  requireReadScope(renewed);recovery.access=renewed;response=await read();
+ }
+ if(response.redirected||response.status>=300&&response.status<400){await response.body?.cancel();throw new MailError(502,'gmail_redirect_rejected');}
  if(response.status===404)throw new MailError(404,'gmail_not_found');
  if(!response.ok)throw new MailError(response.status===429?429:response.status===401?401:response.status===403?403:502,response.status===401?'reconnect_required':response.status===403?'gmail_scope_or_api_required':response.status===429?'gmail_rate_limited':'gmail_unavailable');
  const length=Number(response.headers.get('content-length')||0);if(length>MAX_RESPONSE)throw new MailError(502,'gmail_response_too_large');
@@ -139,7 +149,7 @@ const row=(db,sql,...args)=>db.prepare(sql).bind(...args).first();
 const run=(db,sql,...args)=>db.prepare(sql).bind(...args).run();
 function pendingIds(raw){let values;try{values=JSON.parse(raw||'[]');}catch{throw new MailError(409,'invalid_sync_state');}if(!Array.isArray(values)||values.length>MAX_PENDING||values.some(v=>!gmailId(v)))throw new MailError(409,'invalid_sync_state');return values;}
 async function readPayload(request){if(Number(request.headers.get('content-length')||0)>2000)throw new MailError(413,'payload_too_large');const raw=await request.text();if(raw.length>2000)throw new MailError(413,'payload_too_large');if(!raw)return {};let parsed;try{parsed=JSON.parse(raw);}catch{throw new MailError(400,'invalid_json');}if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw new MailError(400,'object_required');return parsed;}
-async function syncMailbox(db,owner,subject,accessToken,fetcher,reset){
+async function syncMailbox(db,owner,subject,accessToken,fetcher,reset,recovery){
  await run(db,'INSERT OR IGNORE INTO google_mail_sync(owner_id,google_sub) VALUES (?,?)',owner,subject);
  const now=Date.now(),lock=crypto.randomUUID();
  const acquired=await run(db,'UPDATE google_mail_sync SET lock_token=?,lock_until=? WHERE owner_id=? AND google_sub=? AND lock_until<?',lock,now+300000,owner,subject,now);
@@ -149,13 +159,13 @@ async function syncMailbox(db,owner,subject,accessToken,fetcher,reset){
   let ids=reset?[]:pendingIds(state.pending_ids),historyId=reset?null:state.history_id,pageToken=reset?null:state.page_token,targetHistory=reset?null:state.pending_history_id;
   let coverage=state.coverage,deleted=0,resetUsed=false;
   if(!historyId){
-   const profile=await googleJson(fetcher,accessToken,'profile');
+   const profile=await googleJson(fetcher,accessToken,'profile',recovery);
    if(typeof profile.historyId!=='string'||!/^\d+$/.test(profile.historyId))throw new MailError(502,'invalid_gmail_response');
-   const list=await googleJson(fetcher,accessToken,'messages?maxResults=20&q='+encodeURIComponent(PROJECT_QUERY));
+   const list=await googleJson(fetcher,accessToken,'messages?maxResults=20&q='+encodeURIComponent(PROJECT_QUERY),recovery);
    ids=[...new Set((list.messages||[]).map(v=>v.id).filter(gmailId))].slice(0,20);historyId=profile.historyId;pageToken=null;targetHistory=null;coverage='project_recent20_initial_then_incremental';resetUsed=reset;
   }else if(!ids.length){
    let history;
-   try{history=await googleJson(fetcher,accessToken,'history?startHistoryId='+encodeURIComponent(historyId)+'&maxResults=20'+(pageToken?'&pageToken='+encodeURIComponent(pageToken):''));}
+   try{history=await googleJson(fetcher,accessToken,'history?startHistoryId='+encodeURIComponent(historyId)+'&maxResults=20'+(pageToken?'&pageToken='+encodeURIComponent(pageToken):''),recovery);}
    catch(error){if(error.code==='gmail_not_found'){
     await run(db,'UPDATE google_mail_sync SET history_id=NULL,page_token=NULL,pending_ids=\'[]\',pending_history_id=NULL,coverage=? WHERE owner_id=? AND google_sub=?','history_expired_reset_required',owner,subject);
     throw new MailError(409,'history_expired_retry_sync');
@@ -174,7 +184,7 @@ async function syncMailbox(db,owner,subject,accessToken,fetcher,reset){
   let synced=0;
   for(const id of ids.slice(0,20)){
    try{
-    const message=normalizeMessage(await googleJson(fetcher,accessToken,'messages/'+encodeURIComponent(id)+'?format=full'));
+    const message=normalizeMessage(await googleJson(fetcher,accessToken,'messages/'+encodeURIComponent(id)+'?format=full',recovery));
     await run(db,'INSERT INTO google_mail_messages(owner_id,google_sub,gmail_id,thread_id,message_date,priority,data,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(owner_id,google_sub,gmail_id) DO UPDATE SET thread_id=excluded.thread_id,message_date=excluded.message_date,priority=excluded.priority,data=excluded.data,updated_at=excluded.updated_at',owner,subject,message.id,message.threadId,message.dateTimestamp,message.priority,JSON.stringify(message),Date.now());synced++;
    }catch(error){if(error.code==='gmail_not_found'){await run(db,'DELETE FROM google_mail_messages WHERE owner_id=? AND google_sub=? AND gmail_id=?',owner,subject,id);deleted++;}else throw error;}
   }
@@ -184,7 +194,7 @@ async function syncMailbox(db,owner,subject,accessToken,fetcher,reset){
   return {synced,deleted,pendingCount:remaining.length,moreHistory:!!pageToken,coverage,resetUsed,sendingEnabled:false};
  }finally{await run(db,'UPDATE google_mail_sync SET lock_token=NULL,lock_until=0 WHERE owner_id=? AND google_sub=? AND lock_token=?',owner,subject,lock);}
 }
-async function searchOlderProjectMessages(db,owner,subject,accessToken,fetcher,restart){
+async function searchOlderProjectMessages(db,owner,subject,accessToken,fetcher,restart,recovery){
  await run(db,'INSERT OR IGNORE INTO google_mail_project_search(owner_id,google_sub) VALUES (?,?)',owner,subject);
  const now=Date.now(),lock=crypto.randomUUID();
  const acquired=await run(db,'UPDATE google_mail_project_search SET lock_token=?,lock_until=? WHERE owner_id=? AND google_sub=? AND lock_until<?',lock,now+300000,owner,subject,now);
@@ -194,12 +204,12 @@ async function searchOlderProjectMessages(db,owner,subject,accessToken,fetcher,r
   if(state.completed&&!restart)return {synced:0,completed:true,scannedCount:state.scanned_count,more:false,note:'جست‌وجوی محدود قبلی به پایان نتایج Gmail رسیده است؛ این نتیجه تأیید کامل‌بودن تشخیص ارتباط نیست.'};
   const pageToken=restart?null:state.page_token;
   if(pageToken&&(typeof pageToken!=='string'||pageToken.length>2000))throw new MailError(409,'invalid_sync_state');
-  const list=await googleJson(fetcher,accessToken,'messages?maxResults=20&q='+encodeURIComponent(PROJECT_QUERY)+(pageToken?'&pageToken='+encodeURIComponent(pageToken):''));
+  const list=await googleJson(fetcher,accessToken,'messages?maxResults=20&q='+encodeURIComponent(PROJECT_QUERY)+(pageToken?'&pageToken='+encodeURIComponent(pageToken):''),recovery);
   if(list.messages!==undefined&&!Array.isArray(list.messages))throw new MailError(502,'invalid_gmail_response');
   const ids=[...new Set((list.messages||[]).map(v=>v.id).filter(gmailId))].slice(0,20);
   const next=typeof list.nextPageToken==='string'?list.nextPageToken:null;if(next?.length>2000)throw new MailError(502,'invalid_gmail_response');
   let synced=0;
-  for(const id of ids){try{const message=normalizeMessage(await googleJson(fetcher,accessToken,'messages/'+encodeURIComponent(id)+'?format=full'));await run(db,'INSERT INTO google_mail_messages(owner_id,google_sub,gmail_id,thread_id,message_date,priority,data,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(owner_id,google_sub,gmail_id) DO UPDATE SET thread_id=excluded.thread_id,message_date=excluded.message_date,priority=excluded.priority,data=excluded.data,updated_at=excluded.updated_at',owner,subject,message.id,message.threadId,message.dateTimestamp,message.priority,JSON.stringify(message),Date.now());synced++;}catch(error){if(error.code!=='gmail_not_found')throw error;}}
+  for(const id of ids){try{const message=normalizeMessage(await googleJson(fetcher,accessToken,'messages/'+encodeURIComponent(id)+'?format=full',recovery));await run(db,'INSERT INTO google_mail_messages(owner_id,google_sub,gmail_id,thread_id,message_date,priority,data,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(owner_id,google_sub,gmail_id) DO UPDATE SET thread_id=excluded.thread_id,message_date=excluded.message_date,priority=excluded.priority,data=excluded.data,updated_at=excluded.updated_at',owner,subject,message.id,message.threadId,message.dateTimestamp,message.priority,JSON.stringify(message),Date.now());synced++;}catch(error){if(error.code!=='gmail_not_found')throw error;}}
   const scannedCount=(restart?0:state.scanned_count)+ids.length;
   await run(db,'UPDATE google_mail_project_search SET page_token=?,completed=?,scanned_count=?,last_synced_at=? WHERE owner_id=? AND google_sub=? AND lock_token=?',next,next?0:1,scannedCount,Date.now(),owner,subject,lock);
   return {synced,completed:!next,more:!!next,scannedCount,note:next?'یک صفحهٔ محدود از جست‌وجوی مکاتبات مرتبط بررسی شد؛ ادامه با درخواست بعدی انجام می‌شود.':'این جست‌وجوی کلیدواژه‌ای به پایان نتایج رسید؛ ممکن است پیام مرتبطی خارج از کلیدواژه‌ها وجود داشته باشد.',querySource:'fixed_project_keywords',sendingEnabled:false};
@@ -216,6 +226,7 @@ export async function handleGoogleMailRequest(request,env,context,fetcher=fetch,
   const access=await accessProvider(env,context.userId,fetcher);
   requireReadScope(access);
   const db=env.GOOGLE_DB,owner=context.userId,subject=access.subject;
+  const recovery={env,owner,access,accessProvider,refreshed:false};
   if(!subject||!access.accessToken)throw new MailError(401,'reconnect_required');
   if(request.method==='GET'&&url.pathname==='/api/google/mail/messages'){
    const priority=url.searchParams.get('priority')||'all',q=(url.searchParams.get('q')||'').trim().toLowerCase(),scope=url.searchParams.get('scope')||'project',order=url.searchParams.get('order')||'relevant',topic=url.searchParams.get('topic')||'all';
@@ -236,11 +247,11 @@ export async function handleGoogleMailRequest(request,env,context,fetcher=fetch,
   }
   if(request.method==='POST'&&url.pathname==='/api/google/mail/project-search'){
    const body=await readPayload(request);if(Object.keys(body).some(k=>k!=='restart')||('restart'in body&&typeof body.restart!=='boolean'))throw new MailError(400,'invalid_sync_payload');
-   return json(await searchOlderProjectMessages(db,owner,subject,access.accessToken,fetcher,body.restart===true));
+   return json(await searchOlderProjectMessages(db,owner,subject,access.accessToken,fetcher,body.restart===true,recovery));
   }
   if(request.method==='POST'&&url.pathname==='/api/google/mail/sync'){
    const body=await readPayload(request);if(Object.keys(body).some(k=>k!=='reset')||('reset'in body&&typeof body.reset!=='boolean'))throw new MailError(400,'invalid_sync_payload');
-   return json(await syncMailbox(db,owner,subject,access.accessToken,fetcher,body.reset===true));
+   return json(await syncMailbox(db,owner,subject,access.accessToken,fetcher,body.reset===true,recovery));
   }
   if(request.method==='POST'&&url.pathname==='/api/google/mail/extract-contact'){
    const body=await readPayload(request);if(!gmailId(body.id))throw new MailError(400,'message_id_required');

@@ -6,7 +6,7 @@ Prerequisites: the owner's independent verified Google grant from `google-oauth.
 
 ## Calendar
 
-- `GET /api/google/calendar/events` synchronizes **one page of at most 50** primary-calendar events for the next 30 days. Optional ISO-offset `timeMin` and `timeMax` must both be supplied and span no more than 90 days.
+- `GET /api/google/calendar/events` synchronizes **one page of at most 30** primary-calendar events for the next 30 days. Optional ISO-offset `timeMin` and `timeMax` must both be supplied and span no more than 90 days.
 - Response: `{events,partial,window,checkedAt,email}`. Each event has `{id,title,start,end,etag,updated,status}`. Times use Google's `{dateTime,timeZone}` or all-day `{date}` shape. The displayed title is plain text, not trusted HTML.
 - If `partial:true`, repeat the same GET to continue the next provider page. Google page/sync tokens remain server-side. Subsequent requests use incremental sync tokens without prohibited time filters; a Google 410 expires only that owner's same-Google-identity cache/cursor and starts a bounded full refresh. Recurring instances are expanded using `singleEvents:true`.
 - Cache/state/lease keys include **both app owner ID and verified Google subject**. Connecting a different Google identity does not reuse another identity's old events or cursor. Concurrent synchronization of the same identity has a lease and returns a 409 while busy. Cache rows may remain server-side after disconnect but cannot be returned without a current matching grant; automatic retention cleanup remains future work.

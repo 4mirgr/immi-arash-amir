@@ -93,3 +93,7 @@ For secondary Calendar use explicit `purpose=calendar` on Google start, then the
 کاربر صریحاً تأکید کرد هیچ اتصال یا دادهٔ Google بین دو پزشک مشترک نباشد. هر پنل اکنون دو slot مستقل primary/secondary دارد. آرش از پنل خودش حساب Google دیگر را با رضایت رسمی انتخاب می‌کند؛ نیاز به تعریف ایمیلش در چت یا متغیر محیطی ندارد. حساب متصل‌شده در تمدید مجوز به ایمیل/subject قبلی مقید است؛ برای تغییر باید همان slot قطع و دوباره متصل شود. یکتایی Google subject، اتصال یک هویت به دو پزشک را رد می‌کند. Gmail، Calendar و پشتیبان دستی رمزگذاری‌شده فقط از اتصال صاحب پنل استفاده می‌کنند. Drive عمومی مدارک همچنان primary است؛ پشتیبان Drive مجوز محدود و مسیر جدا دارد.
 
 آرش هنوز باید اتصال و مجوزهای واقعی حساب جدید خودش را تأیید کند. هیچ ایمیل، تقویم یا پشتیبان واقعی در تست‌ها نوشته نشد. پشتیبان خودکار کامل سرور همچنان فعال نیست.
+
+## Explicit connection health (2026-11-16)
+
+`POST /api/google/verify` takes an empty object in the authenticated owner/mailbox scope. It returns current identity verification, per-service metadata checks and safe recovery codes, never a token or inbox contents. Stored status is not a live probe. Gmail/Calendar/Drive read-only401 recovery refreshes once per operation and retries only the rejected GET; writes are never replayed. Temporary provider failures preserve the grant. See [Arash repair and owner steps](ARASH-REPAIR-2026-11-16.fa.md).
