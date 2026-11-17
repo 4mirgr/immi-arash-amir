@@ -40,15 +40,25 @@ async function recentlyVerifiedSource(env,row,profile){
 }
 // Shared source snapshot for an explicitly selected, reviewed opportunity mail.
 // Public fields only; no profile, CV, preset or Google token is consulted here.
-export async function opportunityScheduleEvidence(env,row,profileId,currentSource=null){
+export async function opportunityScheduleEvidence(env,row,profileId,currentSource=null,verifiedClinicEvidence=[]){
  let source=currentSource||parse(row.data);
+ let clinicEvidence=Array.isArray(verifiedClinicEvidence)?verifiedClinicEvidence:[];
  if(!currentSource&&env.PUBLIC_PAGE_READING_ENABLED==='true'){
   const [enriched]=await enrichReadPages(env.OPPORTUNITY_DB,[row],profileId,Date.now(),true);
-  if(['read','read_partial'].includes(enriched?.reading?.status))source={...source,fullText:enriched.fullText,reading:enriched.reading,contactEvidence:enriched.contactEvidence||[],namedContactEvidence:enriched.namedContactEvidence||[]};
+  if(['read','read_partial'].includes(enriched?.reading?.status)){
+   source={...source,fullText:enriched.fullText,reading:enriched.reading,contactEvidence:enriched.contactEvidence||[],namedContactEvidence:enriched.namedContactEvidence||[]};
+   clinicEvidence=Array.isArray(enriched.clinicEvidence)?enriched.clinicEvidence:[];
+  }
  }
  const recipientEvidence=(Array.isArray(source.contactEvidence)?source.contactEvidence:[]).filter(c=>c?.type==='email'&&['same_page','linked_page'].includes(c.sourceRelation)&&['application','organization_general','unknown'].includes(c.contactRole)&&typeof c.value==='string'&&/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(c.value));
  const recipients=[...new Set([...publishedRecipients(source),...recipientEvidence.map(c=>c.value.toLowerCase())])];
  const evidence={editionKey:row.edition_key,url:row.url,source:parse(row.data),fullText:source.fullText||'',contacts:recipientEvidence,people:Array.isArray(source.namedContactEvidence)?source.namedContactEvidence:[],reading:source.reading?{status:source.reading.status,readAt:source.reading.readAt}:null};
+ // Only an already verified enrichment result, or the trusted same-request
+ // caller, supplies this corpus. Never read it from raw publisher data. Keep
+ // empty legacy snapshots unchanged; any selected child-proof drift blocks a
+ // previously approved scheduled application at the next dispatch check.
+ const facts=clinicEvidence.filter(f=>f&&['text','sourceURL','readAt','parentPageId','parentReadAt'].every(key=>typeof f[key]==='string')).slice(0,12).map(({text,sourceURL,readAt,parentPageId,parentReadAt})=>({text,sourceURL,readAt,parentPageId,parentReadAt}));
+ if(facts.length)evidence.clinicEvidence=facts;
  const sourceEvidenceDigest=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(evidence))))].map(b=>b.toString(16).padStart(2,'0')).join('');
  return {recipients,sourceEvidenceDigest};
 }

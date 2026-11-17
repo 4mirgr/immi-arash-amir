@@ -13,8 +13,36 @@ test('Italy results cannot cross into Arash and section filtering uses actual ev
 test('robots precedence and hidden navigation are not mistaken for source content',()=>{assert.equal(robotsAllows('User-agent: *\nDisallow: /private\nAllow: /private/open','https://example.invalid/private/open').allowed,true);assert.equal(robotsAllows('User-agent: *\nDisallow: /','https://example.invalid/call').allowed,false);assert.equal(robotsAllows('User-agent: Masir\nAllow: /\nUser-agent: MasirUniversityDiscovery\nDisallow: /','https://example.invalid/call').allowed,false);const text=visiblePageText('<html><title>Clinical</title><nav>Funding guaranteed</nav><main>Actual admission requirements.</main><script>attack()</script></html>').text;assert(text.includes('Actual admission'));assert(!text.includes('Funding guaranteed'));assert(!text.includes('attack()'));});
 test('scheduled reader uses no private grants, processes at most two and never bypasses robots',async()=>{const f=fixture();await enqueuePublicPages(f.env.OPPORTUNITY_DB,[row(1),row(2),row(3)]);Object.defineProperty(f.env,'GOOGLE_DB',{get(){throw Error('No private storage');}});let calls=0;const fetcher=async(url,opts)=>{calls++;assert.equal(opts.redirect,'manual');assert(!opts.headers.Authorization);return url.endsWith('/robots.txt')?new Response('User-agent: *\nDisallow: /',{headers:{'Content-Type':'text/plain'}}):new Response(body,{headers:{'Content-Type':'text/plain'}});};const result=await dispatchPublicPageReading(f.env,fetcher);assert.equal(result.processed,2);assert.equal(calls,2);assert.equal(f.db.prepare("SELECT count(*) n FROM public_page_queue WHERE status='pending'").get().n,1);assert.equal(f.db.prepare('SELECT count(*) n FROM public_page_evidence').get().n,0);assert(f.queries()<20);});
 test('reader rejects PDF-as-HTML and foreign/private redirects rather than inventing content',async()=>{const r={...row(),data:JSON.stringify(row())};for(const kind of ['pdf','foreign']){const out=await readQueuedPage(r,async(url)=>url.endsWith('/robots.txt')?new Response('User-agent: *\nAllow: /',{headers:{'Content-Type':'text/plain'}}):kind==='pdf'?new Response('not parsed',{headers:{'Content-Type':'application/pdf'}}):new Response(null,{status:302,headers:{Location:'https://foreign.invalid/login'}}));assert.equal(out.status,kind==='pdf'?'pdf_reader_required':'invalid_url');assert.equal(out.text,'');}});
+test('related clinic pages accept only canonical www aliases and useful service/training paths within the existing child cap',async()=>{
+ const f=fixture(),r={...row(1,'AU'),url:'https://www.clinic.example/jobs/gp',officialBases:['www.clinic.example']};await enqueuePublicPages(f.env.OPPORTUNITY_DB,[r]);
+ const html='<main>Our clinic provides community general practice and welcomes GP enquiries.</main><nav><a href="https://clinic.example/contact">Contact</a><a href="https://www.clinic.example/contact">Contact duplicate</a><a href="https://clinic.example/services">Our services</a><a href="https://clinic.example/training">Training</a><a href="https://clinic.example/jobs/gp">Contact this job</a><a href="https://other.clinic.example/team">Team</a><a href="https://clinic.example.attacker.example/team">Team</a></nav>';
+ const enrichment=(await import('../cloud/public-contact-extraction.mjs')).extractPublicContacts({html,sourceURL:r.url,readAt:new Date().toISOString()});
+ await storePublicReading(f.env.OPPORTUNITY_DB,{...r,status:'read',readAt:enrichment.readAt,title:'GP position',text:body,enrichment});
+ const children=f.db.prepare("SELECT * FROM public_page_queue WHERE json_extract(data,'$.parentPageId')=? ORDER BY url").all(r.id);
+ assert.deepEqual(children.map(x=>x.url),['https://clinic.example/contact','https://clinic.example/services','https://clinic.example/training']);assert(children.length<=3);assert(children.every(x=>JSON.parse(x.data).depth===1&&JSON.parse(x.data).parentURL===r.url));
+ const requests=[],page=await readQueuedPage(children[0],async url=>{requests.push(url);return url.endsWith('/robots.txt')?new Response(null,{status:404}):new Response('Our clinic provides chronic disease management.',{headers:{'Content-Type':'text/plain'}});});
+ assert.equal(page.status,'read');assert(requests.every(url=>new URL(url).hostname==='clinic.example'));assert(requests.length<=6);
+});
 const DAY=24*60*60*1000;
 const readable=async url=>url.endsWith('/robots.txt')?new Response('User-agent: *\nAllow: /',{headers:{'Content-Type':'text/plain'}}):new Response(body,{headers:{'Content-Type':'text/plain'}});
+test('expired third-attempt reading leases close without another fetch and cannot stay reading forever',async()=>{
+ for(const status of ['reading','read','read_partial']){
+  const f=fixture(),r=row(),now=Date.now();await enqueuePublicPages(f.env.OPPORTUNITY_DB,[r]);
+  await storePublicReading(f.env.OPPORTUNITY_DB,{...r,status:'read',readAt:new Date(now-8*DAY).toISOString(),text:body},now-8*DAY);
+  f.db.prepare('UPDATE public_page_queue SET status=?,attempts=3,available_at=0,lease_until=? WHERE id=?').run(status,now-1,r.id);
+  let calls=0;const result=await dispatchPublicPageReading(f.env,async()=>{calls++;throw Error('Retry budget must not be expanded');},now);
+  assert.equal(result.processed,1);assert.equal(result.receipts[0].status,'fetch_failed');assert.equal(result.receipts[0].recovery,'lease_expired_after_attempt_limit');assert.equal(calls,0);
+  const saved=f.db.prepare('SELECT * FROM public_page_queue').get();assert.equal(saved.status,'fetch_failed');assert.equal(saved.lease_until,0);assert.equal(saved.attempts,3);assert(saved.available_at>now);
+  assert.equal(f.db.prepare('SELECT count(*) n FROM public_page_evidence').get().n,0);assert.equal(f.db.prepare('SELECT count(*) n FROM public_page_enrichment').get().n,0);
+  assert.equal((await dispatchPublicPageReading(f.env,async()=>{throw Error('No unbounded retry');},now+DAY)).processed,0);
+ }
+});
+test('exhausted lease recovery gets one priority slot without starving the Italy reading slot',async()=>{
+ const f=fixture(),now=Date.now(),stalled=row(1,'AU'),ordinary={...row(2,'AU'),contactFollowup:true},italy=row(3,'IT');await enqueuePublicPages(f.env.OPPORTUNITY_DB,[stalled,ordinary,italy]);
+ f.db.prepare("UPDATE public_page_queue SET status='reading',attempts=3,lease_until=? WHERE id=?").run(now-1,stalled.id);
+ const requests=[],result=await dispatchPublicPageReading(f.env,async url=>{requests.push(url);return readable(url);},now);
+ assert.equal(result.receipts[0].id,stalled.id);assert.equal(result.receipts[0].recovery,'lease_expired_after_attempt_limit');assert.equal(result.receipts[1].id,italy.id);assert(!requests.includes(stalled.url));assert.equal(f.db.prepare('SELECT status FROM public_page_queue WHERE id=?').get(ordinary.id).status,'pending');
+});
 test('successful pages refresh after seven days; evidence remains while leased and is replaced on result',async()=>{
  const f=fixture(),r=row(),now=Date.now();await enqueuePublicPages(f.env.OPPORTUNITY_DB,[r]);
  await storePublicReading(f.env.OPPORTUNITY_DB,{...r,status:'read',readAt:new Date(now).toISOString(),text:body},now);

@@ -147,3 +147,19 @@ test('collector always registers accepted public records even while page process
  const result=await collectRegisteredSources(env,fetchFixture(log));assert.equal(log.length,3,'the collector fetches feeds only, never the queued record pages');
  assert(result.sources.filter(s=>s.imported>0).every(s=>s.readingQueue==='queued'));assert.equal(db.prepare('SELECT count(*) n FROM public_page_queue').get().n,db.prepare('SELECT count(DISTINCT url) n FROM opportunity_editions').get().n);assert.equal(db.prepare("SELECT count(*) n FROM public_page_queue WHERE status<>'pending'").get().n,0);
 });
+
+test('an overdue partial GP feed continues in a reserved slot before a full source cycle without skipping ordinary feeds',async()=>{
+ const f=fixture(),originalNow=Date.now;let clock=Date.UTC(2026,10,17,9);Date.now=()=>clock;
+ try{
+  f.db.prepare('INSERT INTO registered_source_checks(source_id,status,last_attempt_at,next_check_at,partial,record_cursor) VALUES(?,?,?,?,?,?)').run('rhw-public-gp','updated',clock-12*3600000,clock-11*3600000,1,40);
+  const first=await collectRegisteredSources(f.env,fetchFixture());
+  assert.deepEqual(first.sources.map(s=>s.sourceId),['rhw-public-gp','tas-pageup-759','monash-pageup-513']);assert.equal(first.sources.length,3);assert.equal(f.db.prepare("SELECT position FROM source_collector_state WHERE id='rotation'").get().position,2);
+  clock+=3600000;
+  const next=await collectRegisteredSources(f.env,fetchFixture());assert.equal(next.sources[0].sourceId,SOURCE_REGISTRY.filter(s=>s.executable)[2].id);assert.equal(next.sources.length,3);
+ }finally{Date.now=originalNow;}
+});
+
+test('a concurrent cursor claimant defers instead of repeating the same source fetches',async()=>{
+ const f=fixture(),log=[];const results=await Promise.all([collectRegisteredSources(f.env,fetchFixture(log)),collectRegisteredSources(f.env,fetchFixture(log))]);
+ assert.equal(results.filter(r=>r.deferred==='rotation_already_claimed').length,1);assert.equal(results.reduce((n,r)=>n+r.sources.length,0),3);assert.equal(log.length,3);
+});

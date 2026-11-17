@@ -46,7 +46,7 @@ export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{}
  const recipientsLocked=!!busy||!!queue||scheduleLocked;
  const sourceURL=safeURL(data?.source?.url||opportunity?.url||opportunity?.sourceUrl);
  const publishedAddresses=recipientOptions(data?.source);
- const account=data?.accounts?.[selection.mailbox],canSend=account?.connected&&account.capabilities?.gmailSend===true;
+ const account=data?.accounts?.[selection.mailbox],canSend=account?.connected&&account.capabilities?.gmailSend===true&&!account.statusUnavailable;
  const path=action=>'opportunities/'+encodeURIComponent(oppId)+'/mail'+(action?'/'+action:'')+'?profile='+encodeURIComponent(person);
  const message=value=>({batch_limit_reached:'در هر دسته حداکثر ۲۰ گیرنده قابل آماده‌سازی است.',preview_unavailable:'پیش‌نمایش این گیرنده آماده نشد.',recipient_already_queued:'پیام قبلی این گیرنده در صف است.',recipient_already_sent:'برای این گیرنده قبلاً ارسال ثبت شده است.',duplicate_recipient:'این ایمیل تکراری است و جداگانه دوباره ارسال نمی‌شود.',batch_already_consumed:'این دسته قبلاً اجرا شده است؛ نتیجهٔ همان اجرا را بررسی کنید.',recipient_batch_not_current:'انتخاب‌ها تغییر کرده‌اند؛ پیش‌نمایش تازه بگیرید.',schedule_batch_limit_reached:'زمان‌بندی فعلی حداکثر سه گیرنده در هر نوبت دارد.',schedule_recipient_limit_reached:'زمان‌بندی فعلی حداکثر سه گیرنده در هر نوبت دارد.',previous_application_exists:'برای این گیرنده پیام قبلی در صف یا در سابقهٔ ارسال ثبت شده است.',recipient_request_failed:'درخواست این گیرنده کامل نشد؛ دوباره وضعیت را بررسی کنید.',batch_context_changed:'حساب یا انتخاب‌های فرم تغییر کرده‌اند؛ عملیات متوقف شد.',batch_stopped:'عملیات پیش از این گیرنده متوقف شد.'}[value]||reasons[value]||value);
  function resetReview(){setReview(null);setChecked(false);setScheduleConfirmed(false);setQueued(null);setResult(null);}
@@ -54,13 +54,24 @@ export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{}
  async function load(){
   if(lock.current)return;lock.current=true;const request=++operation.current;setBusy('load');setError('');resetReview();
   try{
-   const accountError=e=>({connected:false,error:message(e.message)});
+   const accountError=()=>({statusUnavailable:true});
    const [source,presets,cvs,primary,secondary]=await Promise.all([api(path('')),api('presets?profile='+encodeURIComponent(person)),api('cv/versions?profile='+encodeURIComponent(person)),api('google/status?profile='+encodeURIComponent(person)+'&mailbox=primary').catch(accountError),api('google/status?profile='+encodeURIComponent(person)+'&mailbox=secondary').catch(accountError)]);
    if(!valid()||request!==operation.current)return;
    const templates=rows(presets),versions=rows(cvs);if(source.scheduling&&Array.isArray(source.scheduling.approvals)){setScheduleRecord(null);setScheduleUnknown(false);}setStored({scope,epoch,data:{source,presets:templates,cvs:versions,accounts:{primary,secondary}}});
-   setForm({scope,epoch,value:{presetId:(application?templates.find(x=>x.name===gpApplication.templateName):templates.find(x=>x.isDefault||x.is_default))?.id||'',cvVersionId:(application?versions.find(x=>x.id===gpApplication.cvVersionId):versions.find(x=>x.isDefault||x.is_default))?.id||'',mailbox:'primary',recipients:recipientOptions(source)}});
+   setForm(current=>{
+    const previous=current?.scope===scope&&current.epoch===epoch?current.value:null,published=recipientOptions(source);
+    const defaultPreset=(application?templates.find(x=>x.name===gpApplication.templateName):templates.find(x=>x.isDefault||x.is_default))?.id||'';
+    const defaultCV=(application?versions.find(x=>x.id===gpApplication.cvVersionId):versions.find(x=>x.isDefault||x.is_default))?.id||'';
+    return {scope,epoch,value:{presetId:previous&&templates.some(item=>item.id===previous.presetId)?previous.presetId:defaultPreset,cvVersionId:previous&&versions.some(item=>item.id===previous.cvVersionId)?previous.cvVersionId:defaultCV,mailbox:previous&&['primary','secondary'].includes(previous.mailbox)?previous.mailbox:'primary',recipients:previous?previous.recipients.filter(address=>published.includes(address)):published}};
+   });
   }catch(e){if(valid()&&request===operation.current)setError(message(e.message));}
   finally{if(valid()){lock.current=false;setBusy('');}}
+ }
+ async function refreshAccounts(){
+  if(lock.current||!data)return;lock.current=true;const request=++operation.current;setBusy('accounts');setError('');setReview(null);setChecked(false);setScheduleConfirmed(false);
+  const read=slot=>api('google/status?profile='+encodeURIComponent(person)+'&mailbox='+slot);
+  try{const results=await Promise.allSettled([read('primary'),read('secondary')]);if(!valid()||request!==operation.current)return;const accounts={primary:results[0].status==='fulfilled'?results[0].value:{statusUnavailable:true},secondary:results[1].status==='fulfilled'?results[1].value:{statusUnavailable:true}};setStored({scope,epoch,data:{...data,accounts}});}
+  finally{if(valid()&&request===operation.current){lock.current=false;setBusy('');}}
  }
  useEffect(()=>{alive.current=true;lock.current=false;setWhen(null);setPolicyConfirmed(false);setScheduleConfirmed(false);setScheduleRecord(null);setScheduleUnknown(false);setTransportUnknown(false);setStored(null);setForm(null);setError('');load();return()=>{alive.current=false;operation.current++;};},[scope]);
  useEffect(()=>{setScheduleConfirmed(false);},[payloadKey,when,zone]);
@@ -154,12 +165,13 @@ export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{}
  // operation disables this action; the transport still enforces every guard.
  const sendDisabled=!!busy||!!queue||scheduleLocked||containsExistingQueue;
  const missingRecipients=Boolean(data&&!data.source.publishedRecipients?.length);
- const sendHint=queue?'نتیجهٔ این نوبت پایین نمایش داده می‌شود.':scheduleLocked?'ابتدا وضعیت ارسال یا زمان‌بندی قبلی را بررسی کنید.':containsExistingQueue?'پیام قبلی در صف است؛ آن را در مرکز مکاتبات بررسی کنید.':!data?(busy?'در حال دریافت…':'اطلاعات آماده نشد؛ برای دریافت دوباره، ارسال را بزنید.'):missingRecipients?'ایمیل منتشرشده هنوز پیدا نشده است؛ لینک درخواست مرکز را ببینید.':!canSend?'ابتدا Gmail همین حساب را متصل کنید یا فرستندهٔ متصل را انتخاب کنید.':!selection.presetId||!selection.cvVersionId?reasons.preset_and_cv_required:!selection.recipients.length?'حداقل یک گیرنده از فهرست همین آگهی انتخاب کنید.':!preview?'۱. پیش‌نمایش را باز کنید؛ ۲. متن و رزومه را تأیید کنید؛ ۳. ارسال نهایی را بزنید.':!reviewedReady?'گیرندگان مسدودشده را بردارید و پیش‌نمایش تازه بگیرید.':!checked?'متن و رزومه را بخوانید و تیک بازبینی را بزنید.':'آمادهٔ ارسال از صندوق انتخاب‌شده به گیرندگان همین آگهی.';
+ const sendHint=queue?'نتیجهٔ این نوبت پایین نمایش داده می‌شود.':scheduleLocked?'ابتدا وضعیت ارسال یا زمان‌بندی قبلی را بررسی کنید.':containsExistingQueue?'پیام قبلی در صف است؛ آن را در مرکز مکاتبات بررسی کنید.':!data?(busy?'در حال دریافت…':'اطلاعات آماده نشد؛ برای دریافت دوباره، ارسال را بزنید.'):missingRecipients?'ایمیل منتشرشده هنوز پیدا نشده است؛ لینک درخواست مرکز را ببینید.':account?.statusUnavailable?'وضعیت Gmail دریافت نشد؛ ابتدا وضعیت فرستنده را دوباره بررسی کنید.':!canSend?'ابتدا Gmail همین حساب را متصل کنید یا فرستندهٔ متصل را انتخاب کنید.':!selection.presetId||!selection.cvVersionId?reasons.preset_and_cv_required:!selection.recipients.length?'حداقل یک گیرنده از فهرست همین آگهی انتخاب کنید.':!preview?'۱. پیش‌نمایش را باز کنید؛ ۲. متن و رزومه را تأیید کنید؛ ۳. ارسال نهایی را بزنید.':!reviewedReady?'گیرندگان مسدودشده را بردارید و پیش‌نمایش تازه بگیرید.':!checked?'متن و رزومه را بخوانید و تیک بازبینی را بزنید.':'آمادهٔ ارسال از صندوق انتخاب‌شده به گیرندگان همین آگهی.';
  function focusStep(target,control){const node=target.current;node?.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});(control?node?.querySelector(control):node)?.focus({preventScroll:true});}
  function primarySend(){
   if(sendDisabled)return;
   if(!data){load();return;}
   if(missingRecipients){focusStep(missingRecipientTarget);return;}
+  if(account?.statusUnavailable){refreshAccounts();return;}
   if(!canSend){if(Object.values(data.accounts).some(item=>item.connected&&item.capabilities?.gmailSend===true))focusStep(fieldsTarget,'select[data-mail-sender]');else onOpenSettings();return;}
   if(!selection.presetId||!selection.cvVersionId){if(application){if(!selection.cvVersionId)onClose();else onOpenSettings();}else if(!selection.presetId&&!data.presets.length||!selection.cvVersionId&&!data.cvs.length)onOpenSettings();else focusStep(fieldsTarget,!selection.presetId?'select[data-mail-preset]':'select[data-mail-cv]');return;}
   if(!selection.recipients.length||preview&&!reviewedReady){focusStep(recipientTarget,'input');return;}
@@ -190,7 +202,7 @@ export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{}
      <fieldset className="opportunity-recipient-picker" ref={recipientTarget} disabled={recipientsLocked}><legend>گیرندگان · {selection.recipients.length.toLocaleString(interfaceLocale('fa-IR'))} انتخاب‌شده</legend><div className="opportunity-recipient-actions"><button type="button" className="text-button" onClick={()=>change('recipients',publishedAddresses)}>انتخاب همه</button><button type="button" className="text-button" onClick={()=>change('recipients',[])}>برداشتن همه</button></div><div className="opportunity-recipient-list">{publishedAddresses.map(address=><label key={address} className="checkline"><input type="checkbox" checked={selection.recipients.includes(address)} onChange={e=>change('recipients',e.target.checked?[...selection.recipients,address]:selection.recipients.filter(item=>item!==address))}/><span><bdi dir="ltr">{address}</bdi><small className="recipient-role">{roleLabels[recipientRole(data.source,address)]||roleLabels.unknown}</small></span></label>)}</div><p className="section-help">همهٔ ایمیل‌های منتشرشده ابتدا انتخاب‌اند؛ برای هر گیرنده ایمیل جدا فرستاده می‌شود.</p></fieldset>
     </div>
     {compact&&application&&<p className="opportunity-mail-attachment"><FileText size={15}/><MixedText>{cvLabel}</MixedText><button type="button" className="text-button" disabled={!!busy||!selection.cvVersionId} onClick={downloadCV}>دریافت رزومه</button></p>}
-    {!canSend&&<p className="notice">اتصال و اجازهٔ ارسال Gmail همین صندوق لازم است. <button type="button" className="text-button" onClick={onOpenSettings}>اتصال Gmail برای ارسال</button></p>}
+    {account?.statusUnavailable?<p className="notice">وضعیت Gmail دریافت نشد؛ این خطا به معنی قطع اتصال نیست. <button type="button" className="text-button" disabled={!!busy} onClick={refreshAccounts}>بررسی دوبارهٔ وضعیت Gmail</button></p>:!canSend&&<p className="notice">اتصال و اجازهٔ ارسال Gmail همین صندوق لازم است. <button type="button" className="text-button" onClick={onOpenSettings}>اتصال Gmail برای ارسال</button></p>}
     {account?.error&&<p className="notice"><MixedText>{account.error}</MixedText></p>}
     {!selection.presetId&&<p className="notice">{application?'قالب A/B/C انتخاب‌شده در این حساب موجود نیست؛ از «تنظیمات حساب» قالب‌های آرش را اضافه کنید.':'قالب ایمیل را انتخاب کنید؛ اگر فهرست خالی است، از تنظیمات حساب قالب بسازید.'}</p>}
     {!selection.cvVersionId&&<p className="notice">{application?'به متن نامه برگردید و نسخهٔ رزومه را انتخاب کنید.':'نسخهٔ رزومهٔ پیوست را انتخاب کنید.'}</p>}

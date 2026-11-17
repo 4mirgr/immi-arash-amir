@@ -1,4 +1,5 @@
 import {CHN_GP_SOURCE_DEFINITIONS,normalizeChnGpSourceRecords,ChnGpSourceError} from './chn-gp-source-adapter.mjs';
+import {planSourceRotation} from './source-rotation.mjs';
 // Public, fixed publisher feeds only. No user-supplied endpoints or private integrations.
 import registry from './source-registry.json' with {type:'json'};
 import {ITALY_SOURCE_DEFINITIONS,normalizeItalySourceRecords} from './italy-source-adapters.mjs';
@@ -196,12 +197,16 @@ async function collectOne(db,source,fetcher,remaining,now){
 export async function collectRegisteredSources(env,fetcher=fetch){
  const db=database(env),now=Date.now();
  const position=(await first(db,"SELECT position FROM source_collector_state WHERE id='rotation'"))?.position||0;
- // Claim the rotation atomically: concurrent triggers use disjoint initial positions and source locks.
- const rotation=await first(db,"UPDATE source_collector_state SET position=(position+?)%? WHERE id='rotation' RETURNING position",MAX_CALLS,ACTIVE.length);
- const start=rotation?(rotation.position-MAX_CALLS+ACTIVE.length*2)%ACTIVE.length:position;
+ const checks=await all(db,'SELECT source_id,next_check_at,lock_until,partial,record_cursor,last_attempt_at FROM registered_source_checks');
+ const plan=planSourceRotation(ACTIVE,checks,position,now,MAX_CALLS);
+ // A compare-and-set reserves the planned cursor before any external fetch.
+ // Another invocation winning this claim is not a reason to repeat its work.
+ const rotation=await first(db,"UPDATE source_collector_state SET position=? WHERE id='rotation' AND position=? RETURNING position",plan.nextPosition,position);
+ if(!rotation)return {status:'completed',checkedAt:iso(now),sourceBudget:MAX_CALLS,recordBudget:MAX_RECORDS,imported:0,sources:[],deferred:'rotation_already_claimed',coverage:'bounded_registered_public_sources_only'};
  const receipts=[];let remaining=MAX_RECORDS;
- for(let i=0;i<Math.min(MAX_CALLS,ACTIVE.length)&&remaining>0;i++){
-  const source=ACTIVE[(start+i)%ACTIVE.length];const receipt=await collectOne(db,source,fetcher,remaining,now);receipts.push(receipt);remaining-=receipt.imported||0;
+ for(const source of plan.sources){
+  if(remaining<=0)break;
+  const receipt=await collectOne(db,source,fetcher,remaining,now);receipts.push(receipt);remaining-=receipt.imported||0;
  }
  return {status:receipts.some(r=>r.status==='failed')?'partial_failure':'completed',checkedAt:iso(now),sourceBudget:MAX_CALLS,recordBudget:MAX_RECORDS,imported:MAX_RECORDS-remaining,sources:receipts,coverage:'bounded_registered_public_sources_only'};
 }

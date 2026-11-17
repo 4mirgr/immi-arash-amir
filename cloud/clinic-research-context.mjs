@@ -58,6 +58,16 @@ function statements(value,title=''){
  if(typeof title==='string'&&title.trim()&&text.startsWith(title.trim()))text=text.slice(title.trim().length).trimStart();
  return text.slice(0,50000).split(/\n+|(?<=[.!?])\s+/).slice(0,300).map(x=>clean(x,601)).filter(x=>x.length>=25&&x.length<=600&&!INSTRUCTION.test(x)&&!NARRATIVE.test(x)&&!NEGATIVE.test(x));
 }
+// URL/edition proof is the caller's responsibility. This helper only extracts
+// bounded publisher wording and never turns a quote into verified clinic facts.
+export function extractClinicResearchStatements(value,title='',limit=8){
+ const out=[];
+ for(const quote of statements(value,title)){
+  const kind=category(quote);if(!['services','team','training','recruitment'].includes(kind)||out.some(item=>item.text===quote))continue;
+  out.push({text:quote,category:kind});if(out.length>=Math.max(1,Math.min(12,Number(limit)||8)))break;
+ }
+ return out;
+}
 export function buildClinicResearchContext({rootURL,observedAt,pages=[]}={}){
  const root=publicURL(rootURL),research={version:CLINIC_RESEARCH_VERSION,observedAt:typeof observedAt==='string'?observedAt:null,sourcePages:[],facts:[],people:[],organizations:[],gaps:[],scope:'bounded_public_publisher_statements_not_full_clinic_due_diligence'};
  if(!root){research.gaps=['valid_clinic_source_required',...CATEGORIES.map(x=>x+'_not_published'),'crisis_history_not_assessed','weaknesses_not_assessed'];return research;}

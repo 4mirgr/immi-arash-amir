@@ -2,6 +2,7 @@ import {readGpGoalMode,assessFiveTier} from './gp-workflow.mjs';
 import {assessOpportunityFit,sortOpportunityPageByFit,deriveProfileReadiness} from './opportunity-fit.mjs';
 import {gpOpportunitySignals} from './gp-opportunity-signals.mjs';
 import {screenOpportunity} from './opportunity-screening.mjs';
+import {extractClinicResearchStatements} from './clinic-research-context.mjs';
 // Server-controlled source configurations enter here; public HTTP routes are read-only.
 const TYPES = new Set(['job', 'university', 'grant', 'funding', 'scholarship']);
 const AU_STATES = new Set(['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'UNKNOWN']);
@@ -223,7 +224,7 @@ function validEnrichment(row,item,profile,ms){
  const publicationDates=(Array.isArray(data.publicationDates)?data.publicationDates:[]).filter(x=>x&&['datePosted','validThrough'].includes(x.field)&&x.method==='jsonld_jobposting'&&evidenceUrl(x.sourceURL)===sourceURL).slice(0,4).map(x=>({field:x.field,value:evidenceText(x.value,100),sourceURL,quote:evidenceText(x.quote),method:x.method}));
  const candidate=data.ai;
  const ai=candidate?.model==='@cf/meta/llama-3.1-8b-instruct-fp8'&&candidate.readAt===row.read_at&&candidate.meaning==='machine_selected_verbatim_quotes_requires_review'&&Number.isFinite(Date.parse(candidate.selectedAt))&&Array.isArray(candidate.quotes)&&candidate.quotes.length>0&&candidate.quotes.length<=3&&candidate.quotes.every(quote=>typeof quote==='string'&&quote.length>=25&&quote.length<=600&&typeof row.read_text==='string'&&row.read_text.includes(quote))?{model:candidate.model,readAt:candidate.readAt,selectedAt:candidate.selectedAt,quotes:candidate.quotes,meaning:candidate.meaning}:null;
- return {sourceURL,readAt:row.read_at,contacts,people,organizations,followLinks,publicationDates,...(ai?{ai}:{}),limitations:(Array.isArray(data.limitations)?data.limitations:[]).filter(x=>typeof x==='string').slice(0,6).map(x=>x.slice(0,500)),parentPageId:data.parentPageId,parentURL:data.parentURL,depth:data.depth};
+ return {sourceURL,readAt:row.read_at,contacts,people,organizations,followLinks,publicationDates,...(ai?{ai}:{}),limitations:(Array.isArray(data.limitations)?data.limitations:[]).filter(x=>typeof x==='string').slice(0,6).map(x=>x.slice(0,500)),parentPageId:data.parentPageId,parentURL:data.parentURL,parentReadAt:typeof data.parentReadAt==='string'?data.parentReadAt:null,depth:data.depth};
 }
 function contactDiscovery(item,queueStates,enrichment,ms){
  const root=queueStates.find(row=>row.url===item.url&&row.country===item.country),children=root?queueStates.filter(row=>parsePageData(row.data).parentPageId===root.id&&row.country===root.country):[];
@@ -236,7 +237,8 @@ function contactDiscovery(item,queueStates,enrichment,ms){
  return {status,automatic:true,emailsFound,peopleFound,pendingPages,blockedPages:blocked,checkedAt,sourceUrls:[...new Set([...(enrichment?.contacts||[]),...(enrichment?.people||[])].map(c=>c.sourceURL))].slice(0,10),scope:'registered_public_pages_and_one_hop_same_host',refreshIntervalDays:7};
 }
 export async function enrichReadPages(db,rows,profile,ms,enabled){
- const items=rows.map(row=>publicItem(row,profile,ms));if(!enabled||!items.length)return items;
+ // Provider/import data can never populate this server-verified evidence field.
+ const items=rows.map(row=>({...publicItem(row,profile,ms),clinicEvidence:[]}));if(!enabled||!items.length)return items;
  let queueStates=[];try{queueStates=await all(db,"SELECT id,url,country,status,read_at,data,lease_until FROM public_page_queue WHERE (url IN (SELECT value FROM json_each(?)) OR json_extract(data,'$.parentPageId') IN (SELECT id FROM public_page_queue WHERE url IN (SELECT value FROM json_each(?)))) AND (profile_scope='both' OR ?='amir') LIMIT 500",JSON.stringify(items.map(item=>item.url)),JSON.stringify(items.map(item=>item.url)),profile);}catch{/* Missing public queue has no implied running lookup. */}
  const withDiscovery=item=>({...item,contactDiscovery:contactDiscovery(item,queueStates,null,ms)});
  const readings=await all(db,"SELECT q.id AS page_id,q.url,q.country,q.status,q.read_at,c.read_at AS content_read_at,c.status AS content_status,c.text,e.analysis,e.read_at AS evidence_read_at FROM public_page_queue q JOIN public_page_content c ON c.page_id=q.id LEFT JOIN public_page_evidence e ON e.page_id=q.id AND e.profile_id=? WHERE q.url IN (SELECT value FROM json_each(?)) AND q.status IN ('read','read_partial') AND (q.profile_scope='both' OR ?='amir')",profile,JSON.stringify(items.map(item=>item.url)),profile);
@@ -257,14 +259,31 @@ export async function enrichReadPages(db,rows,profile,ms,enabled){
   let analysis=null;if(read.analysis&&read.evidence_read_at===read.read_at){try{analysis=JSON.parse(read.analysis);}catch{/* Content remains usable; stale/broken evidence never breaks the opportunity list. */}}
   const body={...item,fullText:read.text.slice(0,20000)},screening=screenOpportunity({...item,fullText:read.text},profile);
   const directRow=enrichments.find(row=>row.page_id===read.page_id),direct=directRow?validEnrichment(directRow,item,profile,ms):null;
-  let enrichment=null;
+  let enrichment=null;const clinicEvidence=[];
   if(direct){
-   const linked=[],linkedPeople=[];for(const row of enrichments){if(row.page_id===read.page_id)continue;const child=validEnrichment(row,item,profile,ms);if(!child||child.parentPageId!==read.page_id||child.parentURL&&![item.url,direct.sourceURL].includes(evidenceUrl(child.parentURL))||child.depth!==1||!officialEvidenceUrl(child.sourceURL,direct.sourceURL,parsePageData(directRow.page_data)))continue;const childAt=Date.parse(child.readAt);if(childAt<firstSeen||Number.isFinite(nextSeen)&&childAt>=nextSeen)continue;for(const contact of child.contacts)linked.push({...contact,sourceRelation:'linked_page',parentURL:item.url,parentPageId:read.page_id});for(const person of child.people)linkedPeople.push({...person,sourceRelation:'linked_page',parentURL:item.url,parentPageId:read.page_id});}
+   const linked=[],linkedPeople=[];for(const row of enrichments){
+    if(row.page_id===read.page_id)continue;
+    const child=validEnrichment(row,item,profile,ms),childPageData=parsePageData(row.page_data);
+    if(!child||child.parentPageId!==read.page_id||child.parentURL&&![item.url,direct.sourceURL].includes(evidenceUrl(child.parentURL))||child.depth!==1||!officialEvidenceUrl(child.sourceURL,direct.sourceURL,parsePageData(directRow.page_data)))continue;
+    const childAt=Date.parse(child.readAt);if(childAt<firstSeen||Number.isFinite(nextSeen)&&childAt>=nextSeen)continue;
+    // Versioned relationships must match the current parent. Legacy contact
+    // receipts remain compatible; legacy child text needs explicit fresh proof.
+    if(child.parentReadAt&&child.parentReadAt!==direct.readAt)continue;
+    for(const contact of child.contacts)linked.push({...contact,sourceRelation:'linked_page',parentURL:item.url,parentPageId:read.page_id});
+    for(const person of child.people)linkedPeople.push({...person,sourceRelation:'linked_page',parentURL:item.url,parentPageId:read.page_id});
+    const sameClinicHost=new URL(child.sourceURL).hostname.replace(/^www\./,'')===new URL(direct.sourceURL).hostname.replace(/^www\./,'');
+    if(profile==='arash'&&item.country==='AU'&&clinicEvidence.length<12&&direct.readAt===read.read_at&&sameClinicHost&&child.parentReadAt===read.read_at&&childPageData.parentReadAt===read.read_at&&childAt>=readTime&&ms-readTime<=7*86400000&&ms-childAt<=7*86400000){
+     for(const fact of extractClinicResearchStatements(row.read_text,'',4)){
+      if(clinicEvidence.some(value=>value.text===fact.text&&value.sourceURL===child.sourceURL))continue;
+      clinicEvidence.push({...fact,sourceURL:child.sourceURL,readAt:child.readAt,parentPageId:read.page_id,parentReadAt:read.read_at});if(clinicEvidence.length>=12)break;
+     }
+    }
+   }
    const contacts=[...new Map([...direct.contacts,...linked].map(contact=>[JSON.stringify([contact.type,contact.value,contact.sourceURL]),contact])).values()].slice(0,36);
    const people=[...new Map([...direct.people,...linkedPeople].map(person=>[JSON.stringify([person.name,person.role,person.sourceURL]),person])).values()].slice(0,20);
    enrichment={...direct,contacts,people,limitations:[...direct.limitations,'Contact evidence is public source wording, not a verified recipient or organization identity. Linked-page contacts keep their own source and are not advertisement recipients.']};
   }
-  return {...body,contactDiscovery:contactDiscovery(item,queueStates,enrichment,ms),screening,gpSignals:gpOpportunitySignals({...item,fullText:read.text}),fit:assessOpportunityFit({...item,fullText:read.text},profile,screening),...(enrichment?{enrichment,contactEvidence:enrichment.contacts,namedContactEvidence:enrichment.people}:{}),reading:{status:read.status,readAt:read.read_at,partialReading:read.status==='read_partial',textTruncatedForDisplay:read.text.length>20000,...(enrichment?{enrichment}:{}),summary:typeof analysis?.summary==='string'?analysis.summary.slice(0,1800):'',category:['call','admission','funding','career','development','guidance','navigation','unrelated'].includes(analysis?.category)?analysis.category:null,eligibility:'not_assessed'}};
+  return {...body,clinicEvidence,contactDiscovery:contactDiscovery(item,queueStates,enrichment,ms),screening,gpSignals:gpOpportunitySignals({...item,fullText:read.text}),fit:assessOpportunityFit({...item,fullText:read.text},profile,screening),...(enrichment?{enrichment,contactEvidence:enrichment.contacts,namedContactEvidence:enrichment.people}:{}),reading:{pageId:read.page_id,status:read.status,readAt:read.read_at,partialReading:read.status==='read_partial',textTruncatedForDisplay:read.text.length>20000,...(enrichment?{enrichment}:{}),summary:typeof analysis?.summary==='string'?analysis.summary.slice(0,1800):'',category:['call','admission','funding','career','development','guidance','navigation','unrelated'].includes(analysis?.category)?analysis.category:null,eligibility:'not_assessed'}};
  });
 }
 async function ownProfileReadiness(items,profile,context){

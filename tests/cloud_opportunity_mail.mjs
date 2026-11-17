@@ -14,12 +14,12 @@ async function fixture(){
  publicDb.prepare('INSERT INTO opportunity_organizations VALUES(?,?,?,?,?,?,?,?)').run('org','Synthetic organization','source.example','AU','NSW','{}','2026-01-01','2026-01-01');
  const source={id:opp,country:'AU',title:'General Practitioner',summary:'Published contact recruit@example.invalid',fullText:'Apply via recruit@example.invalid',url:'https://source.example/jobs/1'};
  publicDb.prepare('INSERT INTO opportunity_editions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(opp,'source','1','org','edition-1','both','official','job','AU','NSW',source.title,source.url,null,'2099-01-01','open',JSON.stringify(source),new Date().toISOString(),new Date().toISOString());
- const own={preset:{data:{subject:'Synthetic application',body:'Reviewed saved body'}},cv:{text:'Synthetic CV',version:1}},calls=[];
+ const own={preset:{data:{subject:'Synthetic application',body:'Reviewed saved body'}},cv:{text:'Synthetic CV',version:1}},calls=[],restReads=[];
  for(const profile of ['amir','arash']){const owner=profile+'-owner',cipher=await encryptGoogleSecret(env,owner,{access_token:'synthetic-token'});privateDb.prepare('INSERT INTO google_accounts VALUES(?,?,?,?,?,?,?,?,?)').run(owner,profile,'subject-'+profile,profile+'@example.invalid',JSON.stringify(['https://www.googleapis.com/auth/gmail.send']),cipher,Date.now()+3600000,'connected',Date.now());}
- const context=profile=>({userId:profile+'-owner',profileId:profile,rest:async(table,query)=>{assert(query.includes('profile_id=eq.'+profile));if(table==='immi_profiles')return [{data:{name:'Synthetic Doctor',planning:{gpApplicationWriting:{openingParagraph:'I am an internationally trained GP seeking a supervised position in general practice.',closingParagraph:'I would welcome a discussion about your practice and the role.',writingVersion:'human-four-paragraph-v1',confirmedByOwner:true,signatureEmail:'synthetic-doctor@example.invalid',signaturePhone:'+00 123 456 789'}}}}];if(table==='immi_presets')return query.includes(presetId)&&own.preset?[own.preset]:[];if(table==='immi_cv_versions')return query.includes(cvVersionId)&&own.cv?[own.cv]:[];throw Error('No shared clinic read/write is needed');}});
+ const context=profile=>({userId:profile+'-owner',profileId:profile,rest:async(table,query)=>{restReads.push({table,query,profile});assert(query.includes('profile_id=eq.'+profile));if(table==='immi_profiles')return [{data:{name:'Synthetic Doctor',planning:{gpApplicationWriting:{openingParagraph:'I am an internationally trained GP seeking a supervised position in general practice.',closingParagraph:'I would welcome a discussion about your practice and the role.',writingVersion:'human-four-paragraph-v1',confirmedByOwner:true,signatureEmail:'synthetic-doctor@example.invalid',signaturePhone:'+00 123 456 789'}}}}];if(table==='immi_presets')return query.includes(presetId)&&own.preset?[own.preset]:[];if(table==='immi_cv_versions')return query.includes(cvVersionId)&&own.cv?[own.cv]:[];throw Error('No shared clinic read/write is needed');}});
  const payload={presetId,cvVersionId,mailbox:'primary',recipient:'recruit@example.invalid'};
  const call=(action='',input,profile='arash',headers={})=>handleOpportunityMailRequest(new Request(origin+'/api/opportunities/'+opp+'/mail'+(action?'/'+action:''),{method:input?'POST':'GET',headers:{Origin:origin,...headers},...(input?{body:JSON.stringify(input)}:{})}),env,context(profile),async url=>{calls.push(url);throw Error('Unexpected provider call');});
- return {privateDb,publicDb,own,calls,payload,call,env,context};
+ return {privateDb,publicDb,own,calls,payload,call,env,context,restReads};
 }
 test('published contact preview and reviewed queue use selected own preset and CV without creating clinics or sending',async()=>{
  const f=await fixture();assert.deepEqual((await(await f.call()).json()).publishedRecipients,['recruit@example.invalid']);
@@ -62,6 +62,39 @@ function seedRead(f,{offset=0,scope='both',mismatch=false}={}){
  f.publicDb.prepare('INSERT INTO public_page_content VALUES(?,?,?,?,?,?,?,?)').run('read-page',mismatch?new Date(now-5000).toISOString():at,'read','Public page','text/html','Apply to read-contact@example.invalid',null,'[]');
  return {at,now};
 }
+function seedLinkedServices(f,{foreign=false,stale=false}={}){
+ for(const schema of ['public-page-schema.sql','public-page-enrichment-schema.sql'])f.publicDb.exec(readFileSync(new URL('../cloud/'+schema,import.meta.url),'utf8'));
+ f.env.PUBLIC_PAGE_READING_ENABLED='true';
+ const time=Date.now(),rootAt=new Date(time-2000).toISOString(),childAt=new Date(time-1000).toISOString(),page='page_'+'d'.repeat(32),childPage='page_'+'e'.repeat(32),rootURL='https://source.example/jobs/1',childURL=foreign?'https://foreign.example.invalid/services':'https://source.example/services';
+ const clinicQuote='Our practice provides diabetes management and preventive care.',cvQuote='Managed diabetes patients and provided preventive care in general practice.';
+ const source={id:opp,country:'AU',title:'General Practitioner',organization:'Synthetic Services Practice',url:rootURL,summary:'A supervised GP vacancy.',fullText:'Feed excerpt.'};
+ f.publicDb.prepare('UPDATE opportunity_editions SET first_seen_at=?,data=? WHERE id=?').run(new Date(time-10000).toISOString(),JSON.stringify(source),opp);
+ const parent={parentPageId:page,parentURL:rootURL,parentReadAt:stale?new Date(time-3000).toISOString():rootAt,depth:1};
+ for(const [id,url,at,text,data]of [[page,rootURL,rootAt,'Synthetic Services Practice invites General Practitioner applications. Apply to recruit@example.invalid.',{officialBases:['source.example']}],[childPage,childURL,childAt,clinicQuote,{...parent,officialBases:[foreign?'foreign.example.invalid':'source.example']}]]){
+  f.publicDb.prepare('INSERT INTO public_page_queue(id,url,country,profile_scope,data,status,read_at) VALUES(?,?,?,?,?,?,?)').run(id,url,'AU','both',JSON.stringify(data),'read',at);
+  f.publicDb.prepare('INSERT INTO public_page_content VALUES(?,?,?,?,?,?,?,?)').run(id,at,'read','Public practice page','text/html',text,null,'[]');
+  f.publicDb.prepare('INSERT INTO public_page_enrichment VALUES(?,?,?,?)').run(id,at,'AU',JSON.stringify({...data,sourceURL:url,readAt:at,contacts:[],people:[],organizations:[],followLinks:[],limitations:[]}));
+ }
+ f.own.preset.data.name='GP B — Independent practice enquiry';f.own.cv.text=cvQuote;
+ return{rootAt,childAt,childPage,childURL,clinicQuote,cvQuote};
+}
+test('current linked services flow through GP selection, exact child provenance, reviewed preview and a single private queue',async()=>{
+ const f=await fixture(),evidence=seedLinkedServices(f),application={variant:'B',subjectIndex:0,clinicQuote:evidence.clinicQuote,cvQuote:evidence.cvQuote,confirmCvQuote:true};
+ const generated=await getGpApplicationPackage(f.env,f.context('arash'),opp,{...application,cvVersionId});assert.equal(generated.readyForReview,true);
+ assert.equal(generated.factBasis.clinic[0].sourceURL,evidence.childURL);assert.equal(generated.provenance.find(item=>item.kind==='clinic_quote').readAt,evidence.childAt);
+ const payload={...f.payload,application},response=await f.call('preview',payload),preview=await response.json();assert.equal(response.status,200);assert(preview.message.body.includes('diabetes management and preventive care'));
+ assert.equal((await f.call('queue',{...payload,confirmReviewed:true,reviewHash:preview.reviewHash})).status,201);assert.equal(f.privateDb.prepare('SELECT count(*) n FROM google_send_queue').get().n,1);assert.equal(f.calls.length,0);
+});
+test('linked clinical fact receipt drift invalidates review and foreign or stale-parent text cannot become selected evidence',async()=>{
+ const f=await fixture(),evidence=seedLinkedServices(f),application={variant:'B',subjectIndex:0,clinicQuote:evidence.clinicQuote,cvQuote:evidence.cvQuote,confirmCvQuote:true},payload={...f.payload,application};
+ const preview=await(await f.call('preview',payload)).json(),at=new Date().toISOString();
+ f.publicDb.prepare('UPDATE public_page_queue SET read_at=? WHERE id=?').run(at,evidence.childPage);f.publicDb.prepare('UPDATE public_page_content SET read_at=? WHERE page_id=?').run(at,evidence.childPage);f.publicDb.prepare("UPDATE public_page_enrichment SET read_at=?,data=json_set(data,'$.readAt',?) WHERE page_id=?").run(at,at,evidence.childPage);
+ assert.equal((await f.call('queue',{...payload,confirmReviewed:true,reviewHash:preview.reviewHash})).status,409);assert.equal(f.privateDb.prepare('SELECT count(*) n FROM google_send_queue').get().n,0);
+ for(const mode of [{foreign:true},{stale:true}]){
+  const blocked=await fixture(),other=seedLinkedServices(blocked,mode),app={...application,clinicQuote:other.clinicQuote,cvQuote:other.cvQuote};
+  assert.equal((await blocked.call('preview',{...blocked.payload,application:app})).status,409);assert.equal(blocked.privateDb.prepare('SELECT count(*) n FROM google_send_queue').get().n,0);
+ }
+});
 test('verified current page content supplies published recipient and its receipt is bound to review',async()=>{
  const f=await fixture();seedRead(f);
  const info=await(await f.call()).json();assert.deepEqual(info.publishedRecipients,['read-contact@example.invalid']);assert.equal(info.reading.status,'read');
@@ -98,6 +131,18 @@ test('source-personalized GP package uses exact own CV/source quotes and freezes
  const response=await f.call('preview',payload);assert.equal(response.status,200);const preview=await response.json();assert(preview.message.body.includes('Synthetic Practice'));assert(preview.message.body.includes('chronic disease care'));assert(!preview.message.body.includes('Your published information states'));assert.equal(preview.message.body.trim().split(/\n\s*\n/).length,6);assert(preview.message.body.includes(cvQuote));assert(!preview.message.body.includes('{{'));assert.notEqual(preview.message.body,'Reviewed saved body');assert.equal(f.own.preset.data.body,'Reviewed saved body');
  assert.equal((await f.call('queue',{...payload,application:{...application,subjectIndex:1},confirmReviewed:true,reviewHash:preview.reviewHash})).status,409);
  const queued=await f.call('queue',{...payload,confirmReviewed:true,reviewHash:preview.reviewHash});assert.equal(queued.status,201);assert.equal(f.privateDb.prepare('SELECT count(*) n FROM google_send_queue').get().n,1);assert.equal(f.calls.length,0);
+});
+test('each personalized preview and queue fetches source/CV once while every new action still revalidates fresh records',async()=>{
+ const f=await fixture(),clinicQuote='Our clinic provides community general practice and chronic disease care.',cvQuote='I provide chronic disease management and preventive care in community general practice.';
+ const row=f.publicDb.prepare('SELECT data FROM opportunity_editions WHERE id=?').get(opp),source=JSON.parse(row.data);Object.assign(source,{organization:'Synthetic Practice',summary:clinicQuote,fullText:clinicQuote+'\nApply via recruit@example.invalid'});f.publicDb.prepare('UPDATE opportunity_editions SET data=? WHERE id=?').run(JSON.stringify(source),opp);
+ f.own.preset.data.name='GP B — Independent practice enquiry';f.own.cv.text=cvQuote;
+ let editionReads=0;const prepare=f.env.OPPORTUNITY_DB.prepare.bind(f.env.OPPORTUNITY_DB);f.env.OPPORTUNITY_DB.prepare=sql=>{if(sql==='SELECT * FROM opportunity_editions WHERE id=?')editionReads++;return prepare(sql);};
+ const payload={...f.payload,application:{variant:'B',subjectIndex:0,clinicQuote,cvQuote,confirmCvQuote:true}};
+ const response=await f.call('preview',payload),preview=await response.json();assert.equal(response.status,200);
+ assert.equal(editionReads,1);assert.equal(f.restReads.filter(x=>x.table==='immi_cv_versions').length,1);assert.equal(f.restReads.filter(x=>x.table==='immi_profiles').length,1);
+ assert.equal((await f.call('queue',{...payload,confirmReviewed:true,reviewHash:preview.reviewHash})).status,201);
+ assert.equal(editionReads,2);assert.equal(f.restReads.filter(x=>x.table==='immi_cv_versions').length,2);assert.equal(f.restReads.filter(x=>x.table==='immi_profiles').length,2);
+ assert.equal(f.privateDb.prepare('SELECT count(*) n FROM google_send_queue').get().n,1);assert.equal(f.calls.length,0);
 });
 test('GP package transport rejects missing review, forged clinic/CV evidence, wrong template and other profile without queuing',async()=>{
  const f=await fixture(),application={variant:'B',subjectIndex:0,clinicQuote:'Invented clinic values and GP care.',cvQuote:'Invented clinical experience.',confirmCvQuote:true};

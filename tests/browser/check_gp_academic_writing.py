@@ -33,6 +33,9 @@ POLISHED_P2 = "Synthetic Clinic's documented continuity of care and supervised l
 POLISHED_P3 = "My documented experience in general practice and continuity of care would allow me to contribute to the clinic's day-to-day clinical work."
 
 
+CV_SCOPE = "clinical_self_report"
+
+
 def package(cv_id=CV, clinic_quote=CLINIC_QUOTE, cv_quote=None, polished=False, reviewed=False):
     cv_quote = cv_quote or (CV_QUOTE2 if cv_id == CV2 else CV_QUOTE)
     p2 = POLISHED_P2 if polished else "Synthetic baseline clinic paragraph: " + clinic_quote
@@ -45,11 +48,11 @@ def package(cv_id=CV, clinic_quote=CLINIC_QUOTE, cv_quote=None, polished=False, 
         "paragraphs": {"opening": P1, "clinicReason": p2, "candidateValue": p3, "closing": P4},
         "suggestedSelection": {"clinicQuote": clinic_quote, "cvQuote": cv_quote},
         "clinicEvidenceCandidates": [{"text": CLINIC_QUOTE}, {"text": CLINIC_QUOTE2}],
-        "cvEvidenceCandidates": [{"text": CV_QUOTE2 if cv_id == CV2 else CV_QUOTE}],
+        "cvEvidenceCandidates": [{"text": CV_QUOTE2 if cv_id == CV2 else CV_QUOTE, "cvScope": CV_SCOPE}],
         "connectionCandidates": [{"id": "connection_synthetic", "name": "Synthetic Colleague", "organization": "Synthetic Clinic"}],
         "recipients": ["clinic@example.invalid"], "writingStatus": {"issues": []},
         "missingFields": [], "dossier": {"name": {"value": "Synthetic Clinic"}},
-        "readyForReview": reviewed or polished,
+        "readyForReview": reviewed or polished, "evidenceMatch": {"cvScope": CV_SCOPE},
         **({"refinementId": REFINEMENT} if polished else {}),
     }
 
@@ -236,9 +239,19 @@ function Harness(){
             page.locator(".gp-academic-tools > summary").click()
             expect(polish).to_be_disabled()
             expect(page.locator(".gp-academic-tools")).to_contain_text("برای حفظ متنِ آشناییِ تأییدشده")
+        # Training/research/limitations remain visible as source-bound drafts,
+        # but must never be sent to the clinical-experience AI editor.
+        for CV_SCOPE in ["training", "research", "limitation"]:
+            for compact in [False, True]:
+                reset(compact)
+                confirm(compact)
+                expect(polish).to_be_disabled()
+                expect(page.locator(".gp-academic-tools")).to_contain_text("این عبارتِ رزومه سابقهٔ بالینی قابل استفاده")
+                assert text(compact), "The ordinary evidence-based draft was hidden"
+        CV_SCOPE = "clinical_self_report"
         no_sends()
         assert not errors, errors
         assert not page.evaluate("document.documentElement.scrollWidth>innerWidth")
         browser.close()
     server.shutdown()
-print("PASS academic GP polish: evidence consent, fixed introduction/closing/signature, error preservation, artifact-only mail preview, evidence/CV/late-response invalidation, and confirmed-contact exclusion; synthetic requests only.")
+print("PASS academic GP polish: evidence consent, fixed introduction/closing/signature, error preservation, artifact-only mail preview, evidence/CV/late-response invalidation, confirmed-contact and nonclinical-evidence exclusion; synthetic requests only.")

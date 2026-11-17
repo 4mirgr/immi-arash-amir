@@ -84,6 +84,7 @@ export function extractPublicContacts({html='',text='',sourceURL,readAt}={}){
  const source=publicURL(sourceURL),result={extractorVersion:3,sourceURL:source||String(sourceURL||'').slice(0,2000),readAt:typeof readAt==='string'?readAt:null,contacts:[],people:[],organizations:[],followLinks:[],publicationDates:[],limitations:['Published contact evidence requires review; it is not verified identity, a vacancy, eligibility or permission to send.','Static markup extraction does not evaluate external CSS, JavaScript or authenticated content.']};
  if(!source){result.limitations.push('invalid_public_source_url');return result;}
  const seen=new Set(),peopleSeen=new Set(),orgs=new Set(),follow=new Set(),host=new URL(source).hostname;
+ const sameClinicHost=hostname=>hostname.replace(/^www\./,'')===host.replace(/^www\./,'');
  function addPerson(name,label,quote){
   if(result.people.length>=MAX_PEOPLE||!name||role(quote)===null||PERSON_QUOTE_UNSAFE.test(quote))return;
   const personRole=/^practice\s+manager$/i.test(label)?'practice_manager':'recruitment_contact',key=personRole+':'+name.toLowerCase();
@@ -139,15 +140,23 @@ export function extractPublicContacts({html='',text='',sourceURL,readAt}={}){
  for(const link of parsed.links){
   if(link.navigationOnly){
    const url=publicURL(link.href,source);if(!url)continue;const target=new URL(url);
-   if(target.hostname===host&&url!==source&&!follow.has(url)&&result.followLinks.length<6&&!/\.(?:pdf|docx?|xlsx?|zip)(?:$|\?)/i.test(target.pathname)&&/\b(?:contact|about|team|staff|services?|treatments?|training|teaching|education|careers?|recruitment|jobs?)\b/i.test((target.pathname+' '+link.label).replace(/[-_/]+/g,' '))){follow.add(url);result.followLinks.push({url,label:link.label.slice(0,180),sourceURL:source,depth:1,navigationOnly:true});}
+   if(sameClinicHost(target.hostname)&&url!==source&&!follow.has(url)&&result.followLinks.length<6&&!/\.(?:pdf|docx?|xlsx?|zip)(?:$|\?)/i.test(target.pathname)&&/\b(?:contact|about|team|staff|services?|treatments?|training|teaching|education|careers?|recruitment|jobs?)\b/i.test((target.pathname+' '+link.label).replace(/[-_/]+/g,' '))){follow.add(url);result.followLinks.push({url,label:link.label.slice(0,180),sourceURL:source,depth:1,navigationOnly:true});}
    continue;
   }
   const quote=link.label||link.href,context=link.context||quote,contactRole=role(quote,link.footer)===null?null:role(context,link.footer);
-  if(/^mailto:/i.test(link.href)){try{add('email',decodeURIComponent(link.href.slice(7).split('?')[0]),quote,'visible_link',contactRole);}catch{}continue;}
+  if(/^mailto:/i.test(link.href)){
+   // A generic 'Email us' label still publishes an exact href destination.
+   // Retain that attribute evidence so downstream source-proof checks do not
+   // discard a valid address. Only explicit To destinations are considered;
+   // query parameters (subject/cc/bcc/body) are neither read nor retained.
+   try{for(const target of decodeURIComponent(link.href.slice(7).split('?')[0]).split(/[;,]/).slice(0,MAX_CONTACTS)){
+    const value=emailValue(target);if(value)add('email',value,clean(link.label).slice(0,180)+' [mailto:'+value+']','visible_link',contactRole);
+   }}catch{}continue;
+  }
   if(/^tel:/i.test(link.href)){add('phone',link.href,quote,'visible_link',contactRole);continue;}
   const url=publicURL(link.href,source);if(!url||contactRole===null)continue;const target=new URL(url),social=SOCIAL.test(target.hostname);
-  if(social||target.hostname!==host||/website|official site|sito web/i.test(link.label))add(social?'social':'website',url,quote,'visible_link',contactRole);
-  if(!social&&target.hostname===host&&url!==source&&!follow.has(url)&&result.followLinks.length<6&&!/\.(?:pdf|docx?|xlsx?|zip)(?:$|\?)/i.test(target.pathname)&&FOLLOW.test(target.pathname+' '+link.label)){follow.add(url);result.followLinks.push({url,label:link.label.slice(0,180),sourceURL:source,depth:1});}
+  if(social||!sameClinicHost(target.hostname)||/website|official site|sito web/i.test(link.label))add(social?'social':'website',url,quote,'visible_link',contactRole);
+  if(!social&&sameClinicHost(target.hostname)&&url!==source&&!follow.has(url)&&result.followLinks.length<6&&!/\.(?:pdf|docx?|xlsx?|zip)(?:$|\?)/i.test(target.pathname)&&FOLLOW.test(target.pathname+' '+link.label)){follow.add(url);result.followLinks.push({url,label:link.label.slice(0,180),sourceURL:source,depth:1});}
  }
  // Parse a bounded number of JSON-LD documents/nodes. Never eval, follow contexts or execute scripts.
  let nodes=0;

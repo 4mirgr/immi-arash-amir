@@ -43,6 +43,32 @@ test('basic checks reject new quantities, names, credentials, expertise, instruc
  // A digit contained inside a source year must never count as that quantity.
  assert.throws(()=>validateAcademicDraft({...draft,valueParagraph:draft.valueParagraph+' I treated 1 patient.'},{...input,cvFact:{id:'cv_1',text:cv+' Since 2021.'}}),/academic_draft_failed_checks/);
 });
+test('published clinic quantities cannot become the applicant’s experience and CV dates cannot become clinic history',()=>{
+ const base=academicModelInput(pkg()),input={...base,clinicFact:{id:'clinic_1',text:clinic+' The clinic sees 40 patients daily.'},cvFact:{id:'cv_1',text:cv+' My GP work began in 2021.'}};
+ assert.throws(()=>validateAcademicDraft({...draft,valueParagraph:draft.valueParagraph+' I managed 40 patients each day.'},input),/academic_draft_failed_checks/);
+ assert.throws(()=>validateAcademicDraft({...draft,clinicParagraph:draft.clinicParagraph+' It opened in 2021.'},input),/academic_draft_failed_checks/);
+ assert.doesNotThrow(()=>validateAcademicDraft({...draft,valueParagraph:draft.valueParagraph+' I have worked since 2021.'},input));
+ const numberedName={...base,clinicName:'Clinic 40'};
+ const clinicParagraph=draft.clinicParagraph.replace('Sample Community Medical Centre','Clinic 40');
+ assert.throws(()=>validateAcademicDraft({...draft,clinicParagraph,valueParagraph:draft.valueParagraph+' My 40 years of experience would contribute.'},numberedName),/academic_draft_failed_checks/);
+ assert.doesNotThrow(()=>validateAcademicDraft({...draft,clinicParagraph,valueParagraph:draft.valueParagraph+' I would welcome a discussion with Clinic 40.'},numberedName));
+});
+test('academic replacement preserves fixed paragraph slots even when phrases repeat in the opening and closing',()=>{
+ const original=pkg(),blocks=original.body.split('\n\n'),opening=original.paragraphs.opening+' '+original.paragraphs.clinic,closing=original.paragraphs.closing+' '+original.paragraphs.value;
+ blocks[1]=opening;blocks[4]=closing;
+ const repeated={...original,body:blocks.join('\n\n'),paragraphs:{...original.paragraphs,opening,closing}};
+ const edited=applyAcademicDraft(repeated,draft),result=edited.body.split('\n\n');
+ assert.equal(result[1],opening);assert.equal(result[2],draft.clinicParagraph);assert.equal(result[3],draft.valueParagraph);assert.equal(result[4],closing);assert.equal(result[5],blocks[5]);
+ assert.throws(()=>applyAcademicDraft({...original,body:original.body+'\n\nUnexpected appended text'},draft),/academic_context_changed/);
+});
+test('nonclinical or explicitly limited CV evidence cannot consume quota or be rewritten as performed clinical work',async()=>{
+ for(const quote of ['Completed a course in chronic disease care.','Research thesis on chronic disease care.','I have no experience in chronic disease care.','Provided research support for a study of chronic disease care.']){
+  const f=fixture(),read=f.context.rest;f.context.rest=async(table,query)=>table==='immi_cv_versions'?[{id:cvId,text:quote,version:1}]:read(table,query);
+  const response=await route(f.request({...options,cvQuote:quote,contextConsent:true}),f.env,f.context);
+  assert.equal(response.status,409);assert.equal((await response.json()).error,'academic_clinical_evidence_required');assert.equal(f.inference,0);
+  assert.equal(f.privateDB.prepare('SELECT count(*) n FROM ai_assistant_runs').get().n,0);
+ }
+});
 test('cache is owner-bound and stale source, CV, signature or paragraph context cannot resolve',async()=>{
  const f=fixture(),r=await route(f.request(),f.env,f.context),saved=await r.json();assert.equal(r.status,200);assert.match(saved.refinementId,/^academic_[a-f0-9]{32}$/);assert.equal(f.inference,1);
  assert.equal((await route(f.request(),f.env,f.context)).status,200);assert.equal(f.inference,1);

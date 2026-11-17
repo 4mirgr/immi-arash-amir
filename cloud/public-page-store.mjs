@@ -33,15 +33,16 @@ export const PUBLIC_PAGE_TRANSIENT_STATUSES=['fetch_failed','robots_unavailable'
 async function linkedReadingRows(row,record){
  const parent=JSON.parse(row.data),sourceURL=record.finalUrl||row.url;
  if((parent.depth||0)>=1||!Array.isArray(record.enrichment?.followLinks))return [];
- const source=new URL(sourceURL),seen=new Set(),rows=[];
+ const source=new URL(sourceURL),seen=new Set(),rows=[],canonicalHost=value=>value.replace(/^www\./,'');
  const rankedLinks=record.enrichment.followLinks.slice(0,6).map((link,index)=>({link,index})).sort((a,b)=>Number(!/(?:contact|team|staff|about|manager)/i.test(a.link.url+' '+a.link.label))-Number(!/(?:contact|team|staff|about|manager)/i.test(b.link.url+' '+b.link.label))||a.index-b.index).map(item=>item.link);
  for(const link of rankedLinks){
   try{
    const url=new URL(link.url,sourceURL);url.hash='';
-   if(url.protocol!=='https:'||url.hostname!==source.hostname||url.username||url.password||url.port||url.href===sourceURL||seen.has(url.href)||!parent.officialBases?.some(base=>url.hostname===base||url.hostname.endsWith('.'+base)))continue;
-   if(/\.(?:pdf|docx?|xlsx?|zip|png|jpe?g)(?:$|[?#])/i.test(url.href)||/(?:^|\/)(?:login|logout|signin|sign-in|admin|account|auth|apply|application|candidate)(?:\/|$)/i.test(decodeURIComponent(url.pathname))||!/(?:contact|about|team|staff|career|job|vacanc|recruit|department|school|faculty|medicine|research)/i.test(url.pathname+' '+String(link.label||'')))continue;
-   seen.add(url.href);const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(url.href)))].map(v=>v.toString(16).padStart(2,'0')).join('');
-   rows.push({id:'page_'+hash.slice(0,32),url:url.href,country:row.country,profileScope:row.profile_scope,officialBases:parent.officialBases,institutionIds:parent.institutionIds||[],labels:[...(Array.isArray(parent.labels)?parent.labels:[]).slice(0,4),row.title||'',String(link.label||'Linked public institution page').slice(0,200)].filter(Boolean),contactFollowup:/(?:contact|team|staff|about|manager)/i.test(url.pathname+' '+String(link.label||'')),parentPageId:row.id,parentURL:row.url,discoveredFrom:sourceURL,depth:1});
+   const canonicalKey=canonicalHost(url.hostname)+url.pathname+url.search,samePage=canonicalHost(url.hostname)===canonicalHost(source.hostname)&&url.pathname===source.pathname&&url.search===source.search;
+   if(url.protocol!=='https:'||canonicalHost(url.hostname)!==canonicalHost(source.hostname)||url.username||url.password||url.port||samePage||seen.has(canonicalKey)||!parent.officialBases?.some(base=>canonicalHost(url.hostname)===canonicalHost(base)||canonicalHost(url.hostname).endsWith('.'+canonicalHost(base))))continue;
+   if(/\.(?:pdf|docx?|xlsx?|zip|png|jpe?g)(?:$|[?#])/i.test(url.href)||/(?:^|\/)(?:login|logout|signin|sign-in|admin|account|auth|apply|application|candidate)(?:\/|$)/i.test(decodeURIComponent(url.pathname))||!/(?:contact|about|team|staff|career|job|vacanc|recruit|department|school|faculty|medicine|research|services?|treatments?|training|teaching|education)/i.test(url.pathname+' '+String(link.label||'')))continue;
+   seen.add(canonicalKey);const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(url.href)))].map(v=>v.toString(16).padStart(2,'0')).join('');
+   rows.push({id:'page_'+hash.slice(0,32),url:url.href,country:row.country,profileScope:row.profile_scope,officialBases:parent.officialBases,institutionIds:parent.institutionIds||[],labels:[...(Array.isArray(parent.labels)?parent.labels:[]).slice(0,4),row.title||'',String(link.label||'Linked public institution page').slice(0,200)].filter(Boolean),contactFollowup:/(?:contact|team|staff|about|manager)/i.test(url.pathname+' '+String(link.label||'')),parentPageId:row.id,parentURL:row.url,parentReadAt:record.readAt,discoveredFrom:sourceURL,depth:1});
    if(rows.length>=3)break;
   }catch{/* Invalid or private links do not become crawl targets. */}
  }
@@ -55,22 +56,34 @@ export async function storePublicReading(db,record,now=Date.parse(record.readAt)
  const status=read?record.status:String(record.status||'failed').replace(/[^a-z_]/g,'').slice(0,60)||'failed';
  const text=read?record.text.slice(0,50000):'';
  const bound={...record,text,title:String(record.title||'').slice(0,500),country:row.country,institutionIds:JSON.parse(row.data).institutionIds||[]};
- const availableAt=now+(read?PUBLIC_PAGE_REFRESH_MS:PUBLIC_PAGE_RETRY_MS);
- const writes=[stmt(db,`UPDATE public_page_queue SET status=?,read_at=?,title=?,content_hash=?,lease_until=0,last_error=?,available_at=?,attempts=?,data=json_remove(data,'$.refreshRequested') WHERE id=?`,status,record.readAt,bound.title,record.contentHash||null,read?null:status,availableAt,read?0:row.attempts,row.id)];
+ const metadata=JSON.parse(row.data),parentReadAt=record.parentReadAt||metadata.parentReadAt||null;
+ // A parent may refresh while this child is already in flight. Preserve the
+ // newer queued parent binding and its refresh request rather than stamping an
+ // old response with a relationship it did not observe.
+ const parentChanged=metadata.depth===1&&Number.isFinite(Date.parse(metadata.parentReadAt))&&(parentReadAt!==metadata.parentReadAt||Date.parse(record.readAt)<Date.parse(metadata.parentReadAt));
+ const availableAt=parentChanged?0:now+(read?PUBLIC_PAGE_REFRESH_MS:PUBLIC_PAGE_RETRY_MS);
+ const writes=[stmt(db,`UPDATE public_page_queue SET status=?,read_at=?,title=?,content_hash=?,lease_until=0,last_error=?,available_at=?,attempts=?,data=${parentChanged?"json_set(json_remove(data,'$.leasedParentReadAt'),'$.refreshRequested',json('true'))":"json_remove(data,'$.refreshRequested','$.leasedParentReadAt')"} WHERE id=?`,status,record.readAt,bound.title,record.contentHash||null,read?null:status,availableAt,read||parentChanged?0:row.attempts,row.id)];
  if(read)writes.push(stmt(db,'INSERT INTO public_page_content(page_id,read_at,status,title,content_type,text,content_hash,limitations) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET read_at=excluded.read_at,status=excluded.status,title=excluded.title,content_type=excluded.content_type,text=excluded.text,content_hash=excluded.content_hash,limitations=excluded.limitations',row.id,record.readAt,status,bound.title,String(record.contentType||'').slice(0,100),text,record.contentHash||null,JSON.stringify(record.limitations||[])));
  // Keep enrichment and content in the same transaction and invalidate stale receipts.
  writes.push(stmt(db,'DELETE FROM public_page_enrichment WHERE page_id=?',row.id));
  let enrichment=null,links=[];
  if(read&&record.enrichment){
-  const sourceURL=record.finalUrl||row.url,metadata=JSON.parse(row.data);
-  enrichment={...record.enrichment,sourceURL,readAt:record.readAt,parentPageId:metadata.parentPageId||null,parentURL:metadata.parentURL||null,depth:metadata.depth||0};
+  const sourceURL=record.finalUrl||row.url;
+  enrichment={...record.enrichment,sourceURL,readAt:record.readAt,parentPageId:metadata.parentPageId||null,parentURL:metadata.parentURL||null,parentReadAt,depth:metadata.depth||0};
   enrichment.contacts=(enrichment.contacts||[]).filter(c=>c.sourceURL===sourceURL).slice(0,20);
   enrichment.organizations=(enrichment.organizations||[]).filter(c=>c.sourceURL===sourceURL).slice(0,10);
   enrichment.people=(Array.isArray(enrichment.people)?enrichment.people:[]).filter(p=>p&&p.sourceURL===sourceURL&&['practice_manager','recruitment_contact'].includes(p.role)&&typeof p.name==='string'&&p.name.length<=150&&typeof p.quote==='string'&&p.quote.length<=700).slice(0,10);
   if(new TextEncoder().encode(JSON.stringify(enrichment)).length>100000)throw Error('enrichment_limit');
   writes.push(stmt(db,'INSERT INTO public_page_enrichment(page_id,read_at,country,data) VALUES(?,?,?,?)',row.id,record.readAt,row.country,JSON.stringify(enrichment)));
   links=await linkedReadingRows(row,record);
-  if(links.length)writes.push(stmt(db,`INSERT INTO public_page_queue(id,url,country,profile_scope,data) SELECT json_extract(value,'$.id'),json_extract(value,'$.url'),json_extract(value,'$.country'),json_extract(value,'$.profileScope'),value FROM json_each(?) WHERE 1 LIMIT max(0,3-(SELECT count(*) FROM public_page_queue WHERE json_extract(data,'$.parentPageId')=?)) ON CONFLICT DO NOTHING`,JSON.stringify(links),row.id));
+  if(links.length)writes.push(stmt(db,`WITH candidates AS (
+    SELECT cast(j.key AS INTEGER) AS n,j.value AS payload,q.id AS existing_id,q.data AS existing_data FROM json_each(?) j LEFT JOIN public_page_queue q ON q.url=json_extract(j.value,'$.url')
+   ),capacity AS (SELECT max(0,3-(SELECT count(*) FROM public_page_queue WHERE json_extract(data,'$.parentPageId')=?)) AS room)
+   INSERT INTO public_page_queue(id,url,country,profile_scope,data)
+   SELECT json_extract(c.payload,'$.id'),json_extract(c.payload,'$.url'),json_extract(c.payload,'$.country'),json_extract(c.payload,'$.profileScope'),c.payload FROM candidates c
+   WHERE (c.existing_id IS NOT NULL AND json_extract(c.existing_data,'$.parentPageId')=?) OR (c.existing_id IS NULL AND (SELECT count(*) FROM candidates prior WHERE prior.n<c.n AND prior.existing_id IS NULL)<(SELECT room FROM capacity))
+   ON CONFLICT(url) DO UPDATE SET data=json_set(public_page_queue.data,'$.parentReadAt',json_extract(excluded.data,'$.parentReadAt'),'$.refreshRequested',json('true')),available_at=0,attempts=CASE WHEN public_page_queue.lease_until<=? THEN 0 ELSE public_page_queue.attempts END
+   WHERE public_page_queue.country=excluded.country AND public_page_queue.profile_scope=excluded.profile_scope AND json_extract(public_page_queue.data,'$.parentPageId')=json_extract(excluded.data,'$.parentPageId') AND json_extract(public_page_queue.data,'$.parentURL')=json_extract(excluded.data,'$.parentURL') AND julianday(json_extract(excluded.data,'$.parentReadAt'))>coalesce(julianday(json_extract(public_page_queue.data,'$.parentReadAt')),0)`,JSON.stringify(links),row.id,row.id,now));
  }
  // Invalidate prior extraction on every result, including an unreadable changed page.
  writes.push(stmt(db,'DELETE FROM public_page_evidence WHERE page_id=?',row.id));

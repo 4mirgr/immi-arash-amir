@@ -39,18 +39,34 @@ const list=values=>values.length<2?values[0]||'':values.length===2?values.join('
 const words=value=>clean(value).split(/\s+/).filter(Boolean).length;
 function sourceURL(value){try{const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password?url.href:null;}catch{return null;}}
 function readAt(value){const time=Date.parse(value||'');return Number.isFinite(time)?new Date(time).toISOString():null;}
+const CV_ACTION_BOUNDARY=/(?:,\s*(?:and\s+)?|\s+(?:and|while|alongside)\s+)(?=(?:I\s+(?:have\s+)?)?(?:manag\w*|treat\w*|assess\w*|provid\w*|deliver\w*|perform\w*|coordinat\w*|train\w*|conduct\w*|contribut\w*|support\w*|develop\w*|teach\w*|taught|led|research|training|(?:clinical|medical)\s+(?:research|training))\b)/i;
+const NONCLINICAL_QUALIFIER=/\b(?:research|thesis|publication|published|study|studies|course|certificate|certification|CPD|training|trained|teaching|taught|webinar)\b/i;
+const cvClauses=value=>clauses(value).flatMap(part=>part.split(CV_ACTION_BOUNDARY)).filter(Boolean);
 function cvKind(value){
  if(NEGATIVE.test(value))return 'limitation';
+ // An explicit care-delivery clause is still clinical experience when a later
+ // clause mentions staff training or research. Conversely, "provided research
+ // support" and a course about a procedure do not establish performed care.
+ const lead=(cvClauses(value)[0]||'').replace(/^[•·▪◦*-]\s*/,'').replace(/^(?:My\s+(?:clinical\s+)?(?:work|experience)\s+(?:has\s+)?include(?:s|d)|I\s+have\s+(?:clinical\s+)?experience\s+(?:in|with))\s+/i,'');
+ const clinicalAction=/^(?:I\s+(?:have\s+)?(?:been\s+)?)?(?:manag(?:e|ed|ing)|treat(?:ed|ing)?|assess(?:ed|ing)?|provid(?:e|ed|ing)|deliver(?:ed|ing)?|perform(?:ed|ing)?|coordinat(?:e|ed|ing))\s+(?:(?:the|a|an)\s+)?(?:patients?|clinical\s+(?:care|consultations?)|consultations?|chronic\s+(?:diseases?|illness(?:es)?)|acute\s+(?:care|presentations?|consultations?)|diabetes|hypertension|wound\s+care|suturing|minor\s+procedures?|referrals?)\b/i;
+ if(clinicalAction.test(lead)&&!NONCLINICAL_QUALIFIER.test(lead))return 'clinical_self_report';
  // Coursework or research on a treatment is not clinical scope evidence.
  if(/\b(?:research|thesis|publication|published|study|studies)\b/i.test(value))return 'research';
- if(/\b(?:course|certificate|certification|CPD|training|webinar)\b/i.test(value))return 'training';
+ if(/\b(?:course|certificate|certification|CPD|training|trained|teaching|taught|webinar)\b/i.test(value))return 'training';
  return 'clinical_self_report';
 }
+export function cvEvidenceScope(value){const fact=safeFact(value);return fact?cvKind(fact):null;}
+function evidenceSummary(value,{cv=false}={}){
+ const cvScope=cv?cvKind(value):null,scoped=cv&&cvScope==='clinical_self_report'?cvClauses(value).filter(part=>cvKind(part)==='clinical_self_report').join('. '):value;
+ return {topics:positiveTopics(scoped).map(x=>x.id),services:services(scoped).map(x=>x.id),cvScope};
+}
+function summaryMatch(clinic,cv,hasClinic,hasCv){
+ const sharedTopics=clinic.topics.filter(id=>cv.topics.includes(id)),sharedServices=cv.cvScope==='clinical_self_report'?clinic.services.filter(id=>cv.services.includes(id)):[];
+ const status=!hasClinic||!hasCv?'missing_evidence':sharedServices.length?'direct_service_overlap':sharedTopics.length&&cv.cvScope==='clinical_self_report'?'related_context':'insufficient_overlap';
+ return {status,sharedTopics,clinicTopics:clinic.topics,cvTopics:cv.topics,sharedServices,cvScope:cv.cvScope};
+}
 function matchEvidence(clinic,cv){
- const clinicTopics=positiveTopics(clinic).map(x=>x.id),cvTopics=positiveTopics(cv).map(x=>x.id),sharedTopics=clinicTopics.filter(id=>cvTopics.includes(id)),cvScope=cvKind(cv);
- const sharedServices=cvScope==='clinical_self_report'?services(clinic).filter(service=>positiveTopic(service,cv)):[];
- const status=!clinic||!cv?'missing_evidence':sharedServices.length?'direct_service_overlap':sharedTopics.length&&cvScope==='clinical_self_report'?'related_context':'insufficient_overlap';
- return {status,sharedTopics,clinicTopics,cvTopics,sharedServices:sharedServices.map(x=>x.id),cvScope};
+ return summaryMatch(evidenceSummary(clinic),evidenceSummary(cv,{cv:true}),Boolean(clinic),Boolean(cv));
 }
 function clinicFact(name,quote){
  const fact=quote.replace(/^Our\s+(?:(?:family|general|medical|community|local|rural|regional|multidisciplinary|busy)\s+){0,3}(?:practice|clinic|medical cent(?:re|er))\b/i,name)
@@ -76,6 +92,10 @@ function clinicParagraph(name,clinic,topic){
 const GERUNDS={managed:'managing',delivered:'delivering',provided:'providing',assessed:'assessing',performed:'performing',coordinated:'coordinating',supported:'supporting',treated:'treating',developed:'developing',led:'leading'};
 function capabilityPhrase(value){
  let fact=value.replace(/^[•·▪◦*-]\s*/, '').replace(/[.;:,]+$/,'');
+ // Converting only the first verb in a coordinated past-tense CV bullet leaves
+ // mixed tenses ("experience managing..., provided... and coordinated...").
+ // Such bullets are preserved as a complete first-person sentence instead.
+ if(/(?:,\s*(?:and\s+)?|\s+and\s+)(?:[a-z]+ed|led|taught|undertook|oversaw|gave|ran|wrote|read|built)\b/i.test(fact))return null;
  fact=fact.replace(/^(?:My\s+(?:(?:clinical|professional|previous)\s+)?(?:experience|work|background)\s+(?:has\s+)?include(?:s|d)|My\s+(?:clinical|professional)\s+experience\s+(?:is|has been)\s+in|I\s+have\s+(?:clinical\s+)?experience\s+(?:in|with)|Experience\s+(?:in|with))\s+/i,'');
  fact=fact.replace(/^(?:I\s+(?:have\s+)?|I\s+have\s+been\s+)?(Managed|Delivered|Provided|Assessed|Performed|Coordinated|Supported|Treated|Developed|Led)\b\s*/i,(_,verb)=>GERUNDS[verb.toLowerCase()]+' ')
   .replace(/^(?:I\s+(?:am|was)\s+)?Responsible for\s+/i,'')
@@ -86,26 +106,35 @@ function capabilityPhrase(value){
  if(/^(?:Management of|Chronic disease management|Wound care|Minor procedures|Preventive care|managing|delivering|providing|assessing|performing|coordinating|supporting|treating|developing|leading|working|serving)\b/i.test(fact)||fact!==value.replace(/[.;:,]+$/,''))return fact.charAt(0).toLowerCase()+fact.slice(1);
  return null;
 }
+function cvSentence(value){
+ const fact=value.replace(/^[•·▪◦*-]\s*/,'');
+ if(/^(?:Managed|Delivered|Provided|Assessed|Performed|Coordinated|Supported|Treated|Developed|Led|Completed|Served)\b/.test(fact))return sentence('I have '+fact.charAt(0).toLowerCase()+fact.slice(1));
+ return sentence(fact);
+}
 function candidateParagraph(cv,match){
  if(!cv)return '{{cvEvidence}}';
  if(match.cvScope==='limitation')return `${sentence(cv)} I would want to discuss the role’s clinical requirements openly and establish an appropriate scope of work and supervision before proceeding.`;
- if(match.cvScope==='research'||match.cvScope==='training')return `${sentence(cv)} I would welcome the opportunity to build on this knowledge in an appropriately supervised role, while discussing the practical experience and preparation required for your clinical services.`;
+ if(match.cvScope==='research'||match.cvScope==='training')return `${cvSentence(cv)} I would welcome the opportunity to build on this knowledge in an appropriately supervised role, while discussing the practical experience and preparation required for your clinical services.`;
  const capability=capabilityPhrase(cv),experience=capability?'experience'+(/^(?:managing|delivering|providing|assessing|performing|coordinating|supporting|treating|developing|leading|working|serving)\b/.test(capability)?' ':' in ')+capability:null,background=experience?'My '+experience:null;
  const shared=SERVICES.filter(service=>match.sharedServices.includes(service.id)).slice(0,3).map(x=>x.label);
  if(shared.length){
-  const target=list(shared),opening=experience?`I would bring ${experience} to the ${target} you provide.`:`${sentence(cv)} I would bring this background to the ${target} you provide.`;
+  const target=list(shared),opening=experience?`I would bring ${experience} to the ${target} you provide.`:`${cvSentence(cv)} I would bring this background to the ${target} you provide.`;
   return `${opening} My priority would be to put this experience to practical use within your clinical model, with careful attention to your protocols and the supervision arrangements agreed for the role.`;
  }
- const opening=background?`${background} is the clinical background I would bring to a supervised appointment.`:sentence(cv);
+ const opening=background?`${background} is the clinical background I would bring to a supervised appointment.`:cvSentence(cv);
  if(match.sharedTopics.length)return `${opening} The related focus in your practice’s description provides a useful basis for discussing where I could contribute and which clinical responsibilities would require further preparation or supervision.`;
  return `${opening} I would welcome a discussion of your clinical priorities and the responsibilities that could be undertaken within an agreed supervised scope of practice.`;
 }
 
 export function suggestEvidencePair(clinicCandidates=[],cvCandidates=[]){
  let best=null;
- for(const clinic of clinicCandidates)for(const cv of cvCandidates){
-  const clinicText=safeFact(clinic?.text),cvText=safeFact(cv?.text);if(!clinicText||!cvText)continue;
-  const evidenceMatch=matchEvidence(clinicText,cvText),score=evidenceMatch.sharedServices.length*100+evidenceMatch.sharedTopics.length*10+(words(clinicText)<=35?2:0)+(evidenceMatch.cvScope==='clinical_self_report'?1:-1000);
+ const prepare=(candidates,cv)=>candidates.map(item=>safeFact(item?.text)).filter(Boolean).map(text=>({text,summary:evidenceSummary(text,{cv}),short:words(text)<=35}));
+ // Each source/CV fact is summarized once. The bounded pair matrix compares cached
+ // summaries rather than repeating all regexes for every 24×24 combination.
+ const clinics=prepare(clinicCandidates,false),cvs=prepare(cvCandidates,true);
+ for(const clinic of clinics)for(const cv of cvs){
+  const clinicText=clinic.text,cvText=cv.text;
+  const evidenceMatch=summaryMatch(clinic.summary,cv.summary,true,true),score=evidenceMatch.sharedServices.length*100+evidenceMatch.sharedTopics.length*10+(clinic.short?2:0)+(evidenceMatch.cvScope==='clinical_self_report'?1:-1000);
   if(!best||score>best.score)best={clinicQuote:clinicText,cvQuote:cvText,topic:evidenceMatch.sharedTopics[0]||evidenceMatch.clinicTopics[0]||'general_practice',evidenceMatch,score};
  }
  if(!best)return null;const {score,...suggestion}=best;return {...suggestion,status:'suggested_requires_owner_review'};

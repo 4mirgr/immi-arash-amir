@@ -1,7 +1,7 @@
 // Private, source-bound editing. This module can prepare a draft; it cannot send.
 import {getGpApplicationPackage} from './gp-application-package.mjs';
 export const ACADEMIC_MODEL='@cf/qwen/qwen3-30b-a3b-fp8';
-export const ACADEMIC_VERSION='gp-academic-evidence-v1';
+export const ACADEMIC_VERSION='gp-academic-evidence-v2';
 const ID=/^academic_[a-f0-9]{32}$/;
 const OWNER_LIMIT=3,GLOBAL_LIMIT=6;
 const stmt=(db,sql,...values)=>db.prepare(sql).bind(...values);
@@ -18,6 +18,9 @@ export function academicModelInput(pkg){
  const clinic=pkg.provenance?.find(x=>x.kind==='clinic_quote')?.quote;
  const cv=pkg.provenance?.find(x=>x.kind==='cv_quote')?.quote;
  if(!pkg.readyForReview||!clinic||!cv)fail('gp_application_evidence_required',409);
+ // A style editor must not remove a limitation or turn coursework/research
+ // into performed clinical work. The source-bound fallback remains available.
+ if(pkg.evidenceMatch?.cvScope&&pkg.evidenceMatch.cvScope!=='clinical_self_report')fail('academic_clinical_evidence_required',409);
  // Exclude contact details, complete CVs, other accounts and unrelated research.
  return {clinicName:pkg.dossier.name.value,clinicFact:{id:'clinic_1',text:clinic},cvFact:{id:'cv_1',text:cv},
    evidenceMatch:pkg.evidenceMatch||null,paragraphPurpose:{clinic:'Why this particular practice interests the applicant',value:'How the supplied clinical experience could contribute to the published service, under appropriate supervision'}};
@@ -35,8 +38,16 @@ export function validateAcademicDraft(raw,input){
  if(!clinic.toLowerCase().includes(input.clinicName.toLowerCase()))fail('academic_draft_failed_checks',502);
  // A mechanical check is not credential verification. Reject new quantities and
  // named entities; owner review of the exact evidence remains mandatory.
- const numberTokens=new Set(basis.match(/\b\d+(?:[.,]\d+)?%?/g)||[]);
- for(const token of (clinic+' '+candidate).match(/\b\d+(?:[.,]\d+)?%?/g)||[])if(!numberTokens.has(token))fail('academic_draft_failed_checks',502);
+ const numericFacts=[
+  [clinic,input.clinicName+' '+input.clinicFact.text],
+  [candidate.split(input.clinicName).join(''),input.cvFact.text],
+ ];
+ // Published clinic volumes/dates must not become the applicant's case counts
+ // or years of experience merely because the number exists somewhere in input.
+ for(const [paragraph,facts]of numericFacts){
+  const numberTokens=new Set(facts.match(/\b\d+(?:[.,]\d+)?%?/g)||[]);
+  for(const token of paragraph.match(/\b\d+(?:[.,]\d+)?%?/g)||[])if(!numberTokens.has(token))fail('academic_draft_failed_checks',502);
+ }
  const allowed=new Set((basis.match(/\b[A-Za-z][A-Za-z'-]*\b/g)||[]).map(x=>x.toLowerCase()));
  const sentenceStarters=new Set(['I','My','Your','The','This','That','As','With','Working','Under','In','Based','Experience','These','Through','Having','At','Together']);
  for(const paragraph of [clinic,candidate])for(const sentence of paragraph.split(/(?<=[.!?])\s+/)){
@@ -46,9 +57,12 @@ export function validateAcademicDraft(raw,input){
  return {clinicParagraph:clinic,valueParagraph:candidate,clinicFactIds:['clinic_1'],cvFactIds:['cv_1']};
 }
 export function applyAcademicDraft(pkg,draft){
- const p=pkg.paragraphs;
- if(!p||!pkg.body.includes(p.clinic)||!pkg.body.includes(p.value))fail('academic_context_changed',409);
- return {...pkg,paragraphs:{...p,clinic:draft.clinicParagraph,value:draft.valueParagraph},body:pkg.body.replace(p.clinic,draft.clinicParagraph).replace(p.value,draft.valueParagraph),writingQuality:{...pkg.writingQuality,method:'workers_ai_evidence_editor',model:ACADEMIC_MODEL,version:ACADEMIC_VERSION,needsOwnerReview:true}};
+ const p=pkg.paragraphs,blocks=typeof pkg.body==='string'?pkg.body.split('\n\n'):[];
+ // Replace only the canonical P2/P3 slots. A phrase may legitimately recur in
+ // the introduction, closing or signature; substring replacement changes them.
+ if(!p||blocks.length!==6||blocks[1]!==p.opening||blocks[2]!==p.clinic||blocks[3]!==p.value||blocks[4]!==p.closing)fail('academic_context_changed',409);
+ blocks[2]=draft.clinicParagraph;blocks[3]=draft.valueParagraph;
+ return {...pkg,paragraphs:{...p,clinic:draft.clinicParagraph,value:draft.valueParagraph},body:blocks.join('\n\n'),writingQuality:{...pkg.writingQuality,method:'workers_ai_evidence_editor',model:ACADEMIC_MODEL,version:ACADEMIC_VERSION,needsOwnerReview:true}};
 }
 export async function resolveAcademicDraft(env,context,pkg,id){
  if(!ID.test(id||''))fail('invalid_academic_refinement');

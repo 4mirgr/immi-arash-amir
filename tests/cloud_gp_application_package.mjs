@@ -29,12 +29,42 @@ function fixture(){
 const request=(method='GET',input=null,query='')=>new Request(origin+'/api/gp-applications/'+id+'/package?profile=arash'+query,{method,headers:{Origin:origin,'Content-Type':'application/json'},...(input?{body:JSON.stringify(input)}:{})});
 const confirmed={clinicQuote:clinic,cvQuote,confirmCvQuote:true,cvVersionId:cvId};
 
+test('server-bound source/CV snapshots avoid duplicate reads without accepting request-supplied evidence',async()=>{
+ const f=fixture(),row=f.db.prepare('SELECT * FROM opportunity_editions WHERE id=?').get(id);
+ const snapshot={ownerId:f.context.userId,profileId:'arash',opportunityId:id,row,source:{...JSON.parse(row.data),id,url:row.url,lastSeenAt:row.last_seen_at},ownedCv:{id:cvId,text:cvQuote,version:1}};
+ let sourceReads=0;
+ const original=f.env.OPPORTUNITY_DB.prepare.bind(f.env.OPPORTUNITY_DB);
+ f.env.OPPORTUNITY_DB.prepare=sql=>{sourceReads++;return original(sql);};f.env.PUBLIC_PAGE_READING_ENABLED='true';
+ const result=await getGpApplicationPackage(f.env,f.context,id,confirmed,snapshot);
+ assert.equal(result.readyForReview,true);assert.equal(result.cvVersionId,cvId);assert.equal(sourceReads,0);
+ assert.equal(f.calls.filter(x=>x.table==='immi_cv_versions').length,0);assert.equal(f.calls.filter(x=>x.table==='immi_profiles').length,1);
+ assert.equal((await route(request('POST',{...confirmed,verifiedSnapshot:snapshot}),f.env,f.context)).status,400);
+ for(const change of [{ownerId:'other-owner'},{profileId:'amir'},{opportunityId:'opp_'+'b'.repeat(32)},{source:{...snapshot.source,url:'https://other.example.invalid/'}},{source:{...snapshot.source,lastSeenAt:'2000-01-01T00:00:00Z'}},{ownedCv:{...snapshot.ownedCv,id:'33333333-3333-4333-8333-333333333333'}}])await assert.rejects(()=>getGpApplicationPackage(f.env,f.context,id,confirmed,{...snapshot,...change}),/gp_package_snapshot_mismatch/);
+ for(const change of [{country:'IT'},{profile_scope:'amir'},{opportunity_type:'scholarship'}])await assert.rejects(()=>getGpApplicationPackage(f.env,f.context,id,confirmed,{...snapshot,row:{...row,...change}}),/gp_opportunity_not_available/);
+ assert.equal(sourceReads,0);assert.equal(f.calls.filter(x=>x.table==='immi_profiles').length,1);
+});
+
 test('GET package has three subjects and exact evidence choices, never falsely ready or claiming credentials',()=>{
  const result=build(base);assert.equal(result.variant,'B');assert.equal(result.subjects.length,3);assert.equal(result.readyForReview,false);assert(result.missingFields.includes('clinic_quote_required'));assert(result.missingFields.includes('cv_quote_required'));assert.match(result.body,/\{\{clinicEvidence\}\}/);assert(!result.body.includes('5 years'));assert(!result.body.includes('passed the AMC'));assert(!result.body.includes('begin immediately'));assert.equal(result.dossier.practiceManager.value,null);assert.equal(result.dossier.network.value,null);assert.equal(result.dossier.activity.clinicOperatingStatus,'not_verified');assert(result.clinicEvidenceCandidates.some(c=>c.text===clinic));
 });
 test('live letter suggestion is source and CV based but never authorizes queueing before review',()=>{
  const result=build(base);assert.equal(result.previewStatus,'unreviewed_suggestion');assert(result.previewBody.includes('Synthetic Family Practice'));assert(result.previewBody.includes(writing.openingParagraph));assert(!result.previewBody.includes('{{'));assert.equal(result.readyForReview,false);assert(result.missingFields.includes('cv_quote_required'));assert(result.body.includes('{{cvEvidence}}'));
  const absent=build({...base,profile:{name:'Synthetic'},cvText:''});assert.equal(absent.previewBody,null);assert.equal(absent.previewStatus,'insufficient_evidence');
+});
+test('validated linked clinic facts retain their own source receipt and raw opportunity properties cannot supply them',()=>{
+ const parent='page_'+'e'.repeat(32),stamp=new Date(now-60000).toISOString(),childStamp=new Date(now-30000).toISOString(),childQuote='Our practice provides diabetes management and preventive care.',selectedCv='My clinical experience includes diabetes management and preventive care.';
+ const child={text:childQuote,sourceURL:'https://clinic.example.invalid/services',readAt:childStamp,parentPageId:parent,parentReadAt:stamp};
+ const opportunity={...source,reading:{status:'read',pageId:parent,readAt:stamp}};
+ const input={...base,opportunity,cvText:selectedCv,cvQuote:selectedCv,clinicQuote:childQuote,confirmCvQuote:true,verifiedClinicEvidence:[child]};
+ const result=build(input);assert.equal(result.readyForReview,true);assert(result.body.includes('diabetes management and preventive care'));
+ const selected=result.clinicEvidenceCandidates.find(item=>item.text===childQuote);assert.equal(selected.sourceUrl,child.sourceURL);assert.equal(selected.sourceRelation,'linked_page');
+ assert.equal(result.factBasis.clinic[0].sourceURL,child.sourceURL);assert.equal(result.factBasis.clinic[0].readAt,childStamp);
+ const proof=result.provenance.find(item=>item.kind==='clinic_quote');assert.equal(proof.url,child.sourceURL);assert.equal(proof.parentPageId,parent);assert.equal(proof.parentReadAt,stamp);
+ assert.equal(result.dossier.sourcePage.value,source.url);
+ assert.throws(()=>build({...input,verifiedClinicEvidence:[],opportunity:{...opportunity,clinicEvidence:[child]}}),/clinic_quote_not_in_current_source/);
+ for(const change of [{sourceURL:'https://foreign.example.invalid/services'},{readAt:new Date(now-8*86400000).toISOString()},{readAt:new Date(now-120000).toISOString()},{readAt:new Date(now+120000).toISOString()},{parentPageId:'page_'+'d'.repeat(32)},{parentReadAt:new Date(now-120000).toISOString()},{category:'history'}])assert.throws(()=>build({...input,verifiedClinicEvidence:[{...child,...change}]}),/clinic_quote_not_in_current_source/);
+ assert.throws(()=>build({...input,opportunity:{...opportunity,reading:{...opportunity.reading,status:'fetch_failed'}}}),/clinic_quote_not_in_current_source/);
+ assert.throws(()=>build({...input,opportunity:{...opportunity,reading:{...opportunity.reading,pageId:'unrelated'}}}),/clinic_quote_not_in_current_source/);
 });
 test('confirmed source/CV package remains plain source-bound text and own CV confirmation is not credential verification',()=>{
  const result=build({...base,...confirmed});assert.equal(result.readyForReview,true);assert(!result.body.includes('{{'));assert(result.body.includes('chronic disease care and minor procedures at Synthetic Family Practice'));assert(result.body.includes('wound care and chronic disease management'));assert.equal(result.cvVersionId,cvId);assert.equal(result.templateName,GP_APPLICATION_TEMPLATES[1].name);assert.equal(result.provenance.at(-1).status,'owner_confirmed_self_report_not_credential_verification');assert.deepEqual(result.recipients,['manager@clinic.example.invalid']);assert.equal(result.paragraphs.opening,writing.openingParagraph);assert.equal(result.paragraphs.closing,writing.closingParagraph);assert.equal(result.writingStatus.paragraphCount,4);assert(result.body.includes('Email: '+writing.signatureEmail));assert(result.body.includes('Phone: '+writing.signaturePhone));assert.equal(result.body.includes('Your published information states'),false);assert.equal(result.body.includes('My CV records'),false);assert(!result.body.includes('**'));

@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 import {dispatchClinicBankReading,handleClinicBankRequest,CLINIC_BANK_REFRESH_MS} from '../cloud/clinic-bank.mjs';
 import {extractPublicContacts} from '../cloud/public-contact-extraction.mjs';
 import {CLINIC_RESEARCH_VERSION} from '../cloud/clinic-research-context.mjs';
+import {handleClinicEnquiryRequest} from '../cloud/clinic-enquiry.mjs';
 const owner='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',at=Date.parse('2026-11-15T12:00:00Z'),member=async()=>({active:true}),root='https://clinic.example/';
 const html=text=>new Response(text,{headers:{'Content-Type':'text/html'}});
 function fixture(){const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../cloud/clinic-bank-schema.sql',import.meta.url),'utf8'));let statements=0;return{db,get statements(){return statements;},env:{CLINIC_BANK_READING_ENABLED:'true',GOOGLE_DB:{prepare(sql){statements++;return{bind(...args){return{async first(){return db.prepare(sql).get(...args)||null;},async all(){return{results:db.prepare(sql).all(...args)};},async run(){return{meta:db.prepare(sql).run(...args)};}};}};}}}};}
@@ -15,6 +16,26 @@ const content={
  [root+'team']:'<main><p>Our multidisciplinary team includes general practitioners and registered nurses.</p><section>Practice Manager: Alex Example</section></main>',
 };
 const fetcher=requests=>async url=>{requests.push(url);if(url.endsWith('/robots.txt'))return new Response(null,{status:404});if(content[url])return html(content[url]);throw Error('unexpected URL '+url);};
+
+test('generic email link and canonical service page produce a complete source-bound enquiry automatically',async()=>{
+ const f=fixture(),id='bank_'+'a'.repeat(32),service='Our practice provides chronic disease management and preventive care',cvId='cccccccc-cccc-4ccc-8ccc-cccccccccccc';seed(f.db,id);const requests=[];
+ await dispatchClinicBankReading(f.env,async url=>{
+  requests.push(url);if(url.endsWith('/robots.txt'))return new Response(null,{status:404});
+  if(url===root)return html('<title>Synthetic Medical Practice</title><main><p>'+('Welcome to our local practice website '.repeat(30))+'</p><a href="mailto:jobs%40clinic.example?subject=GP">Email our practice</a></main><nav><a href="https://www.clinic.example/services">Our services</a></nav>');
+  if(url==='https://www.clinic.example/services')return html('<main><p>'+service+'</p></main>');
+  throw Error('Unexpected crawl');
+ },at,member);
+ assert(requests.includes('https://www.clinic.example/services'));assert(requests.length<=6);
+ const row=f.db.prepare('SELECT * FROM clinic_bank_leads WHERE id=?').get(id),snapshot=JSON.parse(row.result_json);assert.equal(row.new_email_count,1);assert(snapshot.contacts[0].quote.includes('jobs@clinic.example'));assert(snapshot.research.facts.some(fact=>fact.text===service));
+ const context={userId:owner,profileId:'arash',rest:async(table,query)=>{
+  assert(query.includes('user_id=eq.'+owner));assert(query.includes('profile_id=eq.arash'));
+  if(table==='immi_cv_defaults')return[{version_id:cvId}];
+  if(table==='immi_cv_versions')return[{id:cvId,text:'Provided chronic disease management and preventive care to patients.'}];
+  if(table==='immi_profiles')return[{data:{name:'Dr Synthetic',planning:{gpApplicationWriting:{confirmedByOwner:true,writingVersion:'human-four-paragraph-v1',openingParagraph:'I am a synthetic GP seeking an appropriately supervised position in Australian general practice.',closingParagraph:'Please let me know a convenient time to discuss how I can support your practice.',signatureEmail:'synthetic@example.invalid',signaturePhone:'+00 111 222 333'}}}}];
+  throw Error('Unexpected owner table');
+ }};
+ const response=await handleClinicEnquiryRequest(new Request('https://app.example/api/clinic-bank/enquiry?profile=arash&id='+id),f.env,context,at),enquiry=await response.json();assert.equal(response.status,200);assert.equal(enquiry.recipients[0].value,'jobs@clinic.example');assert(enquiry.draft.body);assert.equal(enquiry.draft.clinicQuote,service);assert.equal(enquiry.draft.clinicQuoteSourceURL,'https://www.clinic.example/services');assert.equal(enquiry.draft.evidenceMatch.status,'direct_service_overlap');assert.equal(enquiry.automaticSending,false);assert.equal(enquiry.vacancyVerified,false);assert.equal(enquiry.supervisionVerified,false);
+});
 
 test('navigation exposes bounded service/training/recruitment links without off-site or file crawl',()=>{
  const links=extractPublicContacts({sourceURL:root,readAt:new Date(at).toISOString(),html:'<nav><a href="/services">Services</a><a href="/training">Training</a><a href="/careers">Careers</a><a href="https://foreign.example/services">Services</a><a href="/services.pdf">Services</a></nav>'}).followLinks;

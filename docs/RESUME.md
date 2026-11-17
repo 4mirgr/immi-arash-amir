@@ -1,5 +1,7 @@
 # Resume this project with minimal context
 
+Latest Arash performance/correctness audit: [2026-11-17 report](ARASH-AUDIT-2026-11-17.fa.md). Source continuation, reader leases/child proof, factual writing, single-request snapshots and cancellable two-clinic draft preparation were reviewed and tested; read its deployment receipt before assuming runtime.
+
 Latest Arash repair: [2026-11-16 report](ARASH-REPAIR-2026-11-16.fa.md). It covers provider verification/recovery, visible single/bulk sending, complete private signatures, source-bound academic editing and bounded parallel clinic research. Read before diagnosing the same symptoms again.
 
 Public page reading/extraction: read docs/CONTENT-PIPELINE.fa.md selectively. Dedicated public-page schema and queue/content/profile evidence live ONLY in OPPORTUNITY_DB. Discovered links are not evidence until content is actually retrieved. Runtime HTML/text reader is bounded; PDF ingestion uses the separate offline reader. Keep partial/blocked/archived/eligibility uncertainty visible and never apply a later page reading to an earlier publication edition.

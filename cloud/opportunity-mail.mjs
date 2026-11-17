@@ -23,10 +23,11 @@ export async function handleOpportunityMailRequest(request,env,context,fetcher=f
   if(url.searchParams.has('profile')&&url.searchParams.get('profile')!==context.profileId)fail('profile_access_denied',403);
   if(!env.OPPORTUNITY_DB||!env.GOOGLE_DB)fail('opportunity_mail_storage_missing',503);
   const row=await env.OPPORTUNITY_DB.prepare('SELECT * FROM opportunity_editions WHERE id=?').bind(match[1]).first();
-  condition(row,context.profileId);let source=JSON.parse(row.data);
+  condition(row,context.profileId);let source=JSON.parse(row.data),verifiedClinicEvidence=[];
   if(env.PUBLIC_PAGE_READING_ENABLED==='true'){
    try{const [enriched]=await enrichReadPages(env.OPPORTUNITY_DB,[row],context.profileId,Date.now(),true);
-    if(['read','read_partial'].includes(enriched?.reading?.status))source={...source,fullText:enriched.fullText,reading:enriched.reading,contactEvidence:enriched.contactEvidence||[],namedContactEvidence:enriched.namedContactEvidence||[]};
+    if(enriched?.contactDiscovery)source={...source,contactDiscovery:enriched.contactDiscovery};
+    if(['read','read_partial'].includes(enriched?.reading?.status)){source={...source,fullText:enriched.fullText,reading:enriched.reading,contactEvidence:enriched.contactEvidence||[],namedContactEvidence:enriched.namedContactEvidence||[],enrichment:enriched.enrichment||null};verifiedClinicEvidence=Array.isArray(enriched.clinicEvidence)?enriched.clinicEvidence:[];}
    }catch{/* Missing reading storage never manufactures a recipient. */}
   }
   const recipientDetails=(source.contactEvidence||[]).filter(contact=>contact.type==='email'&&['same_page','linked_page'].includes(contact.sourceRelation)&&['application','organization_general','unknown'].includes(contact.contactRole)&&/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(contact.value)).map(contact=>({...contact,value:contact.value.toLowerCase()}));
@@ -53,11 +54,12 @@ export async function handleOpportunityMailRequest(request,env,context,fetcher=f
   if(input.application!==undefined){
    const app=input.application;
    if(context.profileId!=='arash'||!app||typeof app!=='object'||Array.isArray(app)||Object.keys(app).some(k=>!['variant','subjectIndex','clinicQuote','cvQuote','confirmCvQuote','connectionId','confirmConnection','refinementId'].includes(k))||!['A','B','C'].includes(app.variant)||!Number.isInteger(app.subjectIndex)||app.subjectIndex<0||app.subjectIndex>2||typeof app.clinicQuote!=='string'||app.clinicQuote.length>1000||typeof app.cvQuote!=='string'||app.cvQuote.length>1200||app.confirmCvQuote!==true||(app.connectionId!==undefined&&(!UUID.test(app.connectionId)||app.confirmConnection!==true))||(app.confirmConnection!==undefined&&typeof app.confirmConnection!=='boolean')||(app.refinementId!==undefined&&!/^academic_[a-f0-9]{32}$/.test(app.refinementId)))fail('invalid_gp_application');
-   let generated=await getGpApplicationPackage(env,context,row.id,{...app,cvVersionId:input.cvVersionId});
+   const verifiedSnapshot={ownerId:context.userId,profileId:context.profileId,opportunityId:row.id,row,source:{...source,id:row.id,url:row.url,lastSeenAt:row.last_seen_at},ownedCv:{...cv,id:input.cvVersionId},clinicEvidence:verifiedClinicEvidence};
+   let generated=await getGpApplicationPackage(env,context,row.id,{...app,cvVersionId:input.cvVersionId},verifiedSnapshot);
    if(!generated.readyForReview)fail('gp_application_evidence_required',409);
    if(app.refinementId)generated=await resolveAcademicDraft(env,context,generated,app.refinementId);
    if(preset.data?.name!==generated.templateName)fail('gp_application_template_mismatch',409);
-   applicationContactEvidence={person:generated.dossier.practiceManager,namedCandidates:generated.namedContactCandidates,checkedAt:generated.contactDiscovery?.checkedAt||null};
+   applicationContactEvidence={person:generated.dossier.practiceManager,namedCandidates:generated.namedContactCandidates,checkedAt:generated.contactDiscovery?.checkedAt||null,clinicQuote:generated.provenance.find(item=>item.kind==='clinic_quote')||null};
    preset={...preset,data:{...preset.data,subject:generated.subjects[app.subjectIndex],body:generated.body}};
   }
   if(typeof preset.data?.subject!=='string'||typeof preset.data?.body!=='string'||/\{\{|\[\[(?:name|clinic|doctor|recipient)/i.test(preset.data.subject+' '+preset.data.body))fail('template_placeholders_require_review',409);
@@ -83,7 +85,7 @@ export async function handleOpportunityMailRequest(request,env,context,fetcher=f
   frozen.expectedGoogleIdentity={subject:identity.google_sub,email:identity.email};
   let scheduleSnapshot=null,existingJob=null;
   if(match[2]==='schedule'){
-   const evidence=await opportunityScheduleEvidence(env,row,context.profileId,source);
+   const evidence=await opportunityScheduleEvidence(env,row,context.profileId,source,verifiedClinicEvidence);
    scheduleSnapshot={kind:'opportunity_application_v1',opportunityId:row.id,title:row.title,url:row.url,editionKey:row.edition_key,sourceEvidenceDigest:evidence.sourceEvidenceDigest,presetId:input.presetId,cvVersionId:input.cvVersionId,recipient,subject:preset.data.subject,body:preset.data.body,mailbox};
    existingJob=await env.GOOGLE_DB.prepare('SELECT * FROM mail_automation_jobs WHERE owner_id=? AND opportunity_id=? AND recipient=?').bind(context.userId,row.id,recipient).first();
    if(existingJob){

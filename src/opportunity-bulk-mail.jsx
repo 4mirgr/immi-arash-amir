@@ -11,55 +11,86 @@ import './send-action-dock.css';
 const rows=v=>Array.isArray(v)?v:v?.items||v?.versions||v?.presets||[];
 const name=item=>typeof item.organization==='string'?item.organization:item.organization?.name||item.organizationName||item.title||'مرکز انتخاب‌شده';
 const emails=values=>[...new Set((Array.isArray(values)?values:[]).filter(v=>typeof v==='string'&&/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(v)).map(v=>v.toLowerCase()))];
-const messages={batch_limit_reached:'سقف هر نوبت ۲۰ پیام است؛ موارد اضافی ارسال نمی‌شوند.',duplicate_recipient:'این نشانی در آگهی دیگری هم انتخاب شده؛ فقط یک پیام برای آن آماده می‌شود.',recipient_suppressed:'این نشانی در فهرست عدم ارسال حساب شماست.',daily_quota_reached:'سقف امروز تکمیل شده است.',published_recipient_missing:'ایمیلی برای درخواست در منبع منتشر نشده است.',source_observation_stale:'دریافت منبع قدیمی است؛ منبع باید دوباره بررسی شود.',source_closed_or_future:'آگهی اکنون قابل اقدام نیست.',opportunity_closed_or_future:'آگهی اکنون قابل اقدام نیست.',application_changed_review_required:'اطلاعات نامه تغییر کرده؛ متن تازه را دوباره بررسی کنید.',sender_connection_changed:'اتصال فرستنده تغییر کرده؛ بازبینی تازه لازم است.',batch_consumed:'این نوبت قبلاً استفاده شده است؛ نتیجه‌ها را بررسی کنید.',queue_unknown:'نتیجهٔ ثبت صف روشن نیست؛ از تکرار ارسال خودداری کنید.',delivery_unknown:'نتیجهٔ ارسال روشن نیست؛ پوشهٔ Sent همین حساب را بررسی کنید.'};
+const messages={signature_name_required:'نام کامل آرش در پروفایل لازم است.',signature_email_required:'ایمیل تماسِ امضای نامه را در پروفایل آرش تکمیل کنید.',signature_phone_required:'تلفن تماسِ امضای نامه را در پروفایل آرش تکمیل کنید.',batch_limit_reached:'سقف هر نوبت ۲۰ پیام است؛ موارد اضافی ارسال نمی‌شوند.',duplicate_recipient:'این نشانی در آگهی دیگری هم انتخاب شده؛ فقط یک پیام برای آن آماده می‌شود.',recipient_suppressed:'این نشانی در فهرست عدم ارسال حساب شماست.',daily_quota_reached:'سقف امروز تکمیل شده است.',published_recipient_missing:'ایمیلی برای درخواست در منبع منتشر نشده است.',source_observation_stale:'دریافت منبع قدیمی است؛ منبع باید دوباره بررسی شود.',source_closed_or_future:'آگهی اکنون قابل اقدام نیست.',opportunity_closed_or_future:'آگهی اکنون قابل اقدام نیست.',application_changed_review_required:'اطلاعات نامه تغییر کرده؛ متن تازه را دوباره بررسی کنید.',sender_connection_changed:'اتصال فرستنده تغییر کرده؛ بازبینی تازه لازم است.',batch_consumed:'این نوبت قبلاً استفاده شده است؛ نتیجه‌ها را بررسی کنید.',queue_unknown:'نتیجهٔ ثبت صف روشن نیست؛ از تکرار ارسال خودداری کنید.',delivery_unknown:'نتیجهٔ ارسال روشن نیست؛ پوشهٔ Sent همین حساب را بررسی کنید.'};
 const reason=value=>messages[value]||value||'این مورد آماده نشد؛ از پروندهٔ همان آگهی بررسی کنید.';
 const statuses={sent:'ارسال تأیید شد',queued:'در صف؛ ارسال نشده',not_attempted:'هنوز اقدام نشده؛ ادامهٔ این نوبت متوقف شد',sending:'در حال بررسی نتیجه؛ دوباره ارسال نکنید',reused:'پیام قبلی؛ دوباره ارسال نشد',failed:'ارسال نشد',delivery_unknown:'نتیجهٔ ارسال نامشخص',queue_unknown:'وضعیت صف نامشخص',cancelled:'ادامه متوقف شد',blocked:'متوقف شد'};
 
-export function OpportunityBulkMail({person,opportunities,onClose,onOpenSettings,onBusyChange,notify=()=>{}}){
- const scope=person+':'+opportunities.map(item=>item.id).join(','),identity=useRef(scope),mounted=useRef(true),operation=useRef(0),lock=useRef(false),draftTarget=useRef(null),finalTarget=useRef(null),settingsTarget=useRef(null);
+export function OpportunityBulkMail(props){
+ // An owner/advertisement change starts a separate draft session immediately;
+ // old content must not remain visible until a replacement request settles.
+ const scope=props.person+':'+props.opportunities.map(item=>item.id).join(',');
+ return <ScopedOpportunityBulkMail key={scope} {...props}/>;
+}
+function ScopedOpportunityBulkMail({person,opportunities,onClose,onOpenSettings,onBusyChange,notify=()=>{}}){
+ const scope=person+':'+opportunities.map(item=>item.id).join(','),identity=useRef(scope),mounted=useRef(true),operation=useRef(0),lock=useRef(false),draftTarget=useRef(null),finalTarget=useRef(null),settingsTarget=useRef(null),preparationAbort=useRef(null);
  if(identity.current!==scope){identity.current=scope;operation.current++;}
  const active=seq=>mounted.current&&identity.current===scope&&operation.current===seq;
  const [data,setData]=useState(null),[cvId,setCvId]=useState(''),[presetId,setPresetId]=useState(''),[variant,setVariant]=useState('auto'),[mailbox,setMailbox]=useState('primary');
  const [drafts,setDrafts]=useState([]),[prepared,setPrepared]=useState(null),[reviewed,setReviewed]=useState(false),[results,setResults]=useState([]),[busy,setBusy]=useState(''),[error,setError]=useState(''),[consumed,setConsumed]=useState(false);
- const account=data?.accounts?.[mailbox],canSend=account?.connected&&account.capabilities?.gmailSend===true;
+ const account=data?.accounts?.[mailbox],canSend=account?.connected&&account.capabilities?.gmailSend===true&&!account.statusUnavailable;
  useEffect(()=>{onBusyChange?.(Boolean(busy));return()=>onBusyChange?.(false);},[busy,onBusyChange]);
- useEffect(()=>{mounted.current=true;loadSetup();return()=>{mounted.current=false;operation.current++;lock.current=false;};},[scope]);
+ useEffect(()=>{mounted.current=true;loadSetup();return()=>{mounted.current=false;operation.current++;lock.current=false;preparationAbort.current?.abort();};},[scope]);
  function clearReview(){setPrepared(null);setReviewed(false);setResults([]);setConsumed(false);}
  function change(setter,value){operation.current++;setter(value);setDrafts([]);clearReview();setError('');}
  async function loadSetup(){
   if(lock.current)return;lock.current=true;const seq=++operation.current;setBusy('setup');setError('');
   try{
-   const [cvs,presets,primary,secondary]=await Promise.all([api('cv/versions?profile='+person),api('presets?profile='+person),api('google/status?profile='+person+'&mailbox=primary').catch(()=>({connected:false})),api('google/status?profile='+person+'&mailbox=secondary').catch(()=>({connected:false}))]);
+   const [cvs,presets,primary,secondary]=await Promise.all([api('cv/versions?profile='+person),api('presets?profile='+person),readAccount('primary'),readAccount('secondary')]);
    if(!active(seq))return;const versions=rows(cvs),templates=rows(presets);setData({cvs:versions,presets:templates,accounts:{primary,secondary}});setCvId(versions.find(item=>item.isDefault||item.is_default)?.id||versions[0]?.id||'');setPresetId(templates.find(item=>item.isDefault||item.is_default)?.id||'');
   }catch(e){if(active(seq))setError(reason(e.message));}finally{if(active(seq)){setBusy('');lock.current=false;}}
+ }
+ async function readAccount(slot){
+  try{return await api('google/status?profile='+person+'&mailbox='+slot);}
+  catch{return {statusUnavailable:true};}
+ }
+ async function refreshAccounts(){
+  if(lock.current||consumed)return;lock.current=true;const seq=++operation.current;setBusy('accounts');setError('');clearReview();
+  try{const [primary,secondary]=await Promise.allSettled([readAccount('primary'),readAccount('secondary')]);if(!active(seq))return;setData(current=>current?{...current,accounts:{primary:primary.status==='fulfilled'?primary.value:{statusUnavailable:true},secondary:secondary.status==='fulfilled'?secondary.value:{statusUnavailable:true}}}:null);}
+  finally{if(active(seq)){setBusy('');lock.current=false;}}
  }
  async function downloadCV(){
   if(lock.current||!cvId)return;lock.current=true;const seq=++operation.current;setBusy('cv');setError('');
   try{const response=await apiResponse('cv/export?'+new URLSearchParams({profile:person,id:cvId,format:'docx'})),blob=await response.blob();if(!active(seq))return;const url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download=person+'-application-cv.docx';anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){if(active(seq))setError(reason(e.message));}finally{if(active(seq)){lock.current=false;setBusy('');}}
  }
+ async function readDraft(path,parentSignal){
+  const controller=new AbortController(),stop=()=>controller.abort();
+  if(parentSignal.aborted)stop();else parentSignal.addEventListener('abort',stop,{once:true});
+  const timer=setTimeout(stop,20000);
+  try{return await api(path,{signal:controller.signal});}
+  finally{clearTimeout(timer);parentSignal.removeEventListener('abort',stop);}
+ }
  async function prepareDrafts(){
   if(lock.current||!cvId||!canSend||(person!=='arash'&&!presetId))return;
-  lock.current=true;const seq=++operation.current;setBusy('drafts');setError('');clearReview();const next=[];
+  lock.current=true;const seq=++operation.current,controller=new AbortController();preparationAbort.current=controller;setBusy('drafts');setError('');clearReview();setDrafts([]);const next=new Array(opportunities.length);let cursor=0;
   try{
-   for(const opportunity of opportunities){
-    if(!active(seq))return;
+   async function worker(){for(;;){
+    if(!active(seq)||controller.signal.aborted)return;const index=cursor++;if(index>=opportunities.length)return;const opportunity=opportunities[index];
     try{
-     const source=await api('opportunities/'+opportunity.id+'/mail?profile='+person);if(!active(seq))return;
+     // Two independent GETs per clinic, with at most two clinics in flight.
+     // Transport, review hashes and final send remain strictly sequential.
+     const responses=await Promise.allSettled([readDraft('opportunities/'+opportunity.id+'/mail?profile='+person,controller.signal),person==='arash'?readDraft('gp-applications/'+opportunity.id+'/package?'+new URLSearchParams({profile:person,variant,cvVersionId:cvId}),controller.signal):Promise.resolve(null)]);
+     if(!active(seq)||controller.signal.aborted)return;
+     if(responses[0].status!=='fulfilled')throw responses[0].reason;const source=responses[0].value;
      if(source.opportunityId!==opportunity.id)throw Error('شناسهٔ آگهی دریافت‌شده همخوان نیست.');
      const recipients=emails(source.publishedRecipients);
      if(!recipients.length)throw Error('published_recipient_missing');
      if(source.scheduling?.approvals?.some(item=>['approved','sending'].includes(item.status)))throw Error('این آگهی زمان‌بندی فعال دارد؛ ابتدا وضعیت آن را در پروندهٔ آگهی بررسی کنید.');
      let pack=null;
      if(person==='arash'){
-      pack=await api('gp-applications/'+opportunity.id+'/package?'+new URLSearchParams({profile:person,variant,cvVersionId:cvId}));if(!active(seq))return;
+      if(responses[1].status!=='fulfilled')throw responses[1].reason;pack=responses[1].value;
       if(pack.profileId!=='arash'||pack.opportunityId!==opportunity.id||pack.cvVersionId!==cvId||!pack.previewBody||!pack.suggestedSelection?.clinicQuote||!pack.suggestedSelection?.cvQuote||!['A','B','C'].includes(pack.variant))throw Error('نامهٔ منبع‌دار این مرکز کامل نیست؛ پروندهٔ آگهی را باز کنید.');
+      const blocker=(Array.isArray(pack.missingFields)?pack.missingFields:[]).find(code=>!['clinic_quote_required','cv_quote_required','cv_confirmation_required','template_placeholders_require_review'].includes(code));if(blocker)throw Error(blocker);
       if(!data.presets.some(item=>item.name===pack.templateName))throw Error('قالب A/B/C این حساب موجود نیست؛ از تنظیمات حساب آن را اضافه کنید.');
      }
-     next.push({opportunity,source,pack,recipients,reviewed:false,error:''});
-    }catch(e){next.push({opportunity,recipients:[],reviewed:false,error:reason(e.message)});}
-    if(active(seq))setDrafts([...next]);
-   }
-  }finally{if(active(seq)){setBusy('');lock.current=false;}}
+     next[index]={opportunity,source,pack,recipients,reviewed:false,error:''};
+    }catch(e){if(!active(seq)||controller.signal.aborted)return;next[index]={opportunity,recipients:[],reviewed:false,error:reason(e.message)};}
+    if(active(seq))setDrafts(next.filter(Boolean));
+   }}
+   await Promise.allSettled(Array.from({length:Math.min(2,opportunities.length)},()=>worker()));
+  }finally{if(preparationAbort.current===controller)preparationAbort.current=null;if(active(seq)){setBusy('');lock.current=false;}}
+ }
+ function cancelDraftPreparation(){
+  if(busy!=='drafts')return;operation.current++;preparationAbort.current?.abort();preparationAbort.current=null;lock.current=false;setBusy('');setError('آماده‌سازی متوقف شد؛ نامه‌های آماده حفظ شدند و هنوز هیچ ایمیلی ارسال نشده است.');
  }
  function chooseRecipients(id,recipients){if(lock.current||consumed)return;setDrafts(current=>current.map(item=>item.opportunity.id===id?{...item,recipients:emails(recipients),reviewed:false}:item));clearReview();}
  function approveDraft(id,value){setDrafts(current=>current.map(item=>item.opportunity.id===id?{...item,reviewed:value}:item));clearReview();}
@@ -92,11 +123,12 @@ export function OpportunityBulkMail({person,opportunities,onClose,onOpenSettings
  }
  const readyDrafts=drafts.filter(item=>!item.error&&item.recipients.length),count=readyDrafts.reduce((sum,item)=>sum+item.recipients.length,0);
  const bulkDisabled=!!busy||consumed;
- const bulkHint=consumed?'نتیجهٔ این نوبت پایین نمایش داده می‌شود.':!data?(busy?'در حال دریافت…':'اطلاعات آماده نشد؛ برای دریافت دوباره، ارسال گروهی را بزنید.'):!canSend?'ابتدا Gmail همین حساب را متصل کنید یا فرستندهٔ متصل را انتخاب کنید.':!cvId?'رزومهٔ پیوست را برای این گروه انتخاب کنید.':person!=='arash'&&!presetId?'قالب ایمیل را برای این گروه انتخاب کنید.':!drafts.length?'۱. نامه‌های اختصاصی را آماده کنید؛ ۲. هر نامه را بررسی کنید؛ ۳. ارسال نهایی گروهی را بزنید.':!readyDrafts.length?'برای این انتخاب‌ها گیرندهٔ آماده‌ای پیدا نشد؛ موارد را بررسی کنید.':!prepared?(readyDrafts.some(item=>!item.reviewed)?'نامه و گیرنده‌های هر مرکز را باز کنید و تیک بازبینی آن را بزنید.':'نامه‌ها بازبینی شده‌اند؛ پیش‌نمایش نهایی را باز کنید.'):!reviewed?'پیش‌نمایش نهایی را بخوانید و تأیید ارسال را بزنید.':'فقط پیام‌های بازبینی‌شده از صندوق انتخاب‌شده ارسال می‌شوند.';
+ const bulkHint=consumed?'نتیجهٔ این نوبت پایین نمایش داده می‌شود.':!data?(busy?'در حال دریافت…':'اطلاعات آماده نشد؛ برای دریافت دوباره، ارسال گروهی را بزنید.'):account?.statusUnavailable?'وضعیت Gmail دریافت نشد؛ ابتدا وضعیت فرستنده را دوباره بررسی کنید.':!canSend?'ابتدا Gmail همین حساب را متصل کنید یا فرستندهٔ متصل را انتخاب کنید.':!cvId?'رزومهٔ پیوست را برای این گروه انتخاب کنید.':person!=='arash'&&!presetId?'قالب ایمیل را برای این گروه انتخاب کنید.':!drafts.length?'۱. نامه‌های اختصاصی را آماده کنید؛ ۲. هر نامه را بررسی کنید؛ ۳. ارسال نهایی گروهی را بزنید.':!readyDrafts.length?'برای این انتخاب‌ها گیرندهٔ آماده‌ای پیدا نشد؛ موارد را بررسی کنید.':!prepared?(readyDrafts.some(item=>!item.reviewed)?'نامه و گیرنده‌های هر مرکز را باز کنید و تیک بازبینی آن را بزنید.':'نامه‌ها بازبینی شده‌اند؛ پیش‌نمایش نهایی را باز کنید.'):!reviewed?'پیش‌نمایش نهایی را بخوانید و تأیید ارسال را بزنید.':'فقط پیام‌های بازبینی‌شده از صندوق انتخاب‌شده ارسال می‌شوند.';
  function focusStep(target,control){const node=target.current;node?.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});(control?node?.querySelector(control):node)?.focus({preventScroll:true});}
  function primaryBulkSend(){
   if(bulkDisabled)return;
   if(!data){loadSetup();return;}
+  if(account?.statusUnavailable){refreshAccounts();return;}
   if(!canSend){if(Object.values(data.accounts).some(item=>item.connected&&item.capabilities?.gmailSend===true))focusStep(settingsTarget,'select[data-bulk-sender]');else onOpenSettings?.();return;}
   if(!cvId||person!=='arash'&&!presetId){if(!cvId&&!data.cvs.length||person!=='arash'&&!presetId&&!data.presets.length)onOpenSettings?.();else focusStep(settingsTarget,!cvId?'select[data-bulk-cv]':'select[data-bulk-preset]');return;}
   if(!drafts.length){prepareDrafts();return;}
@@ -117,8 +149,9 @@ export function OpportunityBulkMail({person,opportunities,onClose,onOpenSettings
     {person==='arash'?<label>سبک نامه<select aria-label="سبک نامهٔ دسته‌ای" value={variant} disabled={!!busy||consumed} onChange={e=>change(setVariant,e.target.value)}><option value="auto">متناسب با هر مرکز</option><option value="A">A · شبکهٔ درمانی</option><option value="B">B · کلینیک مستقل</option><option value="C">C · منطقهٔ روستایی</option></select></label>:<label>قالب ایمیل<select data-bulk-preset aria-label="قالب ارسال دسته‌ای" value={presetId} disabled={!!busy||consumed} onChange={e=>change(setPresetId,e.target.value)}><option value="">قالب را انتخاب کنید</option>{data.presets.map(item=><option key={item.id} value={item.id}>{item.name||item.subject||'قالب'}</option>)}</select></label>}
    </div>
    {cvId&&<button type="button" className="text-button" disabled={!!busy} onClick={downloadCV}><FileText size={14}/>دریافت همین رزومه برای بازبینی</button>}
-   {!canSend&&<p className="notice">اتصال و مجوز ارسال Gmail همین صندوق لازم است. <button type="button" className="text-button" onClick={onOpenSettings}>تنظیمات حساب</button></p>}
+   {account?.statusUnavailable?<p className="notice">وضعیت Gmail دریافت نشد؛ این خطا به معنی قطع اتصال نیست. <button type="button" className="text-button" disabled={!!busy||consumed} onClick={refreshAccounts}>بررسی دوبارهٔ وضعیت Gmail</button></p>:!canSend&&<p className="notice">اتصال و مجوز ارسال Gmail همین صندوق لازم است. <button type="button" className="text-button" onClick={onOpenSettings}>تنظیمات حساب</button></p>}
    <button className="secondary" type="button" disabled={!!busy||!cvId||!canSend||consumed||(person!=='arash'&&!presetId)} onClick={prepareDrafts}><FileText size={15}/>{busy==='drafts'?'در حال آماده‌سازی مرکزها…':'آماده‌کردن نامه‌ها و گیرنده‌ها'}</button>
+   {busy==='drafts'&&<div className="bulk-preparation-status"><p className="section-help" role="status">نامه‌های دو مرکز هم‌زمان آماده می‌شوند؛ نتیجه‌ها به‌ترتیب انتخاب شما نمایش داده می‌شوند.</p><button type="button" className="secondary" onClick={cancelDraftPreparation}>توقف آماده‌سازی نامه‌ها</button></div>}
    {drafts.length>0&&<div className="bulk-mail-drafts" ref={draftTarget} tabIndex={-1}>{drafts.map(draft=><details key={draft.opportunity.id} className="bulk-mail-draft"><summary><MixedText>{name(draft.opportunity)}</MixedText><span>{draft.error?'نیازمند بررسی':draft.recipients.length.toLocaleString(interfaceLocale('fa-IR'))+' گیرنده'}</span></summary>
     {draft.error?<p className="notice"><MixedText>{draft.error}</MixedText></p>:<>
      <fieldset disabled={!!busy||consumed} className="bulk-mail-recipients"><legend>گیرنده‌های همین آگهی</legend><div><button type="button" className="text-button" onClick={()=>chooseRecipients(draft.opportunity.id,draft.source.publishedRecipients)}>انتخاب همه</button><button type="button" className="text-button" onClick={()=>chooseRecipients(draft.opportunity.id,[])}>برداشتن همه</button></div>{emails(draft.source.publishedRecipients).map(address=><label className="checkline" key={address}><input type="checkbox" checked={draft.recipients.includes(address)} onChange={e=>chooseRecipients(draft.opportunity.id,e.target.checked?[...draft.recipients,address]:draft.recipients.filter(value=>value!==address))}/><bdi dir="ltr">{address}</bdi></label>)}</fieldset>

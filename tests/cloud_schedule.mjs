@@ -12,6 +12,10 @@ test('scheduled public collection never accesses Google grants or sends mail', a
           bind() {
             return {
               async run() { return { meta: { changes: 1 } }; },
+              async all() {
+                assert(sql.includes('registered_source_checks'));
+                return { results: [] };
+              },
               async first() {
                 return sql.startsWith('UPDATE') ? null : {
                   lock_until: Date.now() + 60000,

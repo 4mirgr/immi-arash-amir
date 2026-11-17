@@ -1,11 +1,17 @@
 // Imported URLs remain private leads. Public reading neither creates a vacancy
 // nor grants permission to contact anyone. Original spreadsheet contacts are not
 // promoted into source-published evidence or shared with another workspace.
-import {readQueuedPage,PUBLIC_PAGE_REQUEST_LIMIT} from './public-page-worker.mjs';
+import {readQueuedPage,PUBLIC_PAGE_REQUEST_LIMIT,PUBLIC_PAGE_HTTP_TIMEOUT_MS,PUBLIC_PAGE_ROBOTS_TIMEOUT_MS,PUBLIC_PAGE_MAX_CRAWL_DELAY_MS} from './public-page-worker.mjs';
 import {checkAutomationMembership} from './automation-membership.mjs';
 import {buildClinicResearchContext,selectClinicResearchLinks,CLINIC_RESEARCH_VERSION} from './clinic-research-context.mjs';
 export const CLINIC_BANK_REFRESH_MS=7*86400000;
 export const CLINIC_BANK_RUN_LIMIT=2;
+// Both rows are leased before same-host reads run serially. Each observation
+// has at least one robots request, at most five document waits (30s each), and
+// six HTTP timeouts (<=10s each). Two sites plus each 8s membership check and
+// 30s storage headroom round up to eight minutes, covering the next 5min tick.
+const observationWallMs=PUBLIC_PAGE_REQUEST_LIMIT*Math.max(PUBLIC_PAGE_HTTP_TIMEOUT_MS,PUBLIC_PAGE_ROBOTS_TIMEOUT_MS)+(PUBLIC_PAGE_REQUEST_LIMIT-1)*PUBLIC_PAGE_MAX_CRAWL_DELAY_MS;
+export const CLINIC_BANK_LEASE_MS=Math.ceil((CLINIC_BANK_RUN_LIMIT*(observationWallMs+8000)+30000)/60000)*60000;
 const BASE='/api/clinic-bank',UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}});
 const parse=value=>{try{return JSON.parse(value||'{}');}catch{return {};}};
@@ -97,7 +103,7 @@ export async function dispatchClinicBankReading(env,fetcher=fetch,at=Date.now(),
   const legacy="status IN ('public_contacts_found','public_page_read') AND attempts=0 AND (CASE WHEN json_valid(result_json) THEN CASE WHEN json_type(result_json,'$.research.version')='integer' THEN json_extract(result_json,'$.research.version') ELSE 0 END ELSE 0 END)<"+CLINIC_RESEARCH_VERSION;
   for(let i=0;i<CLINIC_BANK_RUN_LIMIT;i++){
    const upgradeSlot=i===1&&upgradeWindow,eligible=upgradeSlot?'(available_at<=? OR ('+legacy+'))':'available_at<=?',priority=upgradeSlot?'CASE WHEN '+legacy+' THEN 0 ELSE 1 END,':'';
-   const row=await db.prepare("UPDATE clinic_bank_leads SET lease_until=?,status=CASE WHEN status='pending' THEN 'reading' ELSE status END WHERE id=(SELECT id FROM clinic_bank_leads WHERE profile_id='arash' AND lease_until<=? AND "+eligible+" ORDER BY "+priority+"available_at,updated_at,id LIMIT 1) AND lease_until<=? AND "+eligible+" RETURNING *").bind(at+180000,at,at,at,at).first();
+   const row=await db.prepare("UPDATE clinic_bank_leads SET lease_until=?,status=CASE WHEN status='pending' THEN 'reading' ELSE status END WHERE id=(SELECT id FROM clinic_bank_leads WHERE profile_id='arash' AND lease_until<=? AND "+eligible+" ORDER BY "+priority+"available_at,updated_at,id LIMIT 1) AND lease_until<=? AND "+eligible+" RETURNING *").bind(at+CLINIC_BANK_LEASE_MS,at,at,at,at).first();
    if(!row){if(i===0&&upgradeWindow)continue;break;}
    claimed.push(row);
   }
@@ -110,7 +116,7 @@ export async function dispatchClinicBankReading(env,fetcher=fetch,at=Date.now(),
     const membership=await membershipFor(row.owner_id);
     if(!membership?.active){
      const status=membership?.reason==='owner_inactive'?'owner_inactive':'membership_check_unavailable';
-     await db.prepare('UPDATE clinic_bank_leads SET lease_until=0,available_at=?,status=?,updated_at=? WHERE id=? AND owner_id=? AND lease_until=?').bind(at+(status==='owner_inactive'?86400000:900000),status,new Date(at).toISOString(),row.id,row.owner_id,at+180000).run();
+     await db.prepare('UPDATE clinic_bank_leads SET lease_until=0,available_at=?,status=?,updated_at=? WHERE id=? AND owner_id=? AND lease_until=?').bind(at+(status==='owner_inactive'?86400000:900000),status,new Date(at).toISOString(),row.id,row.owner_id,at+CLINIC_BANK_LEASE_MS).run();
      return{id:row.id,status};
     }
     const url=clinicBankURL(row.url);
@@ -150,11 +156,12 @@ export async function dispatchClinicBankReading(env,fetcher=fetch,at=Date.now(),
     const clinicalText=read&&clinicalSource&&new URL(clinicalSource).hostname.replace(/^www\./,'')===new URL(row.url).hostname.replace(/^www\./,'')?clinicBankClinicalExcerpt(result.text,result.title):'';
     const clinicalEvidence=read?{clinicalText,clinicalSourceURL:clinicalText?clinicalSource:null,clinicalReadAt:clinicalText?now:null,clinicalScope:'bounded_public_service_statements_not_full_page'}:{clinicalText:previousResult.clinicalText||'',clinicalSourceURL:previousResult.clinicalSourceURL||null,clinicalReadAt:previousResult.clinicalReadAt||null,clinicalScope:previousResult.clinicalScope||'not_recorded'};
     const snapshot={sourceStatus:result.status,sourceURL:read?result.finalUrl||row.url:previousResult.sourceURL||row.url,title:read?clean(result.title,500):previousResult.title||'',contacts,contactsReadAt,...clinicalEvidence,...(read?{research:result.research}:previousResult.research?{research:previousResult.research}:{}),linkedReadings:read?result.linkedReadings||[]:previousResult.linkedReadings||[],limitations:result.limitations||[],lastAttempt:{readAt:now,status:result.status,sourceURL:result.finalUrl||row.url}};
-    await db.prepare('UPDATE clinic_bank_leads SET status=?,attempts=?,available_at=?,lease_until=0,read_at=?,last_success_at=CASE WHEN ? THEN ? ELSE last_success_at END,result_json=?,new_email_count=?,updated_at=? WHERE id=? AND owner_id=? AND lease_until=?').bind(status,attempts,next,now,read?1:0,now,JSON.stringify(snapshot),newEmails,now,row.id,row.owner_id,at+180000).run();
+    const stored=await db.prepare('UPDATE clinic_bank_leads SET status=?,attempts=?,available_at=?,lease_until=0,read_at=?,last_success_at=CASE WHEN ? THEN ? ELSE last_success_at END,result_json=?,new_email_count=?,updated_at=? WHERE id=? AND owner_id=? AND lease_until=?').bind(status,attempts,next,now,read?1:0,now,JSON.stringify(snapshot),newEmails,now,row.id,row.owner_id,at+CLINIC_BANK_LEASE_MS).run();
+    if(Number(stored.meta?.changes)===0)return{id:row.id,status:'lease_lost'};
     return{id:row.id,status,newEmails};
    }catch{
     // Release the lease with a durable backoff, without claiming a read succeeded.
-    await db.prepare("UPDATE clinic_bank_leads SET lease_until=0,available_at=?,status='reading_storage_failed',updated_at=? WHERE id=? AND owner_id=? AND lease_until=?").bind(at+86400000,new Date(at).toISOString(),row.id,row.owner_id,at+180000).run();
+    await db.prepare("UPDATE clinic_bank_leads SET lease_until=0,available_at=?,status='reading_storage_failed',updated_at=? WHERE id=? AND owner_id=? AND lease_until=?").bind(at+86400000,new Date(at).toISOString(),row.id,row.owner_id,at+CLINIC_BANK_LEASE_MS).run();
     return{id:row.id,status:'reading_storage_failed'};
    }
  }

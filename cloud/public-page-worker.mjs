@@ -3,9 +3,12 @@ import {reconcileContactCoverage} from './contact-coverage.mjs';
 import {storePublicReading,PUBLIC_PAGE_REFRESH_MS,PUBLIC_PAGE_RETRY_MS} from './public-page-store.mjs';
 const AGENT='MasirUniversityDiscovery/1.0',MAX_BODY=1000000;
 export const PUBLIC_PAGE_REQUEST_LIMIT=6;
+export const PUBLIC_PAGE_HTTP_TIMEOUT_MS=10000;
+export const PUBLIC_PAGE_ROBOTS_TIMEOUT_MS=8000;
+export const PUBLIC_PAGE_MAX_CRAWL_DELAY_MS=30000;
 const sensitive=/(?:^|\/)(?:login|logout|signin|sign-in|admin|wp-admin|account|auth|apply|application|candidate)(?:\/|$)/i;
 const error=code=>{throw Error(code);};
-function safe(value,bases){if(typeof value!=='string'||/[\x00-\x20\\]/.test(value))error('invalid_url');const u=new URL(value);if(u.protocol!=='https:'||u.username||u.password||u.port||!bases.some(base=>u.hostname===base||u.hostname.endsWith('.'+base))||!/^[-a-z0-9.]+$/.test(u.hostname)||/^\d+(?:\.\d+){3}$/.test(u.hostname)||u.hostname.includes('..')||u.hostname.endsWith('.localhost')||u.hostname.endsWith('.local')||u.hostname.endsWith('.internal')||['nip.io','sslip.io','localtest.me','vcap.me','lvh.me'].some(base=>u.hostname===base||u.hostname.endsWith('.'+base))||sensitive.test(decodeURIComponent(u.pathname))||[...u.searchParams.keys()].some(key=>/token|secret|session|password|code|auth/i.test(key)))error('invalid_url');u.hash='';return u.href;}
+function safe(value,bases){if(typeof value!=='string'||/[\x00-\x20\\]/.test(value))error('invalid_url');const u=new URL(value);if(u.protocol!=='https:'||u.username||u.password||u.port||!bases.some(base=>u.hostname===base||u.hostname.endsWith('.'+base)||base.startsWith('www.')&&u.hostname===base.slice(4))||!/^[-a-z0-9.]+$/.test(u.hostname)||/^\d+(?:\.\d+){3}$/.test(u.hostname)||u.hostname.includes('..')||u.hostname.endsWith('.localhost')||u.hostname.endsWith('.local')||u.hostname.endsWith('.internal')||['nip.io','sslip.io','localtest.me','vcap.me','lvh.me'].some(base=>u.hostname===base||u.hostname.endsWith('.'+base))||sensitive.test(decodeURIComponent(u.pathname))||[...u.searchParams.keys()].some(key=>/token|secret|session|password|code|auth/i.test(key)))error('invalid_url');u.hash='';return u.href;}
 export function robotsAllows(text,target){
  const groups=[];let agents=[],rules=[],delay=0,hasRule=false;
  function save(){if(agents.length)groups.push({agents,rules,delay});agents=[];rules=[];delay=0;hasRule=false;}
@@ -42,13 +45,20 @@ function withoutHiddenMarkup(html){
 export function visiblePageText(html){
  html=withoutHiddenMarkup(html);
  const title=(html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1]||'').replace(/<[^>]*>/g,' ').slice(0,500);
- const body=html.replace(/<(script|style|noscript|nav|footer|header|aside|form|template|svg)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,' ').replace(/<!--[^]*?-->/g,' ').replace(/<[^>]*>/g,' ').replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/&#(x[0-9a-f]+|\d+);/gi,(_,n)=>{const cp=n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):Number(n);return cp>31&&cp<=0x10ffff?String.fromCodePoint(cp):' ';}).replace(/\s+/g,' ').trim();
+ // Block boundaries are meaningful evidence boundaries. Flattening a long
+ // homepage merged unpunctuated service/training paragraphs into one oversized
+ // statement, discarding useful facts and sometimes mixing unrelated context.
+ const body=html.replace(/<(script|style|noscript|nav|footer|header|aside|form|template|svg)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,' ').replace(/<!--[^]*?-->/g,' ')
+  .replace(/<\/?(?:address|article|blockquote|br|caption|dd|div|dl|dt|figcaption|figure|h[1-6]|hr|li|main|ol|p|pre|section|table|tbody|td|th|thead|tr|ul)\b[^>]*>/gi,'\n')
+  .replace(/<[^>]*>/g,' ').replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/&#(x[0-9a-f]+|\d+);/gi,(_,n)=>{const cp=n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):Number(n);return cp>31&&cp<=0x10ffff&&!(cp>=0xd800&&cp<=0xdfff)?String.fromCodePoint(cp):' ';})
+  .split(/\r?\n/).map(line=>line.replace(/\s+/g,' ').trim()).filter(Boolean).join('\n');
  return {title,text:body.slice(0,50000),partial:body.length>50000};
 }
 export async function readQueuedPage(row,fetcher=fetch,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),requestBudget={remaining:PUBLIC_PAGE_REQUEST_LIMIT}){
  const record={id:row.id,url:row.url,title:'',text:'',status:'fetch_failed',readAt:new Date().toISOString(),limitations:['Server HTML/text extraction only; dynamic content and hidden layout may require separate review.']};
  try{
   let data;try{data=JSON.parse(row.data);}catch{error('invalid_url');}
+  if(typeof data?.parentReadAt==='string'&&Number.isFinite(Date.parse(data.parentReadAt)))record.parentReadAt=data.parentReadAt;
   const bases=(Array.isArray(data?.officialBases)?data.officialBases:[]).filter(v=>typeof v==='string'&&/^[a-z0-9.-]+$/.test(v)&&v.includes('.')&&!/^\d+(?:\.\d+){3}$/.test(v));
   const boundedFetch=async(url,options)=>{if(!Number.isInteger(requestBudget?.remaining)||requestBudget.remaining<=0)error('request_budget_exhausted');requestBudget.remaining--;return fetcher(url,options);};
   // Some sites redirect /robots.txt to a canonical HTTPS host. Follow only the
@@ -56,7 +66,7 @@ export async function readQueuedPage(row,fetcher=fetch,sleep=ms=>new Promise(res
   async function robotsPolicy(origin){
    let target=origin+'/robots.txt';
    for(let hop=0;hop<3;hop++){
-    const response=await boundedFetch(target,{headers:{'User-Agent':AGENT,Accept:'text/plain'},redirect:'manual',signal:AbortSignal.timeout(8000)});
+    const response=await boundedFetch(target,{headers:{'User-Agent':AGENT,Accept:'text/plain'},redirect:'manual',signal:AbortSignal.timeout(PUBLIC_PAGE_ROBOTS_TIMEOUT_MS)});
     if(response.status>=300&&response.status<400){const location=response.headers.get('Location');await response.body?.cancel();if(!location||hop===2)error('robots_unavailable');target=safe(new URL(location,target).href,bases);continue;}
     if(response.status===401||response.status===403){await response.body?.cancel();error('robots_blocked');}
     if(![200,404].includes(response.status)){await response.body?.cancel();error('robots_unavailable');}
@@ -67,8 +77,8 @@ export async function readQueuedPage(row,fetcher=fetch,sleep=ms=>new Promise(res
   let url=safe(row.url,bases);const policies=requestBudget.policies instanceof Map?requestBudget.policies:(requestBudget.policies=new Map());
   for(let hop=0;hop<3;hop++){
    const origin=new URL(url).origin;if(!policies.has(origin)){const policy=await robotsPolicy(origin);policies.set(origin,policy.text);if(policy.canonicalOrigin)policies.set(policy.canonicalOrigin,policy.text);}
-   const permission=robotsAllows(policies.get(origin),url);if(!permission.allowed)error('robots_blocked');if(permission.delay>30)error('crawl_delay_exceeds_budget');if(permission.delay)await sleep(permission.delay*1000);
-   const response=await boundedFetch(url,{headers:{'User-Agent':AGENT,Accept:'text/html,text/plain'},redirect:'manual',signal:AbortSignal.timeout(10000)});
+   const permission=robotsAllows(policies.get(origin),url);if(!permission.allowed)error('robots_blocked');if(permission.delay*1000>PUBLIC_PAGE_MAX_CRAWL_DELAY_MS)error('crawl_delay_exceeds_budget');if(permission.delay)await sleep(permission.delay*1000);
+   const response=await boundedFetch(url,{headers:{'User-Agent':AGENT,Accept:'text/html,text/plain'},redirect:'manual',signal:AbortSignal.timeout(PUBLIC_PAGE_HTTP_TIMEOUT_MS)});
    if(response.status>=300&&response.status<400){const location=response.headers.get('Location');await response.body?.cancel();if(!location||hop===2)error('redirect_limit');url=safe(new URL(location,url).href,bases);continue;}
    if(!response.ok){await response.body?.cancel();error(response.status===401||response.status===403?'access_denied':response.status>=500||[408,425,429].includes(response.status)?'http_error':'http_rejected');}
    const contentType=response.headers.get('Content-Type')||'';record.contentType=contentType;
@@ -91,15 +101,25 @@ export async function dispatchPublicPageReading(env,fetcher=fetch,now=Date.now()
  for(let i=0;i<2;i++){
   // Keep a previous successful status/evidence visible while a refresh holds its lease.
   // Legacy successful rows with available_at=0 still obey the seven-day read_at age.
-  const eligible="lease_until<=? AND available_at<=? AND (status IN ('pending','reading','fetch_failed','robots_unavailable','http_error','request_budget_exhausted','reading_storage_failed') AND attempts<3 OR (status IN ('read','read_partial') AND (attempts<3 OR lease_until=0) AND (read_at<=? OR json_extract(data,'$.refreshRequested')=1)))";
+  // If the final allowed attempt dies before storing its result, its expired
+  // lease must not leave a permanently 'reading' row. Recovery consumes one of
+  // these same two work slots, performs no HTTP and does not extend retries.
+  const interrupted="status IN ('reading','read','read_partial') AND attempts>=3 AND lease_until>0";
+  const eligible="lease_until<=? AND available_at<=? AND ("+interrupted+" OR status IN ('pending','reading','fetch_failed','robots_unavailable','http_error','request_budget_exhausted','reading_storage_failed') AND attempts<3 OR (status IN ('read','read_partial') AND (attempts<3 OR lease_until=0) AND (read_at<=? OR json_extract(data,'$.refreshRequested')=1)))";
   const cutoff=new Date(now-PUBLIC_PAGE_REFRESH_MS).toISOString();
   const clinicalText="lower(title||' '||coalesce(json_extract(data,'$.labels'),''))";
   const clinical=`(${clinicalText} LIKE '%general pract%' OR ${clinicalText} LIKE '%medical officer%' OR ${clinicalText} LIKE '%rural generalist%' OR ${clinicalText} LIKE '%level 1%' OR instr(' '||replace(replace(${clinicalText},'-',' '),'\"',' ')||' ',' gp ')>0)`;
   const contactFollowup="(json_extract(data,'$.contactFollowup')=1 OR (json_extract(data,'$.depth')=1 AND (lower(url) LIKE '%contact%' OR lower(url) LIKE '%team%' OR lower(url) LIKE '%staff%' OR lower(url) LIKE '%about%')))";
-  const priority=i===0?`CASE WHEN country='AU' AND ${contactFollowup} THEN 0 WHEN country='AU' AND ${clinical} AND NOT EXISTS(SELECT 1 FROM public_page_enrichment x,json_each(x.data,'$.contacts') contact WHERE x.page_id=public_page_queue.id AND json_extract(contact.value,'$.type')='email') THEN 1 WHEN country='AU' THEN 2 ELSE 3 END`:"CASE WHEN country='IT' THEN 0 ELSE 1 END";
-  const row=await db.prepare(`UPDATE public_page_queue SET status=CASE WHEN status IN ('read','read_partial') THEN status ELSE 'reading' END,lease_until=?,attempts=CASE WHEN status IN ('read','read_partial') AND lease_until=0 THEN 1 ELSE attempts+1 END WHERE id=(SELECT id FROM public_page_queue WHERE ${eligible} ORDER BY ${priority},available_at,attempts,id LIMIT 1) AND ${eligible} RETURNING *`).bind(now+180000,now,now,cutoff,now,now,cutoff).first();
+  const priority=i===0?`CASE WHEN ${interrupted} THEN 0 WHEN country='AU' AND ${contactFollowup} THEN 1 WHEN country='AU' AND ${clinical} AND NOT EXISTS(SELECT 1 FROM public_page_enrichment x,json_each(x.data,'$.contacts') contact WHERE x.page_id=public_page_queue.id AND json_extract(contact.value,'$.type')='email') THEN 2 WHEN country='AU' THEN 3 ELSE 4 END`:"CASE WHEN country='IT' THEN 0 ELSE 1 END";
+  const row=await db.prepare(`UPDATE public_page_queue SET status=CASE WHEN ${interrupted} THEN 'fetch_failed' WHEN status IN ('read','read_partial') THEN status ELSE 'reading' END,last_error=CASE WHEN ${interrupted} THEN 'lease_expired_after_attempt_limit' ELSE last_error END,data=CASE WHEN ${interrupted} OR coalesce(json_extract(data,'$.depth'),0)<>1 THEN data ELSE json_set(data,'$.leasedParentReadAt',json_extract(data,'$.parentReadAt')) END,lease_until=?,attempts=CASE WHEN ${interrupted} THEN attempts WHEN status IN ('read','read_partial') AND lease_until=0 THEN 1 ELSE attempts+1 END WHERE id=(SELECT id FROM public_page_queue WHERE ${eligible} ORDER BY ${priority},available_at,attempts,id LIMIT 1) AND ${eligible} RETURNING *`).bind(now+180000,now,now,cutoff,now,now,cutoff).first();
   if(!row)break;
-  try{receipts.push(await storePublicReading(db,await readQueuedPage(row,fetcher),now));}catch{
+  try{
+   if(row.status==='fetch_failed'&&row.last_error==='lease_expired_after_attempt_limit'){
+    let parentReadAt=null;try{const data=JSON.parse(row.data);parentReadAt=data.leasedParentReadAt||data.parentReadAt||null;}catch{}
+    const recovered=await storePublicReading(db,{...row,...(parentReadAt?{parentReadAt}:{}),status:'fetch_failed',text:'',readAt:new Date(now).toISOString(),limitations:['lease_expired_after_attempt_limit','The previous final reading attempt expired before recording its result. No additional HTTP request was made.']},now);
+    receipts.push({...recovered,recovery:'lease_expired_after_attempt_limit'});
+   }else receipts.push(await storePublicReading(db,await readQueuedPage(row,fetcher),now));
+  }catch{
    // A failed result must not leave a prior extracted conclusion active.
    await db.batch([
     db.prepare("UPDATE public_page_queue SET status='reading_storage_failed',lease_until=0,last_error='reading_storage_failed',available_at=? WHERE id=? AND lease_until=?").bind(now+PUBLIC_PAGE_RETRY_MS,row.id,now+180000),

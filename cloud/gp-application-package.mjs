@@ -3,11 +3,12 @@
 import {enrichReadPages} from './opportunity-store.mjs';
 import {publishedRecipients} from './mail-automation.mjs';
 import {gpOpportunitySignals} from './gp-opportunity-signals.mjs';
-import {composeClinicParagraphs,readGpWritingProfile,suggestEvidencePair} from './gp-letter-composer.mjs';
+import {composeClinicParagraphs,readGpWritingProfile,suggestEvidencePair,cvEvidenceScope} from './gp-letter-composer.mjs';
 import {readClinicConnections} from './gp-clinic-connections.mjs';
 import {publishedApplicationContact} from './gp-contact-discovery.mjs';
 const ID=/^opp_[a-f0-9]{32}$/;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+const PAGE_ID=/^page_[a-f0-9]{32}$/;
 const VARIANTS=['A','B','C'];
 const EMAIL=/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 const NETWORKS=['IPN','ForHealth','Sonic HealthPlus','Ochre Health','Partnered Health','Healius','NCN Health'];
@@ -32,6 +33,17 @@ function sentences(value,{cv=false}={}){
  }
  return out;
 }
+function linkedClinicCandidates(opportunity,verifiedClinicEvidence,now){
+ const root=safeURL(opportunity.url),reading=opportunity.reading,rootAt=Date.parse(reading?.readAt||''),maxAge=7*86400000;
+ if(!root||!['read','read_partial'].includes(reading?.status)||!PAGE_ID.test(reading?.pageId||'')||!Number.isFinite(rootAt)||rootAt>now+60000||now-rootAt>maxAge||!Array.isArray(verifiedClinicEvidence))return [];
+ const host=new URL(root).hostname.replace(/^www\./,''),out=[];
+ for(const fact of verifiedClinicEvidence.slice(0,12)){
+  const value=normalize(fact?.text),url=safeURL(fact?.sourceURL),at=Date.parse(fact?.readAt||'');
+  if(!value||value.length>600||INSTRUCTION.test(value)||/[{}]/.test(value)||!CLINICAL.test(value)||!url||new URL(url).hostname.replace(/^www\./,'')!==host||fact.parentPageId!==reading.pageId||fact.parentReadAt!==reading.readAt||fact.category!==undefined&&!['services','training','team','recruitment'].includes(fact.category)||!Number.isFinite(at)||at<rootAt||at>now+60000||now-at>maxAge)continue;
+  if(!out.some(item=>item.text===value))out.push({text:value,sourceUrl:url,readAt:fact.readAt,parentPageId:fact.parentPageId,parentReadAt:fact.parentReadAt,sourceRelation:'linked_page',status:'source_statement_not_independently_verified'});
+ }
+ return out;
+}
 const SOURCE_CAUTION='Published clinic and advertisement statements require review; they do not establish an approved supervisor, current vacancy or personal eligibility.';
 const FOUR_PARAGRAPH_BODY='Dear {{practiceManager}},\n\n{{openingParagraph}}\n\n{{clinicEvidence}}\n\n{{cvEvidence}}\n\n{{closingParagraph}}\n\nKind regards,\n{{doctorName}}';
 export const GP_APPLICATION_TEMPLATES=Object.freeze([
@@ -41,7 +53,7 @@ export const GP_APPLICATION_TEMPLATES=Object.freeze([
 ].map(item=>Object.freeze(item)));
 export const templateDefinitions=GP_APPLICATION_TEMPLATES;
 
-export function buildGpApplicationPackage({opportunity={},profile={},cvText='',cvVersionId=null,variant='auto',clinicQuote='',cvQuote='',confirmCvQuote=false,selectedConnection=null,confirmConnection=false,now=Date.now()}={}){
+export function buildGpApplicationPackage({opportunity={},profile={},cvText='',cvVersionId=null,variant='auto',clinicQuote='',cvQuote='',confirmCvQuote=false,selectedConnection=null,confirmConnection=false,verifiedClinicEvidence=[],now=Date.now()}={}){
  if(!['auto',...VARIANTS].includes(variant))fail('invalid_gp_variant');
  const sourceURL=safeURL(opportunity.url),sourceText=[opportunity.summary,opportunity.fullText].map(value=>text(value,50000)).filter(Boolean).join('\n');
  const organizations=typeof opportunity.organization==='string'?opportunity.organization:opportunity.organization?.name;
@@ -58,11 +70,13 @@ export function buildGpApplicationPackage({opportunity={},profile={},cvText='',c
  const urban=geography.monashMentioned.some(n=>n<=2)||lines(sourceText).some(s=>/\b(?:metropolitan|urban)\b/i.test(s)&&!INSTRUCTION.test(s)&&!/\b(?:not|non[- ])\s*(?:a\s+)?(?:metropolitan|urban)\b/i.test(s));
  const recommendedVariant=regional?'C':explicitNetwork&&urban?'A':'B';
  const chosen=variant==='auto'?recommendedVariant:variant;
- const clinicEvidenceCandidates=sentences(sourceText).map(value=>({text:value,sourceUrl:sourceURL,status:'source_statement_not_independently_verified'})).slice(0,24);
- const cvEvidenceCandidates=sentences(cvText,{cv:true}).map(value=>({text:value,source:'own_cv_self_reported',status:'owner_confirmation_required'})).slice(0,24);
+ const clinicEvidenceCandidates=sentences(sourceText).map(value=>({text:value,sourceUrl:sourceURL,readAt:opportunity.reading?.readAt||opportunity.lastSeenAt||opportunity.last_seen_at||null,sourceRelation:'same_page',status:'source_statement_not_independently_verified'})).slice(0,24);
+ for(const candidate of linkedClinicCandidates(opportunity,verifiedClinicEvidence,now))if(!clinicEvidenceCandidates.some(item=>item.text===candidate.text))clinicEvidenceCandidates.push(candidate);
+ const cvEvidenceCandidates=sentences(cvText,{cv:true}).map(value=>({text:value,source:'own_cv_self_reported',status:'owner_confirmation_required',cvScope:cvEvidenceScope(value)})).slice(0,24);
  const selectedClinic=normalize(clinicQuote),selectedCv=normalize(cvQuote);
  if(selectedClinic&&!clinicEvidenceCandidates.some(item=>item.text===selectedClinic))fail('clinic_quote_not_in_current_source',409);
  if(selectedCv&&!cvEvidenceCandidates.some(item=>item.text===selectedCv))fail('cv_quote_not_in_owned_cv',409);
+ const selectedClinicFact=clinicEvidenceCandidates.find(item=>item.text===selectedClinic);
  const managerLine=lines(sourceText).find(line=>/^practice manager\s*[:–—-]\s*[A-Za-z]/i.test(line)&&line.length<180&&!INSTRUCTION.test(line));
  const managerName=managerLine?managerLine.replace(/^practice manager\s*[:–—-]\s*/i,'').split(/\s+(?:phone|email|telephone)\s*:/i)[0]:null;
  const named=publishedApplicationContact(opportunity);
@@ -80,7 +94,7 @@ export function buildGpApplicationPackage({opportunity={},profile={},cvText='',c
  if(!writing.confirmed)missingFields.push('writing_profile_confirmation_required');
  missingFields.push(...writing.missingSignatureFields);
  if(selectedConnection&&confirmConnection!==true)missingFields.push('connection_confirmation_required');
- const composed=composeClinicParagraphs({clinicName:name,clinicQuote:selectedClinic,cvQuote:selectedCv,confirmed:confirmCvQuote===true,selectedConnection,confirmConnection,clinicSourceURL:sourceURL,clinicReadAt:opportunity.lastSeenAt||opportunity.last_seen_at});
+ const composed=composeClinicParagraphs({clinicName:name,clinicQuote:selectedClinic,cvQuote:selectedCv,confirmed:confirmCvQuote===true,selectedConnection,confirmConnection,clinicSourceURL:selectedClinicFact?.sourceUrl||sourceURL,clinicReadAt:selectedClinicFact?.readAt||opportunity.lastSeenAt||opportunity.last_seen_at});
  const clinicParagraph=composed.clinicReason,cvParagraph=composed.candidateValue;
  const paragraphs={opening:writing.opening,clinic:clinicParagraph,value:cvParagraph,closing:writing.closing};
  const suggestedSelection=suggestEvidencePair(clinicEvidenceCandidates,cvEvidenceCandidates);
@@ -91,14 +105,15 @@ export function buildGpApplicationPackage({opportunity={},profile={},cvText='',c
  // Display-only suggestions never replace explicit source/CV confirmations.
  let previewBody=null,previewParagraphs=null;
  if(writing.confirmed&&suggestedSelection){
-  const proposed=composeClinicParagraphs({clinicName:name,clinicQuote:suggestedSelection.clinicQuote,cvQuote:suggestedSelection.cvQuote,confirmed:true,clinicSourceURL:sourceURL,clinicReadAt:opportunity.lastSeenAt||opportunity.last_seen_at});
+  const suggestedFact=clinicEvidenceCandidates.find(item=>item.text===suggestedSelection.clinicQuote);
+  const proposed=composeClinicParagraphs({clinicName:name,clinicQuote:suggestedSelection.clinicQuote,cvQuote:suggestedSelection.cvQuote,confirmed:true,clinicSourceURL:suggestedFact?.sourceUrl||sourceURL,clinicReadAt:suggestedFact?.readAt||opportunity.lastSeenAt||opportunity.last_seen_at});
   previewParagraphs={opening:writing.opening,clinic:proposed.clinicReason,value:proposed.candidateValue,closing:writing.closing};
   const proposedSubstitutions={...substitutions,clinicEvidence:proposed.clinicReason,cvEvidence:proposed.candidateValue};
   previewBody=template.body.replace(/\{\{(clinicName|practiceManager|doctorName|openingParagraph|closingParagraph|clinicEvidence|cvEvidence)\}\}/g,(match,key)=>proposedSubstitutions[key]??match)+'\n'+signature;
  }
  const subjects=chosen==='C'?['Supervised GP enquiry for your community — '+(name||'{{clinicName}}'),'GP expression of interest — '+(name||'{{clinicName}}'),'General practice role enquiry — '+doctorName]:chosen==='A'?['GP application — '+(name||'{{clinicName}}')+' — '+doctorName,'Application for a supervised GP role — '+(name||'{{clinicName}}'),'GP opportunity enquiry — '+(name||'{{clinicName}}')]:['GP enquiry — '+(name||'{{clinicName}}'),'Expression of interest — '+doctorName,'Supervised GP role enquiry — '+(name||'{{clinicName}}')];
  if(/\{\{|\[\[(?:name|clinic|doctor|recipient)/i.test(body+' '+subjects.join(' '))&&!missingFields.includes('template_placeholders_require_review'))missingFields.push('template_placeholders_require_review');
- const provenance=[{kind:'advertisement',url:sourceURL,checkedAt:opportunity.lastSeenAt||opportunity.last_seen_at||null,status:'source_observation_not_vacancy_verification'},...(selectedClinic?[{kind:'clinic_quote',url:sourceURL,quote:selectedClinic,status:'exact_source_statement'}]:[]),...(selectedCv&&confirmCvQuote===true?[{kind:'cv_quote',cvVersionId,quote:selectedCv,status:'owner_confirmed_self_report_not_credential_verification'}]:[]),...(selectedConnection&&confirmConnection===true?[{kind:'owned_contact',contactId:selectedConnection.id,name:selectedConnection.name,organization:selectedConnection.organization,status:'owner_confirmed_connection_not_independently_verified'}]:[])];
+ const provenance=[{kind:'advertisement',url:sourceURL,checkedAt:opportunity.lastSeenAt||opportunity.last_seen_at||null,status:'source_observation_not_vacancy_verification'},...(selectedClinic?[{kind:'clinic_quote',url:selectedClinicFact.sourceUrl,readAt:selectedClinicFact.readAt,sourceRelation:selectedClinicFact.sourceRelation,...(selectedClinicFact.parentPageId?{parentPageId:selectedClinicFact.parentPageId,parentReadAt:selectedClinicFact.parentReadAt}:{}),quote:selectedClinic,status:'exact_source_statement'}]:[]),...(selectedCv&&confirmCvQuote===true?[{kind:'cv_quote',cvVersionId,quote:selectedCv,status:'owner_confirmed_self_report_not_credential_verification'}]:[]),...(selectedConnection&&confirmConnection===true?[{kind:'owned_contact',contactId:selectedConnection.id,name:selectedConnection.name,organization:selectedConnection.organization,status:'owner_confirmed_connection_not_independently_verified'}]:[])];
  const warnings=[SOURCE_CAUTION,'RACGP FSP 2027.1 excludes applicants requiring Level 1 supervision; confirm the correct registration and training route.','PESCI is position-specific; the employer position description and supervised practice documentation require confirmation.','FSP eligibility, Level 1 supervision, registration, Medicare/19AB and visa requirements are separate checks; no eligibility is inferred.'];
  if(!writing.confirmed)warnings.push('The fixed opening and closing paragraphs must be confirmed in the owner private writing profile before an application can be reviewed.');
  if(!writing.signatureStatus.complete)warnings.push('Confirm your own full name, contact email and telephone in the private writing profile before sending this application. No contact details are borrowed from another account or a public template.');
@@ -112,22 +127,26 @@ async function boundedText(request,max){
  const data=new Uint8Array(size);let offset=0;for(const part of chunks){data.set(part,offset);offset+=part.byteLength;}try{return new TextDecoder('utf-8',{fatal:true}).decode(data);}catch{fail('invalid_gp_package_payload');}
 }
 function authorized(context){if(!context||context.profileId!=='arash'||typeof context.userId!=='string'||!context.userId||context.userId.includes(':')||typeof context.rest!=='function')fail('gp_workspace_required',403);}
-export async function getGpApplicationPackage(env,context,opportunityId,options={}){
+export async function getGpApplicationPackage(env,context,opportunityId,options={},verifiedSnapshot=null){
  authorized(context);if(!ID.test(opportunityId||''))fail('invalid_gp_opportunity');if(!env.OPPORTUNITY_DB)fail('gp_package_storage_missing',503);
- const row=await env.OPPORTUNITY_DB.prepare('SELECT * FROM opportunity_editions WHERE id=?').bind(opportunityId).first();
+ // Only the mail router supplies this fifth argument, after its fresh source
+ // and owner-scoped CV reads. Public request options never populate it. This
+ // avoids repeating the same edition/enrichment/CV reads for each recipient.
+ if(verifiedSnapshot!==null&&(!verifiedSnapshot||typeof verifiedSnapshot!=='object'||Array.isArray(verifiedSnapshot)||verifiedSnapshot.ownerId!==context.userId||verifiedSnapshot.profileId!=='arash'||verifiedSnapshot.opportunityId!==opportunityId||verifiedSnapshot.row?.id!==opportunityId||!UUID.test(options.cvVersionId||'')||verifiedSnapshot.ownedCv?.id!==options.cvVersionId||typeof verifiedSnapshot.ownedCv?.text!=='string'||verifiedSnapshot.source?.id!==opportunityId||verifiedSnapshot.source?.url!==verifiedSnapshot.row?.url||verifiedSnapshot.source?.lastSeenAt!==verifiedSnapshot.row?.last_seen_at))fail('gp_package_snapshot_mismatch',409);
+ const row=verifiedSnapshot?.row||await env.OPPORTUNITY_DB.prepare('SELECT * FROM opportunity_editions WHERE id=?').bind(opportunityId).first();
  if(!row||row.country!=='AU'||row.profile_scope==='amir'||row.opportunity_type!=='job')fail('gp_opportunity_not_available',404);
- let source;try{source=JSON.parse(row.data);}catch{fail('gp_source_unavailable',409);}
+ let source,verifiedClinicEvidence=Array.isArray(verifiedSnapshot?.clinicEvidence)?verifiedSnapshot.clinicEvidence:[];if(verifiedSnapshot)source=verifiedSnapshot.source;else try{source=JSON.parse(row.data);}catch{fail('gp_source_unavailable',409);}
  source={...source,id:row.id,title:row.title,url:row.url,status:row.status,lastSeenAt:row.last_seen_at,closingAt:row.closing_at,publishedAt:row.published_at};
- if(env.PUBLIC_PAGE_READING_ENABLED==='true'){
-  try{const [enriched]=await enrichReadPages(env.OPPORTUNITY_DB,[row],'arash',Date.now(),true);if(enriched?.contactDiscovery)source={...source,contactDiscovery:enriched.contactDiscovery};if(['read','read_partial'].includes(enriched?.reading?.status))source={...source,fullText:enriched.fullText,reading:enriched.reading,contactEvidence:enriched.contactEvidence||[],enrichment:enriched.enrichment||null};}catch{/* No stale/unavailable reading manufactures public evidence. */}
+ if(!verifiedSnapshot&&env.PUBLIC_PAGE_READING_ENABLED==='true'){
+  try{const [enriched]=await enrichReadPages(env.OPPORTUNITY_DB,[row],'arash',Date.now(),true);if(enriched?.contactDiscovery)source={...source,contactDiscovery:enriched.contactDiscovery};if(['read','read_partial'].includes(enriched?.reading?.status)){source={...source,fullText:enriched.fullText,reading:enriched.reading,contactEvidence:enriched.contactEvidence||[],enrichment:enriched.enrichment||null};verifiedClinicEvidence=Array.isArray(enriched.clinicEvidence)?enriched.clinicEvidence:[];}}catch{/* No stale/unavailable reading manufactures public evidence. */}
  }
  const own='&profile_id=eq.arash&user_id=eq.'+encodeURIComponent(context.userId);
  let selected=options.cvVersionId||null;if(selected&&!UUID.test(selected))fail('invalid_gp_cv_version');
  if(!selected){const defaults=await context.rest('immi_cv_defaults','?select=version_id'+own);selected=defaults?.[0]?.version_id||null;}
  if(selected&&!UUID.test(selected))fail('invalid_gp_cv_version');
- const [profiles,cvs]=await Promise.all([context.rest('immi_profiles','?select=data'+own),selected?context.rest('immi_cv_versions','?select=id,text,version'+own+'&id=eq.'+selected):Promise.resolve([])]);
+ const [profiles,cvs]=await Promise.all([context.rest('immi_profiles','?select=data'+own),verifiedSnapshot?Promise.resolve([verifiedSnapshot.ownedCv]):selected?context.rest('immi_cv_versions','?select=id,text,version'+own+'&id=eq.'+selected):Promise.resolve([])]);
  if(options.cvVersionId&&!cvs?.[0])fail('owned_gp_cv_not_found',404);
- const cv=cvs?.[0],buildOptions={opportunity:source,profile:profiles?.[0]?.data||{},cvText:cv?.text||'',cvVersionId:cv?selected:null,variant:options.variant||'auto',clinicQuote:options.clinicQuote||'',cvQuote:options.cvQuote||'',confirmCvQuote:options.confirmCvQuote===true,now:Date.now()};
+ const cv=cvs?.[0],buildOptions={opportunity:source,profile:profiles?.[0]?.data||{},cvText:cv?.text||'',cvVersionId:cv?selected:null,variant:options.variant||'auto',clinicQuote:options.clinicQuote||'',cvQuote:options.cvQuote||'',confirmCvQuote:options.confirmCvQuote===true,verifiedClinicEvidence,now:Date.now()};
  let result=buildGpApplicationPackage(buildOptions);
  const contacts=await readClinicConnections(env,context,[result.dossier.name.value,result.dossier.network.value].filter(Boolean));
  if(options.connectionId){

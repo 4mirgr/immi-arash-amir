@@ -4,7 +4,7 @@
 import {verifyGoogleConnection} from './google-oauth.mjs';
 import {verifyTelegramConnection} from './telegram-notifications.mjs';
 import {checkAutomationMembership} from './automation-membership.mjs';
-export const CONNECTION_SUPPORT_VERSION='arash-20261116-v1';
+export const CONNECTION_SUPPORT_VERSION='arash-20261117-v1';
 const safe=value=>typeof value==='string'&&/^[a-z0-9_/-]{1,100}$/.test(value)?value:null;
 function receipt(result){
  const checks={};for(const [key,value] of Object.entries(result?.serviceChecks||{}))if(/^[A-Za-z]{1,20}$/.test(key))checks[key]={state:safe(value.state),code:safe(value.code)};

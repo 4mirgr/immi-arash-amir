@@ -9,5 +9,8 @@ export async function runScheduledCollection(event,env,collector){
 export async function sourceAutomationStatus(env,now=Date.now(),sourceCount=null){
  const row=await env.OPPORTUNITY_DB.prepare("SELECT started_at,finished_at,scheduled_at,status FROM source_scheduler_state WHERE id='public_collector'").bind().first();
  const iso=v=>Number.isFinite(v)?new Date(v).toISOString():null;
- return {mechanism:'cloudflare_cron',requiresOnlineUser:false,cadenceMinutes:60,activeSourceCount:sourceCount,typicalSourceCycleHours:Number.isInteger(sourceCount)&&sourceCount>0?[Math.floor(sourceCount/3),Math.ceil(sourceCount/3)]:[],scope:'registered_public_sources_only',observed:!!row,status:row?.status||'not_observed',overdue:!!row&&now-row.started_at>150*60000,lastStartedAt:iso(row?.started_at),lastFinishedAt:iso(row?.finished_at),scheduledAt:iso(row?.scheduled_at)};
+ // Every third hourly run may spend one slot continuing a partial feed. Show
+ // that capacity tradeoff instead of retaining the old three-fresh-feeds claim.
+ const cycle=Number.isInteger(sourceCount)&&sourceCount>0?[Math.floor(sourceCount/3),Math.ceil(sourceCount<=3?sourceCount/3:sourceCount*3/8)]:[];
+ return {mechanism:'cloudflare_cron',requiresOnlineUser:false,cadenceMinutes:60,activeSourceCount:sourceCount,typicalSourceCycleHours:cycle,continuationPriorityEveryHours:3,scope:'registered_public_sources_only',observed:!!row,status:row?.status||'not_observed',overdue:!!row&&now-row.started_at>150*60000,lastStartedAt:iso(row?.started_at),lastFinishedAt:iso(row?.finished_at),scheduledAt:iso(row?.scheduled_at)};
 }

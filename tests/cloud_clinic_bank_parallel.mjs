@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
-import {dispatchClinicBankReading,CLINIC_BANK_REFRESH_MS} from '../cloud/clinic-bank.mjs';
+import {dispatchClinicBankReading,CLINIC_BANK_REFRESH_MS,CLINIC_BANK_LEASE_MS} from '../cloud/clinic-bank.mjs';
 const owner='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',other='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',at=Date.parse('2026-11-15T12:05:00Z');
 const html=value=>new Response(value,{headers:{'Content-Type':'text/html'}});
 const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return{promise,resolve};};
@@ -37,6 +37,29 @@ test('rows for the same clinic host stay serial and a completed active membershi
  const run=dispatchClinicBankReading(f.env,async url=>{if(url.endsWith('/robots.txt'))return new Response(null,{status:404});started.push(url);active++;maxActive=Math.max(maxActive,active);if(url.endsWith('/one'))await first.promise;active--;return html('<main>Our practice provides preventive clinical care.</main>');},at,async()=>{checks++;return{active:true};});
  try{for(let i=0;i<10&&!started.length;i++)await tick();await tick();assert.deepEqual(started,['https://clinic.example/one']);}finally{first.resolve();}
  const result=await run;assert.equal(result.processed,2);assert.equal(started.length,2);assert.equal(maxActive,1);assert.equal(checks,1);assert.equal(f.queries,4);
+});
+
+test('preclaimed same-host rows cannot be reclaimed at the next five-minute tick while either site remains active',async()=>{
+ const f=fixture();f.seed('a_first','https://clinic.example/one');f.seed('b_second','https://clinic.example/two');
+ const first=deferred(),second=deferred(),started=[],member=async()=>({active:true});let duplicateFetches=0;
+ const run=dispatchClinicBankReading(f.env,async url=>{if(url.endsWith('/robots.txt'))return new Response(null,{status:404});started.push(url);await(url.endsWith('/one')?first.promise:second.promise);return html('<main>Our practice provides preventive general practice care.</main>');},at,member);
+ try{
+  for(let i=0;i<20&&!started.length;i++)await tick();assert.deepEqual(started,['https://clinic.example/one']);
+  assert.equal(CLINIC_BANK_LEASE_MS,8*60000);assert(f.db.prepare('SELECT min(lease_until) n FROM clinic_bank_leads').get().n>at+5*60000);
+  const noDuplicate=async()=>{duplicateFetches++;throw Error('Active site must not be fetched twice');};
+  assert.equal((await dispatchClinicBankReading(f.env,noDuplicate,at+5*60000,member)).processed,0);
+  first.resolve();for(let i=0;i<20&&started.length<2;i++)await tick();assert.equal(started.length,2);
+  assert.equal((await dispatchClinicBankReading(f.env,noDuplicate,at+5*60000+1,member)).processed,0);assert.equal(duplicateFetches,0);
+ }finally{first.resolve();second.resolve();}
+ const result=await run;assert.equal(result.processed,2);assert(f.db.prepare('SELECT count(*) n FROM clinic_bank_leads WHERE lease_until=0').get().n===2);
+});
+
+test('a delayed completion cannot overwrite a newer lease and is never reported as stored evidence',async()=>{
+ const f=fixture();f.seed('a_first','https://clinic.example/one');const gate=deferred();let started=false;
+ const run=dispatchClinicBankReading(f.env,async url=>{if(url.endsWith('/robots.txt'))return new Response(null,{status:404});started=true;await gate.promise;return html('<main>Our practice provides preventive primary care.</main>');},at,async()=>({active:true}));
+ let newer;
+ try{for(let i=0;i<20&&!started;i++)await tick();assert(started);newer=at+CLINIC_BANK_LEASE_MS+60000;f.db.prepare("UPDATE clinic_bank_leads SET lease_until=?,result_json='{}' WHERE id='a_first'").run(newer);}finally{gate.resolve();}
+ const result=await run,row=f.db.prepare('SELECT * FROM clinic_bank_leads').get();assert.equal(row.lease_until,newer);assert.equal(row.result_json,'{}');assert.equal(row.read_at,null);assert.equal(result.receipts[0].status,'lease_lost');
 });
 
 test('distinct owners retain separate fresh membership checks; inactive owners never fetch public pages',async()=>{
