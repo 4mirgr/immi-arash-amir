@@ -1,5 +1,6 @@
 // Explicitly linked private chats only. Public opportunities never contain mail/CV content.
 import {checkAutomationMembership} from './automation-membership.mjs';
+import {getOwnedMailOpportunityContext} from './mail-opportunities.mjs';
 const WEBHOOK_PATH='/api/telegram/webhook';
 const DEFAULT_WEBHOOK='https://immi-arash-amir.dr-gerami-md.workers.dev'+WEBHOOK_PATH;
 const DAILY_LIMIT=10,GLOBAL_RUN_LIMIT=3;
@@ -23,12 +24,12 @@ function exactKeys(body,keys){if(Object.keys(body).some(key=>!keys.includes(key)
 function tehranParts(now){return Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tehran',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date(now)).filter(v=>v.type!=='literal').map(v=>[v.type,v.value]));}
 function createdDay(now){const p=tehranParts(now);return p.year+'-'+p.month+'-'+p.day;}
 export function telegramQuiet(row,now){const hour=Number(tehranParts(now).hour),start=row.quiet_start,end=row.quiet_end;return start===end?false:start<end?hour>=start&&hour<end:hour>=start||hour<end;}
-async function claim(env,row,eventKey,kind,now){return stmt(env.GOOGLE_DB,"INSERT INTO telegram_notification_receipts(id,owner_id,event_key,kind,status,created_at,created_day) SELECT ?,?,?,?,'sending',?,? WHERE (SELECT count(*) FROM telegram_notification_receipts WHERE owner_id=? AND created_day=?)<? ON CONFLICT(owner_id,event_key) DO NOTHING RETURNING *",crypto.randomUUID(),row.owner_id,eventKey,kind,now,createdDay(now),row.owner_id,createdDay(now),DAILY_LIMIT).first();}
-async function sendClaim(env,row,receipt,text,fetcher,automatic=false){
+async function claim(env,row,eventKey,kind,now,limit=DAILY_LIMIT){return stmt(env.GOOGLE_DB,"INSERT INTO telegram_notification_receipts(id,owner_id,event_key,kind,status,created_at,created_day) SELECT ?,?,?,?,'sending',?,? WHERE (SELECT count(*) FROM telegram_notification_receipts WHERE owner_id=? AND created_day=?)<? ON CONFLICT(owner_id,event_key) DO NOTHING RETURNING *",crypto.randomUUID(),row.owner_id,eventKey,kind,now,createdDay(now),row.owner_id,createdDay(now),limit).first();}
+async function sendClaim(env,row,receipt,text,fetcher,automatic=false,buttonUrl=null){
  const current=await account(env,row.owner_id);let status='delivery_unknown',messageId=null;
  if(!current||current.chat_id!==row.chat_id||current.profile_id!==row.profile_id||!['amir','arash'].includes(current.profile_id)||!current.enabled||current.updated_at!==row.updated_at)status='cancelled';
  else if(automatic&&!(await checkAutomationMembership(env,row.owner_id,row.profile_id,fetcher)).active)status='cancelled';
- else{try{const result=await provider(env,'sendMessage',{chat_id:row.chat_id,text:(current.profile_id==='arash'?'دکتر آرش انتظار عزیز،':'دکتر امیر هوشنگ گرامی عزیز،')+'\n'+text,link_preview_options:{is_disabled:true},protect_content:true},fetcher);if(result.ok&&Number.isSafeInteger(result.result?.message_id)){status='sent';messageId=result.result.message_id;}else if(result.status>=400&&result.status<500){status='failed';if(result.status===403)await stmt(env.GOOGLE_DB,'UPDATE telegram_accounts SET enabled=0,updated_at=? WHERE owner_id=? AND chat_id=?',Date.now(),row.owner_id,row.chat_id).run();}}catch{/* Unknown acceptance is terminal; there is no automatic retry. */}}
+ else{try{const result=await provider(env,'sendMessage',{chat_id:row.chat_id,text:(current.profile_id==='arash'?'دکتر آرش انتظار عزیز،':'دکتر امیر هوشنگ گرامی عزیز،')+'\n'+text,link_preview_options:{is_disabled:true},protect_content:true,...(buttonUrl?{reply_markup:{inline_keyboard:[[{text:'بازکردن همین موقعیت در پنل',url:buttonUrl}]]}}:{})},fetcher);if(result.ok&&Number.isSafeInteger(result.result?.message_id)){status='sent';messageId=result.result.message_id;}else if(result.status>=400&&result.status<500){status='failed';if(result.status===403)await stmt(env.GOOGLE_DB,'UPDATE telegram_accounts SET enabled=0,updated_at=? WHERE owner_id=? AND chat_id=?',Date.now(),row.owner_id,row.chat_id).run();}}catch{/* Unknown acceptance is terminal; there is no automatic retry. */}}
  try{await stmt(env.GOOGLE_DB,"UPDATE telegram_notification_receipts SET status=?,telegram_message_id=? WHERE id=? AND owner_id=? AND status='sending'",status,messageId,receipt.id,row.owner_id).run();}catch{status='delivery_unknown';}
  return {id:receipt.id,status};
 }
@@ -39,7 +40,7 @@ async function telegramStatus(env,id,profileId){
  const cfg=ready?config(env):null,validRegistration=Boolean(ready&&bot?.registration_hash===await registrationHash(env,cfg.webhook));
  const status=!ready?'setup_required':identityMismatch?'identity_mismatch':!row?'not_connected':!validRegistration?'webhook_setup_required':!row.enabled?'notifications_disabled':'linked';
  const recoveryAction=!ready||identityMismatch?'contact_administrator':!validRegistration?(profileId==='amir'?'setup_webhook':'contact_administrator'):!row?'connect_telegram':!row.enabled?'enable_notifications':'verify_connection';
- return {profileId,configured:ready,missing:absent,connected:Boolean(row),enabled:Boolean(row?.enabled),notificationsActive:Boolean(ready&&row?.enabled&&validRegistration),status,chatHint:row?'••••'+row.chat_id.slice(-4):null,quietStart:row?.quiet_start??22,quietEnd:row?.quiet_end??8,timeZone:'Asia/Tehran',dailyLimit:DAILY_LIMIT,perRunLimit:GLOBAL_RUN_LIMIT,botUsername:ready&&bot?.identity_hash===await hash(env.TELEGRAM_BOT_TOKEN)?bot.username:null,webhookRegistered:validRegistration,canSetupWebhook:profileId==='amir',scope:'new_public_opportunities_only',automaticEmailSending:false,verification:{state:ready&&!identityMismatch?'not_checked':'setup_required',checkedAt:null,code:status==='linked'?null:status,retryable:false,recoveryAction}};
+ return {profileId,configured:ready,missing:absent,connected:Boolean(row),enabled:Boolean(row?.enabled),notificationsActive:Boolean(ready&&row?.enabled&&validRegistration),status,chatHint:row?'••••'+row.chat_id.slice(-4):null,quietStart:row?.quiet_start??22,quietEnd:row?.quiet_end??8,timeZone:'Asia/Tehran',dailyLimit:DAILY_LIMIT,perRunLimit:GLOBAL_RUN_LIMIT,botUsername:ready&&bot?.identity_hash===await hash(env.TELEGRAM_BOT_TOKEN)?bot.username:null,webhookRegistered:validRegistration,canSetupWebhook:profileId==='amir',scope:env.MAIL_OPPORTUNITY_ALERTS_ENABLED==='true'&&profileId==='arash'?'public_and_own_mail_opportunities':'new_public_opportunities_only',mailOpportunityAlertsEnabled:env.MAIL_OPPORTUNITY_ALERTS_ENABLED==='true'&&profileId==='arash',automaticEmailSending:false,verification:{state:ready&&!identityMismatch?'not_checked':'setup_required',checkedAt:null,code:status==='linked'?null:status,retryable:false,recoveryAction}};
 }
 // Three read-only Bot API checks at most, with no chat messages, webhook writes,
 // token logging or changes to an owner's existing notification preferences.
@@ -125,11 +126,92 @@ function opportunityText(row){let data={};try{data=JSON.parse(row.data);}catch{}
 export async function dispatchTelegramNotifications(env,fetcher=fetch,now=Date.now()){
  if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_WEBHOOK_SECRET)return {configured:false,attempted:0};
  try{config(env);}catch{return {configured:false,attempted:0};}if(!env.OPPORTUNITY_DB)return {configured:true,attempted:0,status:'public_sources_missing'};
- const accounts=(await all(env.GOOGLE_DB,'SELECT a.*,(SELECT count(*) FROM telegram_notification_receipts r WHERE r.owner_id=a.owner_id AND r.created_day=?) AS today_count FROM telegram_accounts a WHERE a.enabled=1 AND a.enabled_since IS NOT NULL ORDER BY COALESCE(a.last_dispatch_at,0),a.owner_id LIMIT 2',createdDay(now))).filter(row=>['amir','arash'].includes(row.profile_id)&&row.today_count<DAILY_LIMIT&&!telegramQuiet(row,now));
+ const publicLimit=row=>env.MAIL_OPPORTUNITY_ALERTS_ENABLED==='true'&&row.profile_id==='arash'?DAILY_LIMIT-3:DAILY_LIMIT;
+ const accounts=(await all(env.GOOGLE_DB,'SELECT a.*,(SELECT count(*) FROM telegram_notification_receipts r WHERE r.owner_id=a.owner_id AND r.created_day=?) AS today_count FROM telegram_accounts a WHERE a.enabled=1 AND a.enabled_since IS NOT NULL ORDER BY COALESCE(a.last_dispatch_at,0),a.owner_id LIMIT 2',createdDay(now))).filter(row=>['amir','arash'].includes(row.profile_id)&&row.today_count<publicLimit(row)&&!telegramQuiet(row,now));
  const queues=[];let membershipSkipped=0;
  for(const row of accounts){if(!(await checkAutomationMembership(env,row.owner_id,row.profile_id,fetcher)).active){membershipSkipped++;continue;}const sent=await all(env.GOOGLE_DB,"SELECT event_key FROM telegram_notification_receipts WHERE owner_id=? AND kind='opportunity' AND created_at>=? LIMIT 200",row.owner_id,now-8*86400000);const excluded=sent.map(r=>r.event_key.slice('opportunity:'.length));const since=new Date(Math.max(Date.parse(row.enabled_since),now-7*86400000)).toISOString();const editions=await all(env.OPPORTUNITY_DB,"SELECT * FROM opportunity_editions WHERE first_seen_at>=? AND first_seen_at<=? AND status NOT IN ('closed','source_removed') AND (closing_at IS NULL OR closing_at>?) AND (published_at IS NULL OR published_at<=?) AND id NOT IN (SELECT value FROM json_each(?)) AND (?<>'arash' OR opportunity_type='job') AND ((country='AU' AND profile_scope='both') OR (?='amir' AND country='IT' AND profile_scope='amir')) ORDER BY first_seen_at,id LIMIT 10",since,new Date(now).toISOString(),new Date(now).toISOString(),new Date(now).toISOString(),JSON.stringify(excluded),row.profile_id,row.profile_id);queues.push({row,editions});}
  let attempted=0,claimChecks=0;const receipts=[],touched=new Set();
- for(let pass=0;pass<10&&claimChecks<GLOBAL_RUN_LIMIT;pass++)for(const queue of queues){if(claimChecks>=GLOBAL_RUN_LIMIT)break;const edition=queue.editions[pass];if(!edition)continue;claimChecks++;const receipt=await claim(env,queue.row,'opportunity:'+edition.id,'opportunity',now);if(!receipt)continue;attempted++;receipts.push(await sendClaim(env,queue.row,receipt,opportunityText(edition),fetcher,true));touched.add(queue.row.owner_id);}
+ for(let pass=0;pass<10&&claimChecks<GLOBAL_RUN_LIMIT;pass++)for(const queue of queues){if(claimChecks>=GLOBAL_RUN_LIMIT)break;const edition=queue.editions[pass];if(!edition)continue;claimChecks++;const receipt=await claim(env,queue.row,'opportunity:'+edition.id,'opportunity',now,publicLimit(queue.row));if(!receipt)continue;attempted++;receipts.push(await sendClaim(env,queue.row,receipt,opportunityText(edition),fetcher,true));touched.add(queue.row.owner_id);}
  for(const id of touched)await stmt(env.GOOGLE_DB,'UPDATE telegram_accounts SET last_dispatch_at=? WHERE owner_id=?',now,id).run();
  return {configured:true,attempted,receipts,membershipSkipped,scope:'new_public_opportunities_only'};
+}
+
+const MAIL_ALERT_COOLDOWN=15*60000,MAIL_ALERT_WINDOW=14*86400000;
+const MAIL_CV_ID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const mailOpportunityId=value=>typeof value==='string'&&/^mop_[a-f0-9]{32}$/.test(value);
+const alertField=(value,maximum=180)=>typeof value==='string'?value.replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g,' ').replace(/(?:https?:\/\/|www\.|t\.me\/)[^\s]+/gi,'').replace(/[^\s<>]+@[^\s<>]+/g,'').replace(/\s+/g,' ').trim().slice(0,maximum):'';
+function privateMailLink(row){
+ if(!mailOpportunityId(row.id))return null;
+ const secondary=row.owner_id===row.root_owner_id+':secondary';
+ if(row.owner_id!==row.root_owner_id&&!secondary)return null;
+ const url=new URL('https://drgerami-md.ir/aus/');
+ url.searchParams.set('mailOpportunity',row.id);url.searchParams.set('mailbox',secondary?'secondary':'primary');return url.href;
+}
+export function mailOpportunityAlertText(row){
+ let fit={},data={},draft=null;
+ try{fit=JSON.parse(row.fit_json||'{}');data=JSON.parse(row.data_json||'{}');draft=row.draft_json?JSON.parse(row.draft_json):null;}catch{return null;}
+ if(!fit||typeof fit!=='object'||Array.isArray(fit)||!['high','review'].includes(fit.priority)||['restricted','negative'].includes(fit.level1)||['restricted','negative'].includes(fit.sponsorship))return null;
+ const url=privateMailLink(row),title=alertField(row.title),clinic=alertField(row.clinic_name,120),state=alertField(data.state||data.region,50);
+ if(!url||!title||draft?.status!=='ready_for_review'||draft.readyForReview!==true||!MAIL_CV_ID.test(draft.cvVersionId||'')||typeof draft.subject!=='string'||!draft.subject.trim()||typeof draft.body!=='string'||draft.body.trim().length<100||!Array.isArray(draft.recipients)||!draft.recipients.length||draft.recipients.some(email=>typeof email!=='string'||!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)))return null;
+ const supported=value=>['supported','positive'].includes(value);
+ const lines=[fit.priority==='high'?'یک موقعیت مرتبط با مسیر GP شما پیدا شده که در اولویت بررسی است.':'یک موقعیت مرتبط با مسیر GP شما پیدا شده که ارزش بررسی دارد.',clinic?'مرکز: '+clinic:null,'موقعیت: '+title,state?'ایالت یا منطقه: '+state:null,
+  supported(fit.level1)?'نظارت Level 1 در متن ایمیل مطرح شده؛ ظرفیت فعلی را از مرکز تأیید می‌کنیم.':'امکان نظارت Level 1 هنوز در اطلاعات دریافتی روشن نیست.',
+  supported(fit.sponsorship)?'حمایت کارفرما برای ویزای کار در متن مطرح شده؛ شرایط آن نیاز به تأیید دارد.':'اسپانسرشیپ ویزای کار هنوز باید از کارفرما پرسیده شود.',
+  'پیش‌نویس اختصاصی این مورد در پنل آمادهٔ بازبینی است.',
+  'وارد پنل شوید و همین موقعیت را باز کنید. پس از بررسی متن، گیرنده و رزومه، «تأیید و ارسال» را بزنید.',url];
+ return {text:lines.filter(Boolean).join('\n').slice(0,3200),url};
+}
+
+/** One owner-private mail alert per invocation. This never sends an application. */
+export async function dispatchMailOpportunityNotifications(env,{fetcher=fetch,now=Date.now(),sourceValidator=getOwnedMailOpportunityContext}={}){
+ if(env.MAIL_OPPORTUNITY_ALERTS_ENABLED!=='true')return {configured:false,attempted:0,status:'disabled'};
+ try{config(env);}catch{return {configured:false,attempted:0,status:'setup_required'};}
+ if(!Number.isSafeInteger(now)||now<0)return {configured:true,attempted:0,status:'invalid_scheduled_time'};
+ const db=env.GOOGLE_DB;
+ const exists=await stmt(db,"SELECT name FROM sqlite_master WHERE type='table' AND name='private_mail_opportunities'").first();
+ if(!exists)return {configured:true,attempted:0,status:'mail_storage_required'};
+ const bot=await stmt(db,"SELECT identity_hash,registration_hash FROM telegram_bot_state WHERE id='bot'").first(),cfg=config(env);
+ if(!bot||bot.identity_hash!==await hash(env.TELEGRAM_BOT_TOKEN)||bot.registration_hash!==await registrationHash(env,cfg.webhook))return {configured:true,attempted:0,status:'bot_verification_required'};
+ const rows=await all(db,`SELECT o.*,a.chat_id,a.enabled,a.enabled_since,a.quiet_start,a.quiet_end,a.linked_at,a.updated_at AS telegram_updated_at,a.last_dispatch_at
+  FROM private_mail_opportunities o JOIN telegram_accounts a ON a.owner_id=o.root_owner_id AND a.profile_id=o.profile_id
+  JOIN google_accounts g ON g.owner_id=o.owner_id AND g.profile_id=o.profile_id AND g.google_sub=o.google_sub AND g.status='connected'
+  WHERE o.profile_id='arash' AND a.enabled=1 AND a.enabled_since IS NOT NULL AND o.notification_eligible=1
+  AND (CASE WHEN json_valid(o.draft_json) THEN json_extract(o.draft_json,'$.status')='ready_for_review' AND json_extract(o.draft_json,'$.readyForReview')=1 ELSE 0 END)
+  AND o.status IN ('suggested','reviewed') AND o.received_at>=? AND o.received_at<=? AND o.created_at<=?
+  AND (a.last_dispatch_at IS NULL OR a.last_dispatch_at<=?)
+  AND (SELECT count(*) FROM telegram_notification_receipts r WHERE r.owner_id=a.owner_id AND r.created_day=?)<?
+  AND NOT EXISTS(SELECT 1 FROM mail_automation_suppressions s JOIN json_each(CASE WHEN json_valid(o.draft_json) THEN json_extract(o.draft_json,'$.recipients') ELSE '[]' END) recipient ON lower(s.email)=lower(recipient.value) WHERE s.owner_id=a.owner_id)
+  AND NOT EXISTS(SELECT 1 FROM telegram_notification_receipts r WHERE r.owner_id=a.owner_id AND r.event_key='mail_opportunity:'||o.id)
+  ORDER BY CASE WHEN json_valid(o.fit_json) THEN CASE WHEN json_extract(o.fit_json,'$.priority')='high' THEN 0 ELSE 1 END ELSE 1 END,coalesce(a.last_dispatch_at,0),o.created_at,o.id LIMIT 5`,now-MAIL_ALERT_WINDOW,now+60000,now+60000,now-MAIL_ALERT_COOLDOWN,createdDay(now),DAILY_LIMIT);
+ const candidate=rows.find(row=>!telegramQuiet(row,now));
+ if(!candidate)return {configured:true,attempted:0,status:'idle'};
+ const message=mailOpportunityAlertText(candidate);
+ if(!message){await stmt(db,'UPDATE private_mail_opportunities SET notification_eligible=0 WHERE id=? AND owner_id=? AND google_sub=?',candidate.id,candidate.owner_id,candidate.google_sub).run();return {configured:true,attempted:0,status:'invalid_candidate'};}
+ if(!(await checkAutomationMembership(env,candidate.root_owner_id,'arash',fetcher)).active)return {configured:true,attempted:0,status:'membership_unavailable'};
+ try{
+  const source=await sourceValidator(env,candidate.owner_id,{id:candidate.id},fetcher);
+  if(!source||source.id!==candidate.id||source.googleSubject!==candidate.google_sub)throw Object.assign(Error('source_identity_changed'),{code:'source_identity_changed'});
+ }catch(error){
+  const code=/^[a-z_]{3,80}$/.test(error?.code||'')?error.code:'source_temporarily_unavailable';
+  if(['mail_opportunity_source_removed','mail_opportunity_source_changed'].includes(code)){
+   await stmt(db,"UPDATE private_mail_opportunities SET status='source_removed',notification_eligible=0 WHERE id=? AND owner_id=? AND google_sub=?",candidate.id,candidate.owner_id,candidate.google_sub).run();
+   return {configured:true,attempted:0,status:'source_review_required',code};
+  }
+  return {configured:true,attempted:0,status:'source_check_deferred',code};
+ }
+ const row=await stmt(db,"UPDATE telegram_accounts SET last_dispatch_at=? WHERE owner_id=? AND profile_id='arash' AND enabled=1 AND chat_id=? AND updated_at=? AND (last_dispatch_at IS NULL OR last_dispatch_at<=?) RETURNING *",now,candidate.root_owner_id,candidate.chat_id,candidate.telegram_updated_at,now-MAIL_ALERT_COOLDOWN).first();
+ if(!row)return {configured:true,attempted:0,status:'changed_or_concurrent'};
+ const receipt=await stmt(db,`INSERT INTO telegram_notification_receipts(id,owner_id,event_key,kind,status,created_at,created_day)
+  SELECT ?,?,?,'opportunity','sending',?,? WHERE
+  (SELECT count(*) FROM telegram_notification_receipts WHERE owner_id=? AND created_day=?)<?
+  AND EXISTS(SELECT 1 FROM private_mail_opportunities o JOIN google_accounts g ON g.owner_id=o.owner_id AND g.google_sub=o.google_sub AND g.profile_id=o.profile_id AND g.status='connected'
+   WHERE o.id=? AND o.root_owner_id=? AND o.owner_id=? AND o.google_sub=? AND o.profile_id='arash' AND o.status IN ('suggested','reviewed') AND o.notification_eligible=1
+   AND NOT EXISTS(SELECT 1 FROM mail_automation_suppressions s JOIN json_each(CASE WHEN json_valid(o.draft_json) THEN json_extract(o.draft_json,'$.recipients') ELSE '[]' END) recipient ON lower(s.email)=lower(recipient.value) WHERE s.owner_id=o.root_owner_id))
+  ON CONFLICT(owner_id,event_key) DO NOTHING RETURNING *`,crypto.randomUUID(),row.owner_id,'mail_opportunity:'+candidate.id,now,createdDay(now),row.owner_id,createdDay(now),DAILY_LIMIT,candidate.id,row.owner_id,candidate.owner_id,candidate.google_sub).first();
+ if(!receipt)return {configured:true,attempted:0,status:'claim_not_acquired'};
+ const result=await sendClaim(env,row,receipt,message.text,fetcher,true,message.url);
+ let metadataUpdated=true;
+ try{await stmt(db,'UPDATE private_mail_opportunities SET notification_claimed_at=?,notification_sent_at=? WHERE id=? AND root_owner_id=? AND owner_id=? AND google_sub=?',now,result.status==='sent'?now:null,candidate.id,row.owner_id,candidate.owner_id,candidate.google_sub).run();}
+ catch{metadataUpdated=false;}
+ return {configured:true,attempted:1,status:result.status,receipts:[result],metadataUpdated,scope:'own_mail_opportunities_only',automaticEmailSending:false};
 }

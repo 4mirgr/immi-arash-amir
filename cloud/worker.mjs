@@ -7,6 +7,10 @@ import {handleGoogleMailRequest,getOwnedMailReplyContext} from './google-mail.mj
 import {handleClinicCorrespondenceRequest,getOwnedClinicFollowUpContext,recordClinicCorrespondenceStops} from './clinic-correspondence.mjs';
 import {syncClinicCorrespondence} from './google-mail-correspondence-reader.mjs';
 import {runCorrespondenceMailCycle} from './clinic-correspondence-cycle.mjs';
+import {syncMailDiscovery} from './mail-discovery-pipeline.mjs';
+import {handleMailOpportunitiesRequest} from './mail-opportunities.mjs';
+import {handleMailOpportunitySendRequest} from './mail-opportunity-send.mjs';
+import {runMailOpportunityNotificationCycle} from './mail-opportunity-notification-cycle.mjs';
 import {handleGoogleSendRequest} from './google-send.mjs';
 import {handleGoogleServicesRequest} from './google-services.mjs';
 import {handleOpportunityV2Request} from './opportunity-store.mjs';
@@ -139,10 +143,13 @@ export function createHandler(fetcher = fetch) {
         if(url.pathname==='/api/google/clinic-correspondence/sync'){
           if(request.method!=='POST')throw new ApiError(405,'Method not allowed');
           const body=await payload(request);if(Object.keys(body).length)throw new ApiError(400,'No synchronization parameters are accepted');
-          try{const progress=await syncClinicCorrespondence(env,context,fetcher);const stops=await recordClinicCorrespondenceStops(env,context);return json({...progress,stopReceipts:stops});}
+          try{return json(await syncMailDiscovery(env,context,fetcher));}
           catch(error){const known=/^[a-z_]{3,80}$/.test(error?.code||'');return json({error:known?error.code:'clinic_correspondence_unavailable'},Number.isInteger(error?.status)&&error.status>=400&&error.status<=599?error.status:503);}
         }
         if(url.pathname==='/api/google/clinic-correspondence'||url.pathname.startsWith('/api/google/clinic-correspondence/'))return await handleClinicCorrespondenceRequest(request,env,context,fetcher)||json({error:'Not found'},404);
+        if(url.pathname==='/api/google/mail-opportunities'||url.pathname.startsWith('/api/google/mail-opportunities/')){
+          return await handleMailOpportunitySendRequest(request,env,context,fetcher)||await handleMailOpportunitiesRequest(request,env,context)||json({error:'Not found'},404);
+        }
         for(const handler of [handleGoogleRequest,handleGoogleMailRequest,handleGoogleSendRequest,handleGoogleServicesRequest]){
           const response=await handler(request,env,context,fetcher);
           if(response)return response;
@@ -257,4 +264,4 @@ export function createHandler(fetcher = fetch) {
     } catch (error) { const expected=error instanceof ApiError||error instanceof GoogleError;return json({error:expected ? error.message : 'Request failed',...(error instanceof GoogleError?{code:error.code}:{})},expected ? error.status : 500); }
   };
 }
-export default {fetch:createHandler(),async scheduled(event,env){const cron=event.cron||'0 * * * *';if(cron==='*/15 * * * *'){const support=await runConnectionSupportCheck(env);if(support.attempted)return {support,telegram:{status:'deferred_support_check'}};return await dispatchTelegramNotifications(env);}if(cron==='*/5 * * * *')return await runBackgroundCycle(env,{now:Number.isFinite(event.scheduledTime)?event.scheduledTime:Date.now()});if(cron==='2-57/5 * * * *')return await runCorrespondenceMailCycle(env,{now:Number.isFinite(event.scheduledTime)?event.scheduledTime:Date.now()});if(cron==='15 */6 * * *'){const maintenance=await runMaintenance(env);const evidence=await watchEvidenceSources(env);return {maintenance,evidence};}return await runScheduledCollection(event,env,collectRegisteredSources);}};
+export default {fetch:createHandler(),async scheduled(event,env){const cron=event.cron||'0 * * * *';if(cron==='*/15 * * * *'){const support=await runConnectionSupportCheck(env);if(support.attempted)return {support,telegram:{status:'deferred_support_check'}};return await runMailOpportunityNotificationCycle(env,{now:Number.isFinite(event.scheduledTime)?event.scheduledTime:Date.now()});}if(cron==='*/5 * * * *')return await runBackgroundCycle(env,{now:Number.isFinite(event.scheduledTime)?event.scheduledTime:Date.now()});if(cron==='* * * * *'||cron==='2-57/5 * * * *')return await runCorrespondenceMailCycle(env,{now:Number.isFinite(event.scheduledTime)?event.scheduledTime:Date.now()});if(cron==='15 */6 * * *'){const maintenance=await runMaintenance(env);const evidence=await watchEvidenceSources(env);return {maintenance,evidence};}return await runScheduledCollection(event,env,collectRegisteredSources);}};

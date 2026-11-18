@@ -26,7 +26,7 @@ SECRET_NAMES = frozenset(['AUTOMATION_MEMBERSHIP_KEY','GOOGLE_CLIENT_ID','GOOGLE
     'GOOGLE_TOKEN_KEY','LINKEDIN_CLIENT_ID','LINKEDIN_CLIENT_SECRET','TELEGRAM_BOT_TOKEN','TELEGRAM_WEBHOOK_SECRET'])
 DATABASES = {'GOOGLE_DB':'faf37526-9c8c-4a86-9f91-3ab41ee8ddff',
              'OPPORTUNITY_DB':'a9605bec-79b7-430d-8d15-cfacb4cb1a58'}
-CRONS = frozenset(['0 * * * *','*/15 * * * *','15 */6 * * *','2-57/5 * * * *','*/5 * * * *'])
+CRONS = frozenset(['0 * * * *','*/15 * * * *','15 */6 * * *','* * * * *','*/5 * * * *'])
 SHA = re.compile(r'^[0-9a-f]{40}$')
 
 

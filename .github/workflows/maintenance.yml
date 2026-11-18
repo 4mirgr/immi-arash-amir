@@ -38,7 +38,7 @@ jobs:
           set -euo pipefail
           npm ci --ignore-scripts
           python scripts/check_skills.py
-          node --test tests/cloud*.mjs
+          node --test tests/*.mjs
           python -m unittest discover -s tests -v
           npm run build
           node scripts/build_worker.mjs

@@ -1,4 +1,4 @@
-import {interfaceLocale} from './interface-locale.mjs';
+import {interfaceLocale,useInterfaceLanguage} from './interface-locale.mjs';
 import {googleAccountLabel} from './google-account-labels.mjs';
 import React,{useEffect,useRef,useState} from 'react';
 import {Mail,Eye,Send,X,ExternalLink,RefreshCw,FileText,CalendarClock,ArrowRight} from 'lucide-react';
@@ -7,6 +7,7 @@ import {MixedText} from './mixed-text';
 import {DualCalendar} from './dual-calendar';
 import './opportunity-mail-compact.css';
 import './send-action-dock.css';
+import {FloatingSendDock} from './send-action-dock';
 import {prepareRecipientBatch,sendRecipientBatch,scheduleRecipientBatch} from './opportunity-recipient-batch.mjs';
 
 const reasons={gp_application_template_mismatch:'قالب نامه با بستهٔ انتخاب‌شده هماهنگ نیست؛ پروندهٔ کلینیک را دوباره باز کنید.',gp_application_evidence_required:'شواهد نامه یا رزومه تغییر کرده یا ناقص است؛ بسته را دوباره آماده کنید.',invalid_gp_application:'انتخاب‌های نامهٔ اختصاصی معتبر نیست؛ پرونده را دوباره باز کنید.',published_recipient_missing:'در متن همین آگهی ایمیلی منتشر نشده است؛ از لینک درخواست رسمی استفاده کنید.',recipient_not_published:'گیرنده در نسخهٔ جاری آگهی نیست؛ دوباره بازبینی کنید.',source_observation_stale:'مشاهدهٔ منبع قدیمی است؛ ابتدا دریافت تازهٔ آگهی لازم است.',opportunity_closed_or_future:'این آگهی اکنون قابل اقدام نیست؛ مهلت و اصل منبع را بررسی کنید.',preset_and_cv_required:'قالب ایمیل و نسخهٔ رزومهٔ همین پروفایل را انتخاب کنید.',template_placeholders_require_review:'متغیرهای قالب هنوز تکمیل نشده‌اند؛ قالب را در مرکز مکاتبات ویرایش کنید.',application_changed_review_required:'قالب، رزومه، منبع یا اتصال تغییر کرده است؛ بازبینی تازه لازم است.',recipient_suppressed:'گیرنده در فهرست عدم مکاتبهٔ شماست.',daily_quota_reached:'سهمیهٔ امروز تکمیل شده است.',sender_connection_changed:'اتصال فرستنده تغییر کرده است؛ دوباره بازبینی کنید.',recipient_unavailable:'گیرنده برای آماده‌سازی در دسترس نیست.',google_connection_required:'اتصال Google همین صندوق لازم است.',preset_not_found:'قالب انتخاب‌شده دیگر در دسترس نیست.',cv_not_found:'نسخهٔ رزومهٔ انتخاب‌شده در دسترس نیست.'};
@@ -21,6 +22,7 @@ const recipientRole=(source,address)=>source?.recipientDetails?.filter(item=>ema
 const recipientOptions=source=>[...new Set((source?.publishedRecipients||[]).map(email))].sort((a,b)=>({application:0,organization_general:1,unknown:2}[recipientRole(source,a)]??3)-({application:0,organization_general:1,unknown:2}[recipientRole(source,b)]??3));
 
 export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{},onOpenSettings=()=>{},gpApplication=null,compact=false}){
+ const language=useInterfaceLanguage(),t=(fa,en)=>language==='en'?en:fa;
  const application=person==='arash'&&gpApplication?{variant:gpApplication.variant,subjectIndex:gpApplication.subjectIndex,clinicQuote:gpApplication.clinicQuote,cvQuote:gpApplication.cvQuote,confirmCvQuote:gpApplication.confirmCvQuote,...(gpApplication.connectionId?{connectionId:gpApplication.connectionId,confirmConnection:gpApplication.confirmConnection===true}:{}),...(gpApplication.refinementId?{refinementId:gpApplication.refinementId}:{})}:null;
  const oppId=opportunity?.id||'',scope=person+':'+oppId+':'+JSON.stringify(application);
  const identity=useRef({scope,epoch:0});if(identity.current.scope!==scope)identity.current={scope,epoch:identity.current.epoch+1};
@@ -88,7 +90,7 @@ export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{}
     setReview({scope,epoch,payloadKey:selectedKey,prepared,data:prepared.entries[0]?.preview||null});setChecked(false);setQueued(null);setResult(null);return;
    }
    // A reviewed preparation is consumed before transport. Never replay a partial batch.
-   setQueued({scope,epoch,payloadKey:selectedKey,consumed:true});setChecked(false);setScheduleConfirmed(false);
+   setQueued({scope,epoch,payloadKey:selectedKey,consumed:true,kind});setChecked(false);setScheduleConfirmed(false);
    const sent=await sendRecipientBatch({api,person,prepared:preview.prepared,isActive:fresh,confirmReviewed:true,queueOnly:kind==='queue',onProgress:(item,items)=>{if(fresh())setResult({scope,epoch,items:[...items]});}});
    if(!fresh())return;
    setResult({scope,epoch,items:sent.results});if(sent.unknown)setTransportUnknown(true);
@@ -164,6 +166,9 @@ export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{}
  // Missing setup leads to the relevant control. Only an in-flight or consumed
  // operation disables this action; the transport still enforces every guard.
  const sendDisabled=!!busy||!!queue||scheduleLocked||containsExistingQueue;
+ const sentCount=last.filter(item=>item.status==='sent').length,unknownOutcome=transportUnknown||last.some(item=>['delivery_unknown','queue_unknown','sending'].includes(item.status));
+ const sentAll=Boolean(queue&&queue.kind==='send'&&!busy&&selection.recipients.length&&sentCount===selection.recipients.length&&!unknownOutcome),outcome=busy==='send'?'sending':sentAll?'sent':unknownOutcome?'unknown':queue?'partial':'ready';
+ const sendLabel=busy==='send'?t('در حال ارسال…','Sending…'):busy?t('در حال آماده‌سازی…','Preparing…'):sentAll?t('ارسال شد','Sent'):queue?queue.kind==='queue'?t('در صف؛ ارسال نشده','Queued; not sent'):t('نتیجهٔ ارسال را بررسی کنید','Review the send results'):preview&&checked&&reviewedReady?t('تأیید و ارسال ایمیل و رزومه','Confirm and send email and CV'):t('ارسال ایمیل و رزومه','Send email and CV');
  const missingRecipients=Boolean(data&&!data.source.publishedRecipients?.length);
  const sendHint=queue?'نتیجهٔ این نوبت پایین نمایش داده می‌شود.':scheduleLocked?'ابتدا وضعیت ارسال یا زمان‌بندی قبلی را بررسی کنید.':containsExistingQueue?'پیام قبلی در صف است؛ آن را در مرکز مکاتبات بررسی کنید.':!data?(busy?'در حال دریافت…':'اطلاعات آماده نشد؛ برای دریافت دوباره، ارسال را بزنید.'):missingRecipients?'ایمیل منتشرشده هنوز پیدا نشده است؛ لینک درخواست مرکز را ببینید.':account?.statusUnavailable?'وضعیت Gmail دریافت نشد؛ ابتدا وضعیت فرستنده را دوباره بررسی کنید.':!canSend?'ابتدا Gmail همین حساب را متصل کنید یا فرستندهٔ متصل را انتخاب کنید.':!selection.presetId||!selection.cvVersionId?reasons.preset_and_cv_required:!selection.recipients.length?'حداقل یک گیرنده از فهرست همین آگهی انتخاب کنید.':!preview?'۱. پیش‌نمایش را باز کنید؛ ۲. متن و رزومه را تأیید کنید؛ ۳. ارسال نهایی را بزنید.':!reviewedReady?'گیرندگان مسدودشده را بردارید و پیش‌نمایش تازه بگیرید.':!checked?'متن و رزومه را بخوانید و تیک بازبینی را بزنید.':'آمادهٔ ارسال از صندوق انتخاب‌شده به گیرندگان همین آگهی.';
  function focusStep(target,control){const node=target.current;node?.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});(control?node?.querySelector(control):node)?.focus({preventScroll:true});}
@@ -181,7 +186,7 @@ export function OpportunityMail({person,opportunity,onClose=()=>{},notify=()=>{}
  }
  return <section className={'opportunity-mail panel'+(compact?' opportunity-mail-compact':'')} aria-label="مکاتبه دربارهٔ همین فرصت" dir="rtl">
   <div className="section-head"><h3><Mail size={19}/>{compact?'ارسال یا زمان‌بندی':'درخواست برای همین فرصت'}</h3><button type="button" className={compact?'text-button':'icon'} onClick={onClose} aria-label={compact?'بازگشت به متن':'بستن مکاتبه'}>{compact?<><ArrowRight size={16}/>بازگشت به متن</>:<X size={18}/>}</button></div>
-  <div className="send-action-dock send-action-dock-inline" aria-label="اقدام ارسال همین آگهی"><div><strong>ارسال برای همین آگهی</strong><small id={'send-hint-'+oppId} role="status">{sendHint}</small></div><button type="button" className="primary" disabled={sendDisabled} aria-describedby={'send-hint-'+oppId} onClick={primarySend}><Send size={17}/>{busy==='send'?'در حال ارسال…':preview&&checked&&reviewedReady?'ارسال نهایی ایمیل و رزومه':'ارسال ایمیل و رزومه'}</button></div>
+  <FloatingSendDock><div className="send-action-dock send-action-dock-inline" aria-label="اقدام ارسال همین آگهی"><div><strong>{preview?t('۲ · تأیید و ارسال برای همین آگهی','2 · Confirm and send for this advertisement'):t('ارسال برای همین آگهی','Send for this advertisement')}</strong><small id={'send-hint-'+oppId} role="status">{sendHint}</small>{queue&&<span className="send-progress-summary" data-outcome={outcome} role="status">{t('ارسال تأییدشده: ','Confirmed sends: ')}{sentCount.toLocaleString(interfaceLocale('fa-IR'))}{t(' از ',' of ')}{selection.recipients.length.toLocaleString(interfaceLocale('fa-IR'))}{unknownOutcome&&t('؛ بعضی نتیجه‌ها نامشخص است','; some outcomes are unknown')}</span>}</div><button type="button" className="primary send-execute-button" data-delivery-state={outcome} disabled={sendDisabled} aria-busy={Boolean(busy)} aria-describedby={'send-hint-'+oppId} onClick={primarySend}>{busy?<RefreshCw size={17} className="spin"/>:<Send size={17}/>}<span>{sendLabel}</span></button></div></FloatingSendDock>
   {!compact&&<p><MixedText>{data?.source?.title||opportunity?.title||'فرصت انتخاب‌شده'}</MixedText></p>}
   <div className="opportunity-mail-actions opportunity-mail-context-actions">{sourceURL&&<a href={sourceURL} target="_blank" rel="noreferrer">اصل آگهی <ExternalLink size={14}/></a>}<button type="button" className="text-button" onClick={onOpenSettings}>تنظیمات حساب</button><button type="button" className="text-button" disabled={!!busy} onClick={load}><RefreshCw size={14}/> بازخوانی وضعیت</button></div>
   {error&&<p className="notice" role="alert"><MixedText>{error}</MixedText></p>}

@@ -1,5 +1,7 @@
 # Resume this project with minimal context
 
+Whole-mail discovery and visible sending: [2026-11-18 update](ALL-MAIL-DISCOVERY-2026-11-18.fa.md). The owner-scoped reader now advances across all Gmail folders and incrementally tracks changes; per-invocation limits are not a total archive limit. Private LinkedIn mail leads, source/CV-bound drafts, exact Telegram links and viewport green send controls are separate from automatic application approval. The reviewed public build uses the existing pinned esbuild directly; the vulnerable Vite dependency chain was removed. Read the release receipt before claiming live coverage.
+
 Clinic mail lifecycle: [2026-11-18 change](CLINIC-CORRESPONDENCE-2026-11-18.fa.md). Actual Gmail Sent history differs from the panel send queue. Progressive private thread reading, reply classifications, durable contact stops, reviewed threaded follow-ups and employer-supported GP goal are implemented; consult its release receipt before assuming live state. Never ask the owner to manually reconstruct Sent while an authorized own grant can be read.
 
 Latest Arash performance/correctness audit: [2026-11-17 report](ARASH-AUDIT-2026-11-17.fa.md). Source continuation, reader leases/child proof, factual writing, single-request snapshots and cancellable two-clinic draft preparation were reviewed and tested; read its deployment receipt before assuming runtime.
@@ -11,7 +13,7 @@ Public page reading/extraction: read docs/CONTENT-PIPELINE.fa.md selectively. De
 1. Read `AGENTS.md`, then only your role file under `docs/agents/`.
 2. Read `docs/GOALS.md` for requirements/status and `docs/STATUS.fa.md` for delivery notes. Consult `docs/POLICY.md` before privacy, source, external-action or deployment changes.
 3. Confirm `git status`, current commit and recent CI. Do not restart completed work or assume old deployment notes describe today's runtime.
-4. Runtime: React/Vite UI; authenticated Cloudflare Worker `cloud/worker.mjs`; dedicated Supabase Auth/Postgres with RLS; two D1 bindings. `server/` is local legacy development and is NOT the cloud API.
+4. Runtime: React UI built by `scripts/frontend.mjs` using pinned esbuild; authenticated Cloudflare Worker `cloud/worker.mjs`; dedicated Supabase Auth/Postgres with RLS; two D1 bindings. `server/` is local legacy development and is NOT the cloud API.
 5. Person identity comes only from verified Supabase membership. No browser profile selector grants access. Google and LinkedIn each have independent owner identity/tokens/mail/tasks; NEVER borrow a grant across users. Read `docs/GOOGLE.md`, `docs/LINKEDIN-CONNECT.md` only when changing those integrations.
 6. Public evidence: `cloud/{eligibility,study,development}-evidence.json` + `docs/research/`. Public opportunities: registry/collectors/store. Read `docs/SOURCE-COVERAGE.md` and `docs/OPPORTUNITIES-V2.md` for those changes. Availability checks are not automatic new research.
 7. Private planning/CVs/mail live in authenticated storage, not this repository. `private/`, attachments and scratch paths are disposable, ignored evidence/backup material. Retrieve current facts only through authorized owner-scoped access. Never turn historical CV wording or an action checkbox into a verified achievement.

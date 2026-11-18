@@ -13,22 +13,32 @@ const gmailId=value=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,200}$/.test(valu
 function requireReadScope(access){const scopes=Array.isArray(access?.scopes)?access.scopes:[];if(!['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.modify','https://mail.google.com/'].some(scope=>scopes.includes(scope)))throw new MailError(403,'gmail_read_scope_required');}
 function decodeBody(data){try{const value=data.replaceAll('-','+').replaceAll('_','/');return new TextDecoder().decode(Uint8Array.from(atob(value),c=>c.charCodeAt(0)));}catch{return '';}}
 const attachedPart=payload=>!!payload?.filename||/^attachment\b/i.test(header(payload,'content-disposition'))||payload?.mimeType==='message/rfc822';
-function plainParts(payload,depth=0){
- if(!payload||depth>10||attachedPart(payload))return '';
+function plainParts(payload,depth=0,coverage=null){
+ if(!payload||attachedPart(payload))return '';if(depth>10){if(coverage)coverage.mimeLimited=true;return '';}
  let value=payload.mimeType==='text/plain'&&typeof payload.body?.data==='string'?decodeBody(payload.body.data):'';
- for(const part of (payload.parts||[]).slice(0,30)){value+='\n'+plainParts(part,depth+1);if(new TextEncoder().encode(value).length>=MAX_BODY)break;}
+ if(coverage)coverage.plainBytes+=new TextEncoder().encode(value).length;
+ const parts=payload.parts||[];if(coverage&&parts.length>30)coverage.mimeLimited=true;
+ for(const [index,part] of parts.slice(0,30).entries()){value+='\n'+plainParts(part,depth+1,coverage);if(new TextEncoder().encode(value).length>=MAX_BODY){if(coverage&&index<parts.length-1)coverage.mimeLimited=true;break;}}
  return trimBytes(value);
 }
 // HTML mail is converted to inert text. Scripts, styles, attachments and quoted
 // HTML history cannot become fresh employer intent or browser markup.
-function htmlParts(payload,depth=0){
- if(!payload||depth>10||attachedPart(payload))return '';
+function htmlParts(payload,depth=0,coverage=null){
+ if(!payload||attachedPart(payload))return '';if(depth>10){if(coverage)coverage.mimeLimited=true;return '';}
  let value=payload.mimeType==='text/html'&&typeof payload.body?.data==='string'?decodeBody(payload.body.data):'';
- for(const part of (payload.parts||[]).slice(0,30)){value+='\n'+htmlParts(part,depth+1);if(new TextEncoder().encode(value).length>=MAX_BODY)break;}
+ if(coverage)coverage.htmlBytes+=new TextEncoder().encode(value).length;
+ const parts=payload.parts||[];if(coverage&&parts.length>30)coverage.mimeLimited=true;
+ for(const [index,part] of parts.slice(0,30).entries()){value+='\n'+htmlParts(part,depth+1,coverage);if(new TextEncoder().encode(value).length>=MAX_BODY){if(coverage&&index<parts.length-1)coverage.mimeLimited=true;break;}}
  return trimBytes(value);
 }
-function inertHtmlText(value){
- const html=trimBytes(value),lower=html.toLowerCase();let text='',cursor=0;
+function decodeHtmlEntities(text){return text.replace(/&(?:nbsp|amp|lt|gt|quot|apos|#39);/gi,m=>({'&nbsp;':' ','&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&apos;':"'",'&#39;':"'"}[m.toLowerCase()])).replace(/&#(x[0-9a-f]{1,6}|[0-9]{1,7});/gi,(m,n)=>{const code=n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):Number(n);return code>0&&code<=0x10ffff&&!(code>=0xd800&&code<=0xdfff)?String.fromCodePoint(code):' ';});}
+function mailLinks(){
+ const links=[],seen=new Map();let truncated=false;
+ return {add(raw,label='',quoted=false){if(typeof raw!=='string'||raw.length>2000)return;let url;try{url=new URL(decodeHtmlEntities(raw).trim());}catch{return;}if(!['https:','http:'].includes(url.protocol)||url.username||url.password)return;const key=url.href;if(seen.has(key)){if(!quoted)links[seen.get(key)].quoted=false;return;}if(links.length>=80){truncated=true;return;}seen.set(key,links.length);links.push({url:key,label:decodeHtmlEntities(clean(label)).replace(/\s+/g,' ').trim().slice(0,240),quoted});},get links(){return links;},get truncated(){return truncated;}};
+}
+function inertHtmlText(value,linkCollector=null,coverage=null){
+ const html=trimBytes(value),lower=html.toLowerCase();let text='',cursor=0,anchor=null,quoted=false;
+ const finishAnchor=()=>{if(anchor&&linkCollector)linkCollector.add(anchor.href,text.slice(anchor.start),anchor.quoted);anchor=null;};
  // A single forward scan avoids repeated regex searches on malformed mail
  // containing thousands of unclosed tags. Attributes never become body text.
  while(cursor<html.length){
@@ -36,18 +46,17 @@ function inertHtmlText(value){
   text+=html.slice(cursor,start);let end=start+1,quote=null;
   for(;end<html.length;end++){const char=html[end];if(quote){if(char===quote)quote=null;}else if(char==='"'||char==="'")quote=char;else if(char==='>')break;}
   if(end>=html.length)break;
-  const tag=lower.slice(start+1,end).trim(),name=tag.match(/^\/?([a-z][a-z0-9-]*)\b/)?.[1],closing=tag.startsWith('/');
+  const rawTag=html.slice(start+1,end).trim(),tag=lower.slice(start+1,end).trim(),name=tag.match(/^\/?([a-z][a-z0-9-]*)\b/)?.[1],closing=tag.startsWith('/');
   if(!closing&&(name==='script'||name==='style')){
    let stop=lower.indexOf('</'+name,end+1);while(stop>=0&&!/[\s/>]/.test(lower[stop+name.length+2]||''))stop=lower.indexOf('</'+name,stop+name.length+2);if(stop<0)break;
    const stopEnd=html.indexOf('>',stop+name.length+2);if(stopEnd<0)break;cursor=stopEnd+1;continue;
   }
-  if(!closing&&(name==='blockquote'||name==='div'&&/\bclass\s*=\s*["'][^"']*\bgmail_quote\b/.test(tag))){text+='\n> [quoted history omitted]';break;}
+  if(!quoted&&!closing&&(name==='blockquote'||name==='div'&&/\bclass\s*=\s*["'][^"']*\bgmail_quote\b/.test(tag))){finishAnchor();text+='\nOn earlier correspondence wrote:\n';quoted=true;}
+  if(name==='a'){finishAnchor();if(!closing){const href=rawTag.match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i);if(href)anchor={href:href[1]??href[2]??href[3],start:text.length,quoted};}}
   if(name==='br'||name==='hr'||closing&&['p','div','li','tr'].includes(name))text+='\n';
   cursor=end+1;
  }
- return text
- .replace(/&(?:nbsp|amp|lt|gt|quot|apos|#39);/gi,m=>({'&nbsp;':' ','&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&apos;':"'",'&#39;':"'"}[m.toLowerCase()]))
- .replace(/&#(x[0-9a-f]{1,6}|[0-9]{1,7});/gi,(m,n)=>{const code=n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):Number(n);return code>0&&code<=0x10ffff&&!(code>=0xd800&&code<=0xdfff)?String.fromCodePoint(code):' ';}).trim();
+ finishAnchor();const decoded=decodeHtmlEntities(text);if(coverage&&new TextEncoder().encode(decoded).length>MAX_BODY)coverage.mimeLimited=true;return trimBytes(decoded).trim();
 }
 export function extractEmails(text){
  const emails=new Set();
@@ -149,13 +158,15 @@ export function normalizeMessage(raw){
  if(!gmailId(raw?.id))throw new MailError(502,'invalid_gmail_response');
  const labels=Array.isArray(raw.labelIds)?raw.labelIds.filter(v=>typeof v==='string').slice(0,50):[];
  const direction=labels.includes('SENT')?'sent':'received';
- const from=header(raw.payload,'from'), subject=header(raw.payload,'subject'), originalPlain=plainParts(raw.payload).trim(), plainBody=originalPlain||inertHtmlText(htmlParts(raw.payload));
+ const bodyCoverage={plainBytes:0,htmlBytes:0,mimeLimited:false},linkCollector=mailLinks(),from=header(raw.payload,'from'), subject=header(raw.payload,'subject'), originalPlain=plainParts(raw.payload,0,bodyCoverage).trim(), htmlText=inertHtmlText(htmlParts(raw.payload,0,bodyCoverage),linkCollector,bodyCoverage),plainBody=originalPlain||htmlText,bodyTruncated=bodyCoverage.mimeLimited||(originalPlain?bodyCoverage.plainBytes:bodyCoverage.htmlBytes)>MAX_BODY;
+ const currentBody=latestReply(plainBody).text;
+ for(const match of plainBody.matchAll(/https?:\/\/[^\s<>"']{1,2000}/g))linkCollector.add(match[0].replace(/[),.;!?\]]+$/,''),'',!currentBody.includes(match[0]));
  const originalId=header(raw.payload,'message-id').trim();
  const rfcMessageId=/^<[^<>\s@]+@[^<>\s@]+>$/.test(originalId)?originalId:null;
  const dateNumber=Number(raw.internalDate)||Date.parse(header(raw.payload,'date'))||0;
  const safeDate=Number.isFinite(dateNumber)&&dateNumber>0&&dateNumber<8640000000000000?dateNumber:0;
  const snippet=trimBytes(clean(raw.snippet).replace(/<[^>]*>/g,''),2000);
- return {rfcMessageId,replyTo:header(raw.payload,'reply-to'),to:header(raw.payload,'to'),cc:header(raw.payload,'cc'),bcc:header(raw.payload,'bcc'),id:raw.id,threadId:gmailId(raw.threadId)?raw.threadId:raw.id,from,subject,date:safeDate?new Date(safeDate).toISOString():null,dateTimestamp:safeDate,snippet,plainBody,hasPlainBody:!!plainBody,bodySource:originalPlain?'text_plain':plainBody?'html_as_inert_text':'snippet_only',labels,direction,...rankMessage(subject+'\n'+(plainBody||snippet),direction),extractedEmails:extractEmails(from+'\n'+header(raw.payload,'reply-to')+'\n'+plainBody)};
+ return {rfcMessageId,replyTo:header(raw.payload,'reply-to'),to:header(raw.payload,'to'),cc:header(raw.payload,'cc'),bcc:header(raw.payload,'bcc'),id:raw.id,threadId:gmailId(raw.threadId)?raw.threadId:raw.id,from,subject,date:safeDate?new Date(safeDate).toISOString():null,dateTimestamp:safeDate,snippet,plainBody,hasPlainBody:!!plainBody,bodySource:originalPlain?'text_plain':plainBody?'html_as_inert_text':'snippet_only',bodyTruncated,bodyAnalysisByteLimit:MAX_BODY,links:linkCollector.links,linksTruncated:linkCollector.truncated,labels,direction,...rankMessage(subject+'\n'+(plainBody||snippet),direction),extractedEmails:extractEmails(from+'\n'+header(raw.payload,'reply-to')+'\n'+plainBody)};
 }
 async function googleJson(fetcher,accessToken,path,recovery=null){
  const read=async()=>{try{return await fetcher('https://gmail.googleapis.com/gmail/v1/users/me/'+path,{headers:{Authorization:'Bearer '+(recovery?.access.accessToken||accessToken)},signal:AbortSignal.timeout(12000),redirect:'manual'});}catch{throw new MailError(502,'gmail_unavailable');}};

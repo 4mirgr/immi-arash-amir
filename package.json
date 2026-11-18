@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1",
+    "dev": "node scripts/frontend.mjs dev --host=127.0.0.1",
+    "build": "node scripts/frontend.mjs build",
+    "preview": "node scripts/frontend.mjs preview --host=127.0.0.1",
     "server": "python -m server.app"
   },
   "dependencies": {
@@ -15,7 +15,6 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "esbuild": "0.25.12",
-    "vite": "^6.0.0"
+    "esbuild": "0.25.12"
   }
 }

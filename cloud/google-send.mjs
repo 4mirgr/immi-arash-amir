@@ -2,6 +2,7 @@ import { getGoogleAccess } from './google-oauth.mjs';
 import { createDocx } from './docx.mjs';
 import { getOwnedMailReplyContext } from './google-mail.mjs';
 import { getOwnedClinicFollowUpContext } from './clinic-correspondence.mjs';
+import {getOwnedMailOpportunityContext} from './mail-opportunities.mjs';
 
 const LIMIT = 20, MAX_MIME = 1400000, MAX_DRIVE_BYTES=1000000;
 const DRIVE='https://www.googleapis.com/drive/v3/files/';
@@ -50,7 +51,7 @@ async function body(request){if(Number(request.headers.get('Content-Length')||0)
 function dbFor(env){if(!env.GOOGLE_DB)throw new SendError(503,'google_storage_not_configured');return env.GOOGLE_DB;}
 function stmt(db,sql,...args){return db.prepare(sql).bind(...args);}
 async function all(db,sql,...args){return (await stmt(db,sql,...args).all()).results||[];}
-function publicItem(row){return {id:row.id,recipient:row.recipient,sender:row.google_email,subject:row.subject,status:row.status,createdAt:row.created_at,attemptedAt:row.attempted_at||null,gmailMessageId:row.gmail_message_id||null,cvVersionId:row.cv_version_id||null,attachmentName:row.attachment_name||null,replyThreadId:row.reply_thread_id||null,followUp:Boolean(row.follow_up_context)};}
+function publicItem(row){return {id:row.id,recipient:row.recipient,sender:row.google_email,subject:row.subject,status:row.status,createdAt:row.created_at,attemptedAt:row.attempted_at||null,gmailMessageId:row.gmail_message_id||null,cvVersionId:row.cv_version_id||null,attachmentName:row.attachment_name||null,replyThreadId:row.reply_thread_id||null,followUp:Boolean(row.follow_up_context),mailOpportunity:Boolean(row.mail_opportunity_context)};}
 function rootOwner(context){return context.rootUserId||context.userId;}
 async function dispatchScheduleGuard(env,context,rows){
  const db=dbFor(env),exists=await stmt(db,"SELECT name FROM sqlite_master WHERE type='table' AND name='mail_scheduled_approvals' LIMIT 1").first();
@@ -84,21 +85,31 @@ function mime({sender,recipient,subject,text,attachment,messageId,reply}){
   return [...headers,`Content-Type: multipart/mixed; boundary="${boundary}"`,'',`--${boundary}`,'Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: base64','',lines(utf8b64(text)),`--${boundary}`,`Content-Type: ${attachment.mimeType||'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}`,`Content-Disposition: attachment; filename="${attachment.name}"`,'Content-Transfer-Encoding: base64','',lines(b64(attachment.bytes)),`--${boundary}--`,''].join('\r\n');
 }
 async function prepare(env,context,payload,fetcher){
-  const allowed=['clinicIds','presetId','subject','body','cvVersionId','replyContext','followUpContext','driveFileId','driveAttachmentHash'];
+  const allowed=['clinicIds','presetId','subject','body','cvVersionId','replyContext','followUpContext','mailOpportunityContext','driveFileId','driveAttachmentHash'];
   if(Object.keys(payload).some(key=>!allowed.includes(key)))throw new SendError(400,'unexpected_queue_field');
   if(payload.cvVersionId&&payload.driveFileId)throw new SendError(400,'select_one_attachment');
   if(payload.driveAttachmentHash!==undefined&&!payload.driveFileId)throw new SendError(400,'invalid_drive_selection');
   const followingUp=payload.followUpContext!==undefined;
+  const privateOpportunity=payload.mailOpportunityContext!==undefined;
   const replying=payload.replyContext!==undefined||followingUp;
+  if(privateOpportunity&&(replying||payload.clinicIds!==undefined||payload.presetId!==undefined||payload.driveFileId!==undefined))throw new SendError(400,'select_one_application_context');
   if(followingUp&&payload.replyContext!==undefined)throw new SendError(400,'select_one_reply_context');
   const routing=followingUp?payload.followUpContext:payload.replyContext;
   if(replying){
     if(!routing||typeof routing!=='object'||Array.isArray(routing)||Object.keys(routing).some(key=>!['messageId','threadId','to'].includes(key))||payload.clinicIds!==undefined||payload.presetId!==undefined)throw new SendError(400,'invalid_reply_context');
-  }else if(!Array.isArray(payload.clinicIds)||payload.clinicIds.length<1||payload.clinicIds.length>200||payload.clinicIds.some(id=>typeof id!=='string'||!CLINIC.test(id)))throw new SendError(400,'invalid_clinic_selection');
+  }else if(!privateOpportunity&&(!Array.isArray(payload.clinicIds)||payload.clinicIds.length<1||payload.clinicIds.length>200||payload.clinicIds.some(id=>typeof id!=='string'||!CLINIC.test(id))))throw new SendError(400,'invalid_clinic_selection');
   const account=await access(env,context.userId,fetcher), db=dbFor(env);
   // Trusted application adapters may pin the identity reviewed before queueing.
   if(context.expectedGoogleIdentity&&(account.subject!==context.expectedGoogleIdentity.subject||account.email.toLowerCase()!==context.expectedGoogleIdentity.email.toLowerCase()))throw new SendError(409,'google_account_changed');
   let reply=null;
+  let mailOpportunity=null;
+  if(privateOpportunity){
+    mailOpportunity=await getOwnedMailOpportunityContext(env,context.userId,payload.mailOpportunityContext,fetcher);
+    if(mailOpportunity.googleSubject!==account.subject)throw new SendError(409,'mail_opportunity_account_changed');
+    if(typeof mailOpportunity.applicationKey!=='string'||!mailOpportunity.applicationKey||mailOpportunity.applicationKey.length>5000)throw new SendError(409,'mail_opportunity_source_key_required');
+    if(payload.subject!==mailOpportunity.subject||payload.body!==mailOpportunity.body||payload.cvVersionId!==mailOpportunity.cvVersionId)throw new SendError(409,'mail_opportunity_draft_changed_review_required');
+    if(!mailbox(mailOpportunity.to))throw new SendError(409,'mail_opportunity_recipient_required');
+  }
   if(replying){
     reply=await (followingUp?getOwnedClinicFollowUpContext:getOwnedMailReplyContext)(env,context.userId,routing,fetcher);
     if(reply.googleSubject!==account.subject)throw new SendError(409,'reply_account_changed');
@@ -127,7 +138,8 @@ async function prepare(env,context,payload,fetcher){
   }
   if(payload.driveFileId){attachment=await driveAttachment(env,context,payload,account,fetcher);cvHash='drive:'+attachment.hash;}
   let clinics;
-  if(reply)clinics=[{id:reply.messageId,data:{email:reply.to}}];
+  if(mailOpportunity)clinics=[{id:mailOpportunity.id,data:{email:mailOpportunity.to}}];
+  else if(reply)clinics=[{id:reply.messageId,data:{email:reply.to}}];
   else{
     const ids=[...new Set(payload.clinicIds)];
     clinics=await context.rest('immi_clinics','?select=id,data&id=in.('+ids.join(',')+')');
@@ -142,12 +154,16 @@ async function prepare(env,context,payload,fetcher){
     if(rootSuppressed.has(email)){excluded.push({clinicId:clinic.id,reason:'suppressed'});continue;}
     if(await stmt(db,'SELECT email FROM google_send_suppressions WHERE owner_id=? AND email=?',context.userId,email).first()){excluded.push({clinicId:clinic.id,reason:'suppressed'});continue;}
     if(recipients.has(email))continue;
-    const fingerprint=await hash(JSON.stringify({subject,body:text,recipient:email,cvHash,googleSubject:account.subject,googleEmail:account.email.toLowerCase(),...(reply?{reply:{messageId:reply.messageId,threadId:reply.threadId,rfcMessageId:reply.rfcMessageId}}:{}),...(followingUp?{kind:'clinic_follow_up'}:{})}));
+    const fingerprint=await hash(JSON.stringify({subject,body:text,recipient:email,cvHash,googleSubject:account.subject,googleEmail:account.email.toLowerCase(),...(reply?{reply:{messageId:reply.messageId,threadId:reply.threadId,rfcMessageId:reply.rfcMessageId}}:{}),...(followingUp?{kind:'clinic_follow_up'}:{}),...(mailOpportunity?{kind:'private_mail_opportunity',id:mailOpportunity.id,sourceGmailId:mailOpportunity.sourceGmailId}:{})}));
     const existing=await stmt(db,'SELECT * FROM google_send_queue WHERE owner_id=? AND fingerprint=?',context.userId,fingerprint).first();
     const id=existing?.id||crypto.randomUUID();
     const raw=mime({sender:account.email,recipient:email,subject,text,attachment,messageId:id,reply});
     if(encoder.encode(raw).length>MAX_MIME)throw new SendError(413,'mail_too_large');
-    recipients.set(email,{id,email,subject,fingerprint,raw,existing,cvVersionId:payload.cvVersionId||null,attachmentName:attachment?.name||null,replyThreadId:reply?.threadId||null,followUpContext:followingUp?JSON.stringify({messageId:reply.messageId,threadId:reply.threadId,to:reply.to}):null});
+    if(mailOpportunity&&!existing){
+      const prior=await stmt(db,"SELECT id FROM google_send_queue WHERE owner_id IN (?,?) AND recipient=? AND json_extract(mail_opportunity_context,'$.applicationKey')=? AND status IN ('queued','sending','sent','delivery_unknown') LIMIT 1",rootOwner(context),rootOwner(context)+':secondary',email,await hash(mailOpportunity.applicationKey)).first();
+      if(prior)throw new SendError(409,'mail_opportunity_already_prepared_or_sent');
+    }
+    recipients.set(email,{id,email,subject,fingerprint,raw,existing,cvVersionId:payload.cvVersionId||null,attachmentName:attachment?.name||null,replyThreadId:reply?.threadId||null,followUpContext:followingUp?JSON.stringify({messageId:reply.messageId,threadId:reply.threadId,to:reply.to}):null,mailOpportunityContext:mailOpportunity?JSON.stringify({id:mailOpportunity.id,recipient:email,bodyHash:await hash(mailOpportunity.body),rootOwner:rootOwner(context),applicationKey:await hash(mailOpportunity.applicationKey)}):null});
   }
   const createdDay=now().slice(0,10);
   const reserved=Number((await stmt(db,'SELECT count(*) AS n FROM google_send_queue WHERE owner_id=? AND created_day=?',context.userId,createdDay).first()).n);
@@ -161,11 +177,11 @@ async function enqueue(env,context,payload,fetcher){
     if(item.existing){items.push({...publicItem(item.existing),reused:true});continue;}
     // Each conditional insert reserves one daily slot atomically, including concurrent requests.
     const storedMime=data.attachment?await protectDriveMime(env,context.userId,item.raw):item.raw;
-    const inserted=await stmt(db,`INSERT INTO google_send_queue(id,owner_id,profile_id,google_subject,google_email,fingerprint,recipient,subject,raw_mime,cv_version_id,attachment_name,reply_thread_id,follow_up_context,status,created_at,created_day)
-      SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,? WHERE (SELECT count(*) FROM google_send_queue WHERE owner_id=? AND created_day=?)<?
-      ON CONFLICT(owner_id,fingerprint) DO NOTHING RETURNING *`,item.id,context.userId,context.profileId,data.account.subject,data.account.email.toLowerCase(),item.fingerprint,item.email,item.subject,storedMime,item.cvVersionId,item.attachmentName,item.replyThreadId,item.followUpContext,now(),data.createdDay,context.userId,data.createdDay,LIMIT).first();
+    const inserted=await stmt(db,`INSERT INTO google_send_queue(id,owner_id,profile_id,google_subject,google_email,fingerprint,recipient,subject,raw_mime,cv_version_id,attachment_name,reply_thread_id,follow_up_context,mail_opportunity_context,status,created_at,created_day)
+      SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,? WHERE (SELECT count(*) FROM google_send_queue WHERE owner_id=? AND created_day=?)<?
+      ON CONFLICT DO NOTHING RETURNING *`,item.id,context.userId,context.profileId,data.account.subject,data.account.email.toLowerCase(),item.fingerprint,item.email,item.subject,storedMime,item.cvVersionId,item.attachmentName,item.replyThreadId,item.followUpContext,item.mailOpportunityContext,now(),data.createdDay,context.userId,data.createdDay,LIMIT).first();
     const row=inserted||await stmt(db,'SELECT * FROM google_send_queue WHERE owner_id=? AND fingerprint=?',context.userId,item.fingerprint).first();
-    if(row)items.push({...publicItem(row),reused:!inserted});else excluded.push({recipient:item.email,reason:'daily_quota_reached'});
+    if(row)items.push({...publicItem(row),reused:!inserted});else excluded.push({recipient:item.email,reason:item.mailOpportunityContext?'private_application_reserved_or_quota':'daily_quota_reached'});
   }
   return {items,excluded,dailyLimit:LIMIT,automaticSending:false};
 }
@@ -175,7 +191,7 @@ async function dispatch(env,context,payload,fetcher){
   // Verify all supplied IDs before making any external send request.
   const owned=[];
   for(const id of [...new Set(payload.ids)]){const row=await stmt(db,'SELECT * FROM google_send_queue WHERE owner_id=? AND id=?',context.userId,id).first();if(!row)throw new SendError(404,'queue_item_not_found');owned.push(row);}
-  if(owned.some(row=>row.follow_up_context)&&owned.length>2)throw new SendError(400,'select_at_most_two_when_following_up');
+  if(owned.some(row=>row.follow_up_context||row.mail_opportunity_context)&&owned.length>2)throw new SendError(400,'select_at_most_two_when_following_up');
   account=await access(env,context.userId,fetcher);
   // Validate the whole batch before any transport. The claim below repeats the
   // schedule condition atomically so approvals created meanwhile cannot be bypassed.
@@ -184,6 +200,19 @@ async function dispatch(env,context,payload,fetcher){
     try{account=await access(env,context.userId,fetcher);}catch{results.push({id:row.id,status:'blocked_google_connection'});continue;}
     if(row.google_subject!==account.subject||row.google_email!==account.email.toLowerCase()){results.push({id:row.id,status:'blocked_account_changed'});continue;}
     if(row.status!=='queued'){results.push(publicItem(row));continue;}
+    let mailOpportunityGuard=null;
+    if(row.mail_opportunity_context){
+      try{
+        const routing=JSON.parse(row.mail_opportunity_context);
+        const verified=await getOwnedMailOpportunityContext(env,context.userId,{id:routing.id,recipient:routing.recipient},fetcher);
+        if(!/^[a-f0-9]{64}$/.test(routing.bodyHash||'')||await hash(verified.body)!==routing.bodyHash)throw new SendError(409,'mail_opportunity_changed_review_required');
+        if(routing.rootOwner!==rootOwner(context)||routing.applicationKey!==await hash(verified.applicationKey))throw new SendError(409,'mail_opportunity_source_changed');
+        if(verified.googleSubject!==account.subject||verified.to!==row.recipient||verified.subject!==row.subject||verified.cvVersionId!==row.cv_version_id)throw new SendError(409,'mail_opportunity_changed_review_required');
+        mailOpportunityGuard={id:verified.id,...verified.sourceState};
+        account=await access(env,context.userId,fetcher);
+        if(account.subject!==row.google_subject||account.email.toLowerCase()!==row.google_email)throw new SendError(409,'mail_opportunity_account_changed');
+      }catch(error){results.push({id:row.id,status:'blocked_mail_opportunity',reason:/^[a-z_]{3,80}$/.test(error?.code||error?.message||'')?(error.code||error.message):'mail_opportunity_recheck_required'});continue;}
+    }
     // A reply may arrive between drafting, queueing and clicking Send. Re-read
     // the owned thread at transport time; never send an obsolete reminder.
     if(row.follow_up_context){
@@ -206,10 +235,14 @@ async function dispatch(env,context,payload,fetcher){
     const scheduleAt=Date.now(),scheduled=context.scheduledApprovalId!==undefined;
     const scheduleSQL=!hasSchedules?'':scheduled?` AND EXISTS(SELECT 1 FROM mail_scheduled_approvals a WHERE a.id=? AND a.owner_id=? AND a.profile_id=? AND a.queue_id=google_send_queue.id AND a.mailbox=? AND a.status='sending' AND a.send_after<=? AND a.expires_at>? AND a.google_subject=google_send_queue.google_subject AND a.sender=google_send_queue.google_email AND a.recipient=google_send_queue.recipient AND a.cv_version_id=google_send_queue.cv_version_id AND a.consent_version='frozen_mail_v1') AND NOT EXISTS(SELECT 1 FROM mail_scheduled_approvals other WHERE other.queue_id=google_send_queue.id AND other.status IN ('approved','sending') AND other.id<>?)`:` AND NOT EXISTS(SELECT 1 FROM mail_scheduled_approvals a WHERE a.queue_id=google_send_queue.id AND a.status IN ('approved','sending'))`;
     const scheduleArgs=hasSchedules&&scheduled?[context.scheduledApprovalId,rootOwner(context),context.profileId,context.mailbox,scheduleAt,scheduleAt,context.scheduledApprovalId]:[];
+    // The public-source reader can change readiness while Gmail is awaited.
+    // Pin the exact verified private source/draft in the transport claim itself.
+    const opportunitySQL=mailOpportunityGuard?` AND EXISTS(SELECT 1 FROM private_mail_opportunities o WHERE o.id=? AND o.owner_id=google_send_queue.owner_id AND o.google_sub=google_send_queue.google_subject AND o.profile_id='arash' AND o.status IN ('suggested','reviewed') AND o.updated_at=? AND o.data_json=? AND o.draft_json=? AND json_extract(o.draft_json,'$.status')='ready_for_review' AND (json_extract(o.data_json,'$.closesAt') IS NULL OR julianday(json_extract(o.data_json,'$.closesAt'))>julianday('now')))` : '';
+    const opportunityArgs=mailOpportunityGuard?[mailOpportunityGuard.id,mailOpportunityGuard.updatedAt,mailOpportunityGuard.dataJson,mailOpportunityGuard.draftJson]:[];
     const claim=await stmt(db,`UPDATE google_send_queue SET status='sending',attempted_at=?,attempt_day=? WHERE id=? AND owner_id=? AND status='queued' AND google_subject=?
       AND NOT EXISTS(SELECT 1 FROM google_send_suppressions WHERE owner_id=? AND email=google_send_queue.recipient)
       AND NOT EXISTS(SELECT 1 FROM mail_automation_suppressions WHERE owner_id=? AND email=google_send_queue.recipient)
-      AND (SELECT count(*) FROM google_send_queue WHERE owner_id=? AND attempt_day=?)<?${scheduleSQL} RETURNING *`,attempted,day,row.id,context.userId,account.subject,context.userId,rootOwner(context),context.userId,day,LIMIT,...scheduleArgs).first();
+      AND (SELECT count(*) FROM google_send_queue WHERE owner_id=? AND attempt_day=?)<?${scheduleSQL}${opportunitySQL} RETURNING *`,attempted,day,row.id,context.userId,account.subject,context.userId,rootOwner(context),context.userId,day,LIMIT,...scheduleArgs,...opportunityArgs).first();
     if(!claim){results.push({id:row.id,status:'not_claimed',reason:'suppressed_quota_or_concurrent_claim'});continue;}
     let final='delivery_unknown',messageId=null;
     try{

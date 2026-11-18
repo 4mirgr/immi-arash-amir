@@ -23,7 +23,7 @@ test('page omission, reordering, ciphertext tampering, wrong password and wrong 
  const output=await createPagedBackup({profileId:'amir',password,fetchJSON:fixture().fetchJSON});
  const missing=structuredClone(output.container);missing.parts.pop();await assert.rejects(()=>verifyPagedBackup(missing,password,'amir'));
  const reordered=structuredClone(output.container);[reordered.parts[0],reordered.parts[1]]=[reordered.parts[1],reordered.parts[0]];await assert.rejects(()=>verifyPagedBackup(reordered,password,'amir'),/حذف، جابه‌جا/);
- const changed=structuredClone(output.container);changed.parts[0].ciphertext='A'+changed.parts[0].ciphertext.slice(1);await assert.rejects(()=>verifyPagedBackup(changed,password,'amir'));
+ const changed=structuredClone(output.container),ciphertext=Buffer.from(changed.parts[0].ciphertext,'base64');ciphertext[0]^=1;changed.parts[0].ciphertext=ciphertext.toString('base64');await assert.rejects(()=>verifyPagedBackup(changed,password,'amir'));
  await assert.rejects(()=>verifyPagedBackup(output.container,'A wrong synthetic password 123','amir'),/گذرواژه/);
  await assert.rejects(()=>verifyPagedBackup(output.container,password,'arash'),/پروفایل/);
 });

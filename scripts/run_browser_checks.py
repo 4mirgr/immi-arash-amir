@@ -8,7 +8,8 @@ import tempfile
 from importlib.metadata import version
 
 ROOT = Path(__file__).resolve().parents[1]
-CHECKS = ['check_sync_continuity.py','check_english_ui.py','check_ui_accessibility_reflow.py',
+CHECKS = ['check_frontend_build.py','check_sync_continuity.py','check_english_ui.py','check_ui_accessibility_reflow.py',
+          'check_mail_opportunities.py','check_clinic_correspondence.py','check_composer_execute.py','check_send_action_docks.py',
           'check_research_funding.py','check_team_board.py','check_bulk_opportunity_mail.py','check_clinic_enquiry.py','check_paged_backup.py']
 
 

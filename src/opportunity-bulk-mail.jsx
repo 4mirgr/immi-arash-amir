@@ -1,4 +1,4 @@
-import {interfaceLocale} from './interface-locale.mjs';
+import {interfaceLocale,useInterfaceLanguage} from './interface-locale.mjs';
 import React,{useEffect,useRef,useState} from 'react';
 import {Mail,Send,RefreshCw,FileText,X} from 'lucide-react';
 import {api,apiResponse} from './api';
@@ -7,6 +7,7 @@ import {googleAccountLabel} from './google-account-labels.mjs';
 import {prepareRecipientBatch,sendRecipientBatch} from './opportunity-recipient-batch.mjs';
 import './opportunity-bulk-mail.css';
 import './send-action-dock.css';
+import {FloatingSendDock} from './send-action-dock';
 
 const rows=v=>Array.isArray(v)?v:v?.items||v?.versions||v?.presets||[];
 const name=item=>typeof item.organization==='string'?item.organization:item.organization?.name||item.organizationName||item.title||'مرکز انتخاب‌شده';
@@ -22,6 +23,7 @@ export function OpportunityBulkMail(props){
  return <ScopedOpportunityBulkMail key={scope} {...props}/>;
 }
 function ScopedOpportunityBulkMail({person,opportunities,onClose,onOpenSettings,onBusyChange,notify=()=>{}}){
+ const language=useInterfaceLanguage(),t=(fa,en)=>language==='en'?en:fa;
  const scope=person+':'+opportunities.map(item=>item.id).join(','),identity=useRef(scope),mounted=useRef(true),operation=useRef(0),lock=useRef(false),draftTarget=useRef(null),finalTarget=useRef(null),settingsTarget=useRef(null),preparationAbort=useRef(null);
  if(identity.current!==scope){identity.current=scope;operation.current++;}
  const active=seq=>mounted.current&&identity.current===scope&&operation.current===seq;
@@ -123,6 +125,9 @@ function ScopedOpportunityBulkMail({person,opportunities,onClose,onOpenSettings,
  }
  const readyDrafts=drafts.filter(item=>!item.error&&item.recipients.length),count=readyDrafts.reduce((sum,item)=>sum+item.recipients.length,0);
  const bulkDisabled=!!busy||consumed;
+ const sentCount=results.filter(item=>item.status==='sent').length,unknownOutcome=results.some(item=>['delivery_unknown','queue_unknown','sending'].includes(item.status)),sentAll=Boolean(consumed&&!busy&&prepared?.entries?.length&&sentCount===prepared.entries.length&&!unknownOutcome),outcome=busy==='send'?'sending':sentAll?'sent':unknownOutcome?'unknown':consumed?'partial':'ready';
+ const selectedAdCount=prepared?new Set(prepared.entries.map(item=>item.opportunityId)).size:opportunities.length;
+ const bulkLabel=busy==='send'?t('در حال ارسال…','Sending…'):busy?t('در حال آماده‌سازی…','Preparing…'):sentAll?t('ارسال شد','Sent'):consumed?t('نتیجهٔ ارسال را بررسی کنید','Review the send results'):prepared&&reviewed?t('تأیید و ارسال برای ','Confirm and send for ')+selectedAdCount.toLocaleString(interfaceLocale('fa-IR'))+t(' آگهی',' advertisements'):t('ارسال برای ','Send for ')+opportunities.length.toLocaleString(interfaceLocale('fa-IR'))+t(' آگهی',' advertisements');
  const bulkHint=consumed?'نتیجهٔ این نوبت پایین نمایش داده می‌شود.':!data?(busy?'در حال دریافت…':'اطلاعات آماده نشد؛ برای دریافت دوباره، ارسال گروهی را بزنید.'):account?.statusUnavailable?'وضعیت Gmail دریافت نشد؛ ابتدا وضعیت فرستنده را دوباره بررسی کنید.':!canSend?'ابتدا Gmail همین حساب را متصل کنید یا فرستندهٔ متصل را انتخاب کنید.':!cvId?'رزومهٔ پیوست را برای این گروه انتخاب کنید.':person!=='arash'&&!presetId?'قالب ایمیل را برای این گروه انتخاب کنید.':!drafts.length?'۱. نامه‌های اختصاصی را آماده کنید؛ ۲. هر نامه را بررسی کنید؛ ۳. ارسال نهایی گروهی را بزنید.':!readyDrafts.length?'برای این انتخاب‌ها گیرندهٔ آماده‌ای پیدا نشد؛ موارد را بررسی کنید.':!prepared?(readyDrafts.some(item=>!item.reviewed)?'نامه و گیرنده‌های هر مرکز را باز کنید و تیک بازبینی آن را بزنید.':'نامه‌ها بازبینی شده‌اند؛ پیش‌نمایش نهایی را باز کنید.'):!reviewed?'پیش‌نمایش نهایی را بخوانید و تأیید ارسال را بزنید.':'فقط پیام‌های بازبینی‌شده از صندوق انتخاب‌شده ارسال می‌شوند.';
  function focusStep(target,control){const node=target.current;node?.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});(control?node?.querySelector(control):node)?.focus({preventScroll:true});}
  function primaryBulkSend(){
@@ -140,7 +145,7 @@ function ScopedOpportunityBulkMail({person,opportunities,onClose,onOpenSettings,
  return <section className="opportunity-bulk-mail panel opportunity-bulk-mail-with-dock" aria-label="ارسال دسته‌ای برای آگهی‌های منتخب" dir="rtl">
   <div className="section-head"><div><h3><Mail size={18}/> ارسال برای آگهی‌های منتخب</h3><p className="section-help">برای هر مرکز نامهٔ خودش و برای هر نشانی یک ایمیل جدا آماده می‌شود؛ گیرنده‌ها آدرس یکدیگر را نمی‌بینند.</p></div><button type="button" className="icon" aria-label="بستن ارسال دسته‌ای" disabled={!!busy} onClick={onClose}><X size={17}/></button></div>
   <p className="section-help">{opportunities.length.toLocaleString(interfaceLocale('fa-IR'))} آگهی · سقف هر نوبت ۲۰ پیام و سقف واقعی همان حساب است. انتخاب پیش‌فرض همهٔ ایمیل‌های منتشرشدهٔ هر آگهی است؛ ارسال فقط پس از بازبینی و تأیید شما انجام می‌شود.</p>
-  <div className="send-action-dock send-action-dock-floating" aria-label="اقدام ارسال گروهی"><div><strong>ارسال گروهی ایمیل‌ها</strong><small id="bulk-send-hint" role="status">{bulkHint}</small></div><button type="button" className="primary" aria-describedby="bulk-send-hint" disabled={bulkDisabled} onClick={primaryBulkSend}><Send size={17}/>{busy==='send'?'در حال ارسال…':prepared&&reviewed?'ارسال نهایی گروهی':'ارسال گروهی ایمیل‌ها'}</button></div>
+  <FloatingSendDock><div className="send-action-dock send-action-dock-floating" aria-label="اقدام ارسال گروهی"><div><strong>{t('ارسال گروهی ایمیل‌ها','Send application emails as a batch')}</strong><small id="bulk-send-hint" role="status">{bulkHint}</small>{consumed&&<span className="send-progress-summary" data-outcome={outcome} role="status">{t('ارسال تأییدشده: ','Confirmed sends: ')}{sentCount.toLocaleString(interfaceLocale('fa-IR'))}{t(' از ',' of ')}{(prepared?.entries?.length||count).toLocaleString(interfaceLocale('fa-IR'))}{unknownOutcome&&t('؛ بعضی نتیجه‌ها نامشخص است','; some outcomes are unknown')}</span>}</div><button type="button" className="primary send-execute-button" data-delivery-state={outcome} aria-busy={Boolean(busy)} aria-describedby="bulk-send-hint" disabled={bulkDisabled} onClick={primaryBulkSend}>{busy?<RefreshCw size={17} className="spin"/>:<Send size={17}/>}<span>{bulkLabel}</span></button></div></FloatingSendDock>
   {error&&<p className="notice" role="alert"><MixedText>{error}</MixedText></p>}
   {!data?<button className="secondary" disabled={!!busy} type="button" onClick={loadSetup}><RefreshCw size={15}/>{busy?'در حال دریافت…':'دریافت دوبارهٔ تنظیمات'}</button>:<>
    <div className="bulk-mail-settings" ref={settingsTarget}>

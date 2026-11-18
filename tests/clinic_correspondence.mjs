@@ -15,7 +15,7 @@ const derive=(messages,options={})=>deriveClinicCorrespondence(messages,{ownEmai
 const raw=message=>({id:message.id,threadId:message.threadId,internalDate:String(message.dateTimestamp),labelIds:message.labels,payload:{mimeType:'text/plain',headers:[{name:'From',value:message.from},{name:'To',value:message.to},{name:'Cc',value:message.cc||''},{name:'Bcc',value:message.bcc||''},{name:'Subject',value:message.subject},{name:'Message-ID',value:message.rfcMessageId}],body:{data:Buffer.from(message.plainBody).toString('base64url')}}});
 function fixture(){
  const db=new DatabaseSync(':memory:');
- for(const name of ['google-schema.sql','google-mail-schema.sql','google-mail-correspondence-schema.sql','clinic-correspondence-stops-schema.sql','mail-automation-schema.sql'])db.exec(readFileSync(new URL('../cloud/'+name,import.meta.url),'utf8'));
+ for(const name of ['google-schema.sql','google-mail-schema.sql','google-mail-correspondence-schema.sql','google-mail-full-scan-schema.sql','clinic-correspondence-stops-schema.sql','mail-automation-schema.sql'])db.exec(readFileSync(new URL('../cloud/'+name,import.meta.url),'utf8'));
  const binding={prepare(sql){return {bind(...params){const statement=db.prepare(sql);return {async first(){return statement.get(...params)||null;},async all(){return {results:statement.all(...params)};},async run(){return {meta:statement.run(...params)};}};}};}};
  const env={GOOGLE_DB:binding};
  const save=(message,context=owner,subject=account.subject)=>db.prepare('INSERT OR REPLACE INTO google_mail_messages VALUES (?,?,?,?,?,?,?,?)').run(context.userId,subject,message.id,message.threadId,message.dateTimestamp,'weak',JSON.stringify(message),at);

@@ -92,7 +92,15 @@ function contactStopReceipts(messages){
  for(const message of sent){if(!threadRecipients.has(message.threadId))threadRecipients.set(message.threadId,new Set());for(const email of recipients(message,'')){threadRecipients.get(message.threadId).add(email);knownRecipients.add(email);}}
  for(const message of messages.filter(visible)){
   const reason=stopReason(message);if(!reason)continue;
-  const emails=new Set([...(threadRecipients.get(message.threadId)||[]),...address(message.replyTo||message.from).filter(email=>knownRecipients.has(email))]);
+  const inThread=threadRecipients.get(message.threadId)||new Set(),directKnown=address(message.replyTo||message.from).filter(email=>knownRecipients.has(email));
+  // A reply to an old multi-clinic To/CC message belongs to its actual sender,
+  // not to every other clinic that happened to share that historical thread.
+  const emails=new Set(directKnown.length?directKnown:inThread.size===1?[...inThread]:[]);
+  // An explicit professional request to stop contact must not be forgotten
+  // merely because its older Sent anchor has not reached the archive cursor.
+  if(reason==='do_not_contact'&&MEDICAL.test(text(message.subject,1000)+'\n'+correspondenceReplyText(message.plainBody||message.snippet))){
+   const direct=address(message.replyTo||message.from);if(direct.length===1)emails.add(direct[0]);
+  }
   for(const email of emails){const previous=stopped.get(email);if(!previous||stopSeverity(reason)>stopSeverity(previous.reason))stopped.set(email,{recipient:email,reason,gmail_id:message.id,thread_id:message.threadId});}
  }
  return stopped;
@@ -168,14 +176,15 @@ async function recipientHistory(db,owner,subject){
 }
 
 /** Record bounded minimal stop receipts before raw cache expiry. Never clears a stop. */
-export async function recordClinicCorrespondenceStops(env,context){
+export async function recordClinicCorrespondenceStops(env,context,options={}){
  if(!env.GOOGLE_DB)fail(503,'google_storage_required');
  if(!context?.userId||!['arash','amir'].includes(context.profileId))fail(403,'workspace_required');
  const account=await first(env.GOOGLE_DB,'SELECT google_sub,status FROM google_accounts WHERE owner_id=? AND profile_id=?',context.userId,context.profileId);
  if(!account)return {recorded:0,status:'not_connected'};
  if(account.status!=='connected')return {recorded:0,status:'reconnect_required'};
  const history=await recipientHistory(env.GOOGLE_DB,context.userId,account.google_sub),existing=new Map(history.stops.map(row=>[row.recipient,row]));
- const receipts=[...contactStopReceipts(history.messages).values()].filter(receipt=>!existing.has(receipt.recipient)||stopSeverity(receipt.reason)>stopSeverity(existing.get(receipt.recipient).reason));
+ const batch=Array.isArray(options.messages)?options.messages.slice(0,8):[];
+ const receipts=[...contactStopReceipts([...history.messages,...batch]).values()].filter(receipt=>!existing.has(receipt.recipient)||stopSeverity(receipt.reason)>stopSeverity(existing.get(receipt.recipient).reason));
  const selected=receipts.slice(0,10),now=Date.now();
  if(selected.length){
   const args=selected.flatMap(receipt=>[context.userId,account.google_sub,receipt.recipient,receipt.reason,receipt.gmail_id,receipt.thread_id,now]);
@@ -187,6 +196,29 @@ export async function recordClinicCorrespondenceStops(env,context){
  const root=context.rootUserId||context.userId.replace(/:secondary$/,'');
  await env.GOOGLE_DB.prepare("INSERT INTO mail_automation_suppressions(owner_id,email,reason,created_at) SELECT ?,s.recipient,'gmail_do_not_contact',? FROM clinic_correspondence_stops s WHERE s.owner_id IN (?,?) AND s.reason='do_not_contact' AND NOT EXISTS(SELECT 1 FROM mail_automation_suppressions m WHERE m.owner_id=? AND m.email=s.recipient) LIMIT 10 ON CONFLICT(owner_id,email) DO NOTHING").bind(root,new Date(now).toISOString(),root,root+':secondary',root).run();
  return {recorded:selected.length,more:receipts.length>selected.length,complete:history.complete,status:history.complete?'recorded':'history_limit_requires_review'};
+}
+
+/** Preserve each just-read stop before advancing the full-mailbox cursor. */
+export async function recordClinicCorrespondenceBatchStops(env,context,identity,messages=[]){
+ if(!env.GOOGLE_DB||!context?.userId||context.profileId!=='arash'||!ID.test(identity?.subject||'')||!Array.isArray(messages)||messages.length>8)fail(403,'workspace_required');
+ const root=context.rootUserId||context.userId.replace(/:secondary$/,'');
+ if(context.userId!==root&&context.userId!==root+':secondary')fail(403,'mailbox_owner_mismatch');
+ const ids=[...new Set(messages.map(message=>message?.threadId).filter(value=>ID.test(value||'')))];
+ let sent=[];
+ if(ids.length)sent=(await all(env.GOOGLE_DB,"SELECT data FROM google_mail_messages WHERE owner_id=? AND google_sub=? AND thread_id IN (SELECT value FROM json_each(?)) AND json_extract(data,'$.direction')='sent' LIMIT 200",context.userId,identity.subject,JSON.stringify(ids))).flatMap(row=>{try{return [JSON.parse(row.data)];}catch{return [];}});
+ const receipts=contactStopReceipts([...sent,...messages]);
+ // A medical recruitment refusal can arrive before its older Sent anchor.
+ // Its exact sender is enough to stop reminders, never to establish a vacancy.
+ for(const message of messages.filter(visible)){
+  const reason=stopReason(message),content=text(message.subject,1000)+'\n'+correspondenceReplyText(message.plainBody||message.snippet),direct=address(message.replyTo||message.from);
+  if(reason&&reason!=='bounced'&&MEDICAL.test(content)&&direct.length===1){const prior=receipts.get(direct[0]);if(!prior||stopSeverity(reason)>stopSeverity(prior.reason))receipts.set(direct[0],{recipient:direct[0],reason,gmail_id:message.id,thread_id:message.threadId});}
+ }
+ const selected=[...receipts.values()],now=Date.now();
+ if(selected.length>200)fail(409,'contact_stop_batch_requires_review');
+ if(selected.length)await env.GOOGLE_DB.prepare("INSERT INTO clinic_correspondence_stops(owner_id,google_sub,recipient,reason,gmail_id,thread_id,recorded_at) SELECT ?,?,json_extract(value,'$.recipient'),json_extract(value,'$.reason'),json_extract(value,'$.gmail_id'),json_extract(value,'$.thread_id'),? FROM json_each(?) WHERE true ON CONFLICT(owner_id,google_sub,recipient) DO UPDATE SET reason=excluded.reason,gmail_id=excluded.gmail_id,thread_id=excluded.thread_id,recorded_at=excluded.recorded_at WHERE CASE excluded.reason WHEN 'do_not_contact' THEN 3 WHEN 'bounced' THEN 2 ELSE 1 END > CASE clinic_correspondence_stops.reason WHEN 'do_not_contact' THEN 3 WHEN 'bounced' THEN 2 ELSE 1 END").bind(context.userId,identity.subject,now,JSON.stringify(selected)).run();
+ const noContact=selected.filter(receipt=>receipt.reason==='do_not_contact').map(receipt=>receipt.recipient),stamp=new Date(now).toISOString();
+ await env.GOOGLE_DB.prepare("INSERT INTO mail_automation_suppressions(owner_id,email,reason,created_at) SELECT ?,value,'gmail_do_not_contact',? FROM json_each(?) WHERE true UNION SELECT ?,s.recipient,'gmail_do_not_contact',? FROM (SELECT recipient FROM clinic_correspondence_stops WHERE owner_id IN (?,?) AND reason='do_not_contact' AND NOT EXISTS(SELECT 1 FROM mail_automation_suppressions m WHERE m.owner_id=? AND m.email=clinic_correspondence_stops.recipient) LIMIT 10) s WHERE true ON CONFLICT DO NOTHING").bind(root,stamp,JSON.stringify(noContact),root,stamp,root,root+':secondary',root).run();
+ return {recorded:selected.length};
 }
 
 async function safeProviderJson(response){

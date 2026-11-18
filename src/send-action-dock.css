@@ -3,3 +3,21 @@
 .opportunity-mail-missing-recipient:focus{outline:2px solid #e6bb58;outline-offset:4px;scroll-margin-top:130px}
 .send-action-dock [role=status]{margin:0}
 .send-action-dock .primary:focus-visible{outline:3px solid #6be5c1;outline-offset:3px}
+.send-action-stack{position:fixed;left:50%;bottom:calc(12px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(780px,calc(100vw - 28px));z-index:90;display:grid;gap:8px;pointer-events:none;max-height:45dvh;overflow:auto;overscroll-behavior:contain;padding:3px}
+.send-action-stack-slot{min-width:0;pointer-events:auto}
+.has-send-action-stack body{padding-bottom:calc(var(--send-action-stack-height,100px) + 26px)}
+.send-action-stack .send-action-dock,.send-action-stack .opportunity-batch-launcher{position:static!important;inset:auto!important;width:100%;max-width:100%;margin:0;box-sizing:border-box;transform:none}
+.send-action-stack .send-action-dock{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;background:var(--panel,#101e30);box-shadow:0 6px 24px #0005;border-color:#4de4a9}
+.send-action-stack .send-action-dock>div{flex-basis:auto;min-width:0}
+.send-action-stack .send-action-dock small{font-size:.73rem;line-height:1.55}
+.send-execute-button,.send-action-stack .send-execute-button{display:inline-flex!important;align-items:center;justify-content:center;gap:8px;min-height:46px;border:1px solid #7affc8!important;border-radius:11px;background:#50e7a4!important;color:#05291b!important;font-weight:800!important;font-size:.89rem;line-height:1.55;padding:11px 18px;box-shadow:0 0 20px #35dc9560;cursor:pointer;white-space:normal;text-align:center}
+.send-execute-button:hover:not(:disabled){background:#80ffc3!important;box-shadow:0 0 25px #35dc9580}
+.send-execute-button:focus-visible{outline:3px solid #b8ffe0!important;outline-offset:3px}
+.send-execute-button:disabled{opacity:1!important;background:#164a37!important;border-color:#4b8b70!important;color:#afcfc1!important;box-shadow:none;cursor:default}
+.send-execute-button[data-delivery-state=sent]{background:#0d774a!important;border-color:#6aefb4!important;color:#fff!important}
+.send-action-stack .opportunity-batch-launcher{background:var(--panel,#101e30);border-color:#5eeab2;padding:9px 13px;gap:10px}
+.send-action-stack .opportunity-batch-launcher>span{font-size:.8rem;min-width:0}
+.send-progress-summary{display:flex;gap:7px;align-items:center;flex-wrap:wrap;font-size:.78rem;line-height:1.7}
+.send-progress-summary[data-outcome=sent]{color:#6aefb4}
+.send-progress-summary[data-outcome=unknown],.send-progress-summary[data-outcome=partial]{color:#f8ca6b}
+@media(max-width:640px){.send-action-stack{bottom:calc(8px + env(safe-area-inset-bottom));width:calc(100vw - 16px);gap:6px}.send-action-stack .send-action-dock{padding:9px;gap:8px;grid-template-columns:minmax(0,1fr) minmax(140px,.95fr)}.send-action-stack .send-action-dock .primary{width:100%;font-size:.79rem;padding:9px 10px}.send-action-stack .send-action-dock strong{font-size:.77rem}.send-action-stack .send-action-dock small{font-size:.68rem}.send-action-stack .opportunity-batch-launcher{padding:8px 10px}.send-action-stack .opportunity-batch-launcher .send-execute-button{font-size:.79rem;padding:9px 10px;flex:1}.send-action-stack .opportunity-batch-launcher>span{font-size:.73rem}}

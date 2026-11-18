@@ -45,6 +45,7 @@ import { AccessGate } from "./auth";
 import { CVVersions, Presets } from "./workspace-tools";
 import { useGoogleConnection, GoogleConnection, GoogleInbox } from "./google-tools";
 import {ClinicCorrespondence} from "./clinic-correspondence";
+import {MailOpportunities,readMailOpportunityDeepLink} from "./mail-opportunities";
 import { GoogleSendPanel } from "./google-send-panel";
 import { CalendarDriveTools } from "./calendar-drive-tools";
 import { ProfilePlanning } from "./profile-planning";
@@ -97,8 +98,8 @@ const fallbackStation = {
   ],
 };
 function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignOut }) {
-  useInterfaceLanguage();
-  const [tab, setTab] = useState(() => {const saved=readCheckpoint(workspaceOwnerId,initialPerson,"navigation")?.tab;return nav.some(item=>item[0]===saved)?saved:initialPerson === "arash" ? "opportunities" : "overview";}),
+  const interfaceLanguage=useInterfaceLanguage();
+  const [tab, setTab] = useState(() => {if(readMailOpportunityDeepLink(globalThis.location?.href).id)return "mail";const saved=readCheckpoint(workspaceOwnerId,initialPerson,"navigation")?.tab;return nav.some(item=>item[0]===saved)?saved:initialPerson === "arash" ? "opportunities" : "overview";}),
     [person, setPerson] = useState(initialPerson),
     [data, setData] = useState({ clinics: [], profiles: [], stations: [] }),
     [online, setOnline] = useState(false),
@@ -127,6 +128,10 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
   const mailConnection = composeMailbox === "secondary" ? secondaryGoogleConnection : googleConnection;
   const [replyContext, setReplyContext] = useState(null);
   const [followUpContext, setFollowUpContext] = useState(null);
+  const [mailOpportunityFocus,setMailOpportunityFocus]=useState(()=>readMailOpportunityDeepLink(globalThis.location?.href));
+  const [mailNotificationState,setMailNotificationState]=useState({scope:null,counts:{}});
+  const mailNotificationScope=JSON.stringify([workspaceOwnerId||'',person,googleConnection.state.email||'',secondaryGoogleConnection.state.email||'']);
+  const mailNotificationCount=mailNotificationState.scope===mailNotificationScope?Object.values(mailNotificationState.counts).reduce((sum,value)=>sum+(Number(value)||0),0):0;
   const notify = (t) => {
     setToast(t);
     setTimeout(() => setToast(""), 4500);
@@ -139,6 +144,17 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
   const revision = useRef({ profile: person, value: null });
   const polling = useRef(null),refreshFlight=useRef(null),pollRetry=useRef({person,failures:0,after:0});
   useEffect(()=>{writeCheckpoint(workspaceOwnerId,person,"navigation",{tab});},[workspaceOwnerId,person,tab]);
+  useEffect(()=>{
+    const navigate=()=>{const next=readMailOpportunityDeepLink(location.href);setMailOpportunityFocus(next);if(next.id)setTab("mail");};
+    window.addEventListener('popstate',navigate);return()=>window.removeEventListener('popstate',navigate);
+  },[]);
+  useEffect(()=>{
+    if(!cloud||person!=="arash"||tab==="mail")return;let active=true,inFlight=false;
+    const load=async()=>{if(inFlight||document.visibilityState!=="visible")return;inFlight=true;const mailboxes=['primary',...(secondaryGoogleConnection.state.connected?['secondary']:[])];
+      try{const results=await Promise.allSettled(mailboxes.map(mailbox=>api(`google/mail-opportunities?profile=${person}&mailbox=${mailbox}&limit=1`)));if(!active||results.some(result=>result.status!=='fulfilled'))return;setMailNotificationState({scope:mailNotificationScope,counts:Object.fromEntries(results.map((result,index)=>[mailboxes[index],Number(result.value.unreadCount)||0]))});}
+      finally{inFlight=false;}
+    };load();const timer=setInterval(load,60000);return()=>{active=false;clearInterval(timer);};
+  },[cloud,person,tab,mailNotificationScope,secondaryGoogleConnection.state.connected]);
   const isCurrent = () =>
     alive.current &&
     currentPerson.current.person === person &&
@@ -423,13 +439,12 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
               <Globe size={14} /> Australia / Sydney
             </span>
             <button
-              className="icon"
-              aria-label="اطلاعیه‌ها"
-              onClick={() =>
-                notify("اعلان جدیدی از سرویس‌های خارجی دریافت نشده است")
-              }
+              className={"icon"+(arash?" mail-opportunity-toolbar-control":"")}
+              aria-label={arash?(interfaceLanguage==='en'?`Email opportunities; ${mailNotificationCount} unread`:`فرصت‌های ایمیلی؛ ${mailNotificationCount.toLocaleString('fa-IR')} مورد تازه`):"اطلاعیه‌ها"}
+              onClick={() => {if(arash){setTab("mail");setTimeout(()=>document.getElementById('mail-opportunities')?.scrollIntoView({behavior:'smooth',block:'start'}),100);}else notify("اعلان جدیدی از سرویس‌های خارجی دریافت نشده است");}}
             >
               <Bell size={19} />
+              {arash&&mailNotificationCount>0&&<span className="mail-opportunity-toolbar-badge">{mailNotificationCount.toLocaleString(interfaceLocale('fa-IR'))}</span>}
             </button>
             <div className="small-avatar">{arash ? "AE" : "AG"}</div>
           </div>
@@ -684,7 +699,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
             </section></WorkspaceFold>
           )}
           {tab === "mail" && (
-            <><ClinicCorrespondence person={person} ownerId={workspaceOwnerId} connection={googleConnection} secondaryConnection={secondaryGoogleConnection} cloud={cloud} onSettings={()=>setTab("settings")} notify={notify} onReply={message=>{
+            <>{arash&&<MailOpportunities person={person} ownerId={workspaceOwnerId} connection={googleConnection} secondaryConnection={secondaryGoogleConnection} cloud={cloud} focus={mailOpportunityFocus} onSettings={()=>setTab("settings")} notify={notify} onUnreadCount={(count,mailbox)=>setMailNotificationState(previous=>({scope:mailNotificationScope,counts:{...(previous.scope===mailNotificationScope?previous.counts:{}),[mailbox]:count}}))}/>}{!arash&&mailOpportunityFocus.id&&<p className="notice">{interfaceLanguage==='en'?'This private opportunity link is unavailable in this workspace. Sign in to its owner’s account.':'این پیوند خصوصی در این فضای کاری در دسترس نیست. با حساب مالک آن وارد شوید.'}</p>}<ClinicCorrespondence person={person} ownerId={workspaceOwnerId} connection={googleConnection} secondaryConnection={secondaryGoogleConnection} cloud={cloud} onSettings={()=>setTab("settings")} notify={notify} onReply={message=>{
               setSelected([]);setFollowUpContext(null);
               const mailbox=message.mailbox === "secondary" ? "secondary" : "primary";
               setComposeMailbox(mailbox);if(mailbox === "secondary")secondaryGoogleConnection.refresh();
@@ -770,7 +785,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
                   پیوست و ارسال واقعی، پس از راه‌اندازی OAuth و انتخاب CV
                   تأییدشده فعال می‌شود.
                 </p>
-                <GoogleSendPanel person={person} selected={selected} subject={subject} body={body} connection={mailConnection} mailbox={composeMailbox} replyContext={replyContext} followUpContext={followUpContext} notify={notify}/>
+                <GoogleSendPanel person={person} selected={selected} subject={subject} body={body} connection={mailConnection} mailbox={composeMailbox} replyContext={replyContext} followUpContext={followUpContext} notify={notify} onOpenSettings={()=>setTab("settings")}/>
                 <Presets
                   person={person}
                   subject={subject}

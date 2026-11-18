@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS google_send_queue (
   attachment_name TEXT,
   reply_thread_id TEXT,
   follow_up_context TEXT,
+  mail_opportunity_context TEXT,
   status TEXT NOT NULL CHECK(status IN ('queued','sending','sent','delivery_unknown','failed','suppressed')),
   created_at TEXT NOT NULL,
   created_day TEXT NOT NULL,
@@ -24,6 +25,9 @@ CREATE TABLE IF NOT EXISTS google_send_queue (
 CREATE INDEX IF NOT EXISTS google_send_queue_owner_created ON google_send_queue(owner_id,created_at DESC);
 CREATE INDEX IF NOT EXISTS google_send_queue_owner_day ON google_send_queue(owner_id,created_day);
 CREATE INDEX IF NOT EXISTS google_send_queue_attempt_day ON google_send_queue(owner_id,attempt_day);
+CREATE UNIQUE INDEX IF NOT EXISTS google_send_private_root_source
+ON google_send_queue(json_extract(mail_opportunity_context,'$.rootOwner'),json_extract(mail_opportunity_context,'$.applicationKey'),recipient)
+WHERE mail_opportunity_context IS NOT NULL AND status IN ('queued','sending','sent','delivery_unknown');
 CREATE TABLE IF NOT EXISTS google_send_suppressions (
   owner_id TEXT NOT NULL,
   email TEXT NOT NULL,

@@ -1,0 +1,66 @@
+.mail-opportunities{width:100%;min-width:0;margin-block-end:1.2rem;--mail-positive:#50e7a4;--mail-positive-hover:#80ffc3}
+.mail-opportunities-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+.mail-opportunities-heading>div{min-width:0;flex:1}
+.mail-opportunities-heading h3{display:flex;gap:.55rem;align-items:center;line-height:1.65;margin:.1rem 0 .35rem;flex-wrap:wrap}
+.mail-opportunity-count,.mail-opportunity-new{background:#19b77e24;border:1px solid #25d59a70;border-radius:2rem;color:var(--text,#e8f3ff);font-size:.75rem;padding:.15rem .55rem;white-space:nowrap}
+.mail-opportunities-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.8rem;margin-block:1rem}
+.mail-opportunities-controls label{display:flex;flex-direction:column;gap:.35rem;min-width:0;font-size:.84rem}
+.mail-opportunities-controls select{margin:0;width:100%;min-width:0;min-height:2.8rem}
+.mail-opportunities-selection{display:flex;justify-content:space-between;gap:.75rem;align-items:center;flex-wrap:wrap;margin-block:.8rem;font-size:.84rem}
+.mail-opportunities-selection label{display:flex;align-items:center;gap:.45rem;margin:0}
+.mail-opportunities input[type=checkbox]{flex:0 0 auto;min-width:1.1rem;min-height:1.1rem;width:1.1rem;height:1.1rem;margin:0;accent-color:#1dbf86}
+.mail-opportunities-list{display:grid;gap:.8rem}
+.mail-opportunity{border:1px solid #27d8ab35;border-radius:1rem;min-width:0;overflow:hidden;background:color-mix(in srgb,var(--panel,#122236) 94%,#2ed8a3 6%)}
+.mail-opportunity-highlight{border-color:#40dcac;box-shadow:0 0 0 2px #24c39525,0 0 24px #24c39516;scroll-margin-top:7rem}
+.mail-opportunity>header{display:flex;align-items:center;gap:.65rem;padding:.9rem;min-width:0;flex-wrap:wrap}
+.mail-opportunity-title{border:0;background:transparent;display:grid;gap:.25rem;flex:1;min-width:min(100%,12rem);text-align:start;color:inherit;padding:.2rem;cursor:pointer}
+.mail-opportunity-title strong,.mail-opportunity-title small{overflow-wrap:anywhere;line-height:1.65;display:block;white-space:normal}
+.mail-opportunity-title small{color:var(--muted,#b1c3da);font-size:.79rem}
+.mail-opportunity-send{display:inline-flex;gap:.5rem;align-items:center;justify-content:center;padding:.7rem .95rem;border:1px solid #66e9b0;border-radius:.75rem;background:var(--mail-positive,#16a66b);color:#05291b;box-shadow:0 0 16px #1dce8a20;font-family:inherit;font-weight:750;font-size:.84rem;line-height:1.7;cursor:pointer;min-height:2.75rem;text-align:center;white-space:normal}
+.mail-opportunity-send:hover:not(:disabled){background:var(--mail-positive-hover,#0e8956);box-shadow:0 0 20px #1dce8a38}
+.mail-opportunity-send:focus-visible{outline:3px solid #8cf3cc;outline-offset:3px}
+.mail-opportunity-send:disabled{cursor:default;opacity:.72;box-shadow:none}
+.mail-opportunity-toggle{background:transparent;border:1px solid #47d9b430;border-radius:.5rem;color:var(--text,#e8f3ff);padding:.45rem;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.mail-opportunity-meta{display:flex;gap:.5rem 1rem;flex-wrap:wrap;padding:0 .95rem .8rem;font-size:.77rem;color:var(--muted,#b1c3da);line-height:1.7}
+.mail-opportunity-detail{padding:1rem;border-block-start:1px solid #47d9b425;min-width:0}
+.mail-opportunity-signals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem}
+.mail-opportunity-signals>div{display:grid;gap:.35rem;border:1px solid #47d9b42b;border-radius:.75rem;padding:.7rem;min-width:0}
+.mail-opportunity-signals strong{font-size:.82rem;line-height:1.7}
+.mail-opportunity-signals span{font-size:.76rem;color:var(--muted,#b1c3da);line-height:1.8}
+.mail-opportunity-source-actions{display:flex;align-items:center;flex-wrap:wrap;gap:.7rem;margin-block:.8rem}
+.mail-opportunity-source-actions a{font-size:.8rem;text-decoration:none;display:inline-flex;gap:.35rem;align-items:center;max-width:100%;overflow-wrap:anywhere}
+.mail-opportunity-review{padding:.85rem;border:1px solid #31d3a83d;border-radius:.8rem;margin-block:1rem;background:#2ddd9d06;min-width:0}
+.mail-opportunity-review h4{display:flex;align-items:center;gap:.4rem;font-size:.92rem;line-height:1.7;margin-block:.2rem .6rem}
+.mail-opportunity-review dl{display:grid;gap:.45rem;margin-block:.7rem;font-size:.82rem}
+.mail-opportunity-review dl>div{display:grid;grid-template-columns:5rem minmax(0,1fr);gap:.6rem;line-height:1.75}
+.mail-opportunity-review dt{color:var(--muted,#b1c3da)}
+.mail-opportunity-review dd{margin:0;display:flex;flex-wrap:wrap;gap:.2rem .65rem;overflow-wrap:anywhere;min-width:0}
+.mail-opportunity-review bdi{overflow-wrap:anywhere;min-width:0}
+.mail-opportunity-subject{display:block;text-align:left;overflow-wrap:anywhere;line-height:1.8;font-size:.87rem;margin-block:.8rem}
+.mail-opportunity-letter{white-space:pre-wrap;overflow-wrap:anywhere;text-align:left;line-height:1.9;font-size:.87rem;max-height:26rem;overflow:auto;padding:.75rem;border:1px solid #47d9b41d;border-radius:.55rem;unicode-bidi:plaintext}
+.mail-opportunity-result{margin-block:.8rem;padding:.8rem;border:1px solid #dfae5560;border-radius:.7rem;font-size:.84rem;line-height:1.8;overflow-wrap:anywhere}
+.mail-opportunity-result.result-sent{border-color:#47dfac80;background:#30c98d0c}
+.mail-opportunity-result p{margin:.3rem 0}
+.mail-opportunity-batch{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;padding:.9rem 1rem;background:color-mix(in srgb,var(--panel,#142439) 96%,transparent);border:1px solid #47dfac80;box-shadow:0 8px 35px #0008;border-radius:1rem;backdrop-filter:blur(16px)}
+.mail-opportunity-batch>div{display:grid;gap:.25rem;flex:1;min-width:min(100%,12rem)}
+.mail-opportunity-batch strong{font-size:.88rem;line-height:1.7}
+.mail-opportunity-batch small{font-size:.76rem;color:var(--muted,#b1c3da);line-height:1.7}
+.mail-opportunities:has(.mail-opportunity-batch){padding-block-end:10rem}
+.mail-opportunity-toolbar-badge{position:absolute;inset-inline-end:-.3rem;top:-.35rem;background:#158157;color:#fff;min-width:1.2rem;min-height:1.2rem;border-radius:1rem;font-size:.65rem;display:grid;place-items:center;padding:.05rem .2rem}
+.mail-opportunity-toolbar-control{position:relative}
+@media(max-width:700px){.mail-opportunities-controls{grid-template-columns:1fr}.mail-opportunity-signals{grid-template-columns:1fr}.mail-opportunity>header{gap:.55rem;padding:.8rem}.mail-opportunity-title{flex-basis:calc(100% - 5rem)}.mail-opportunity>header>.mail-opportunity-send{flex:1;order:5}.mail-opportunity-toggle{margin-inline-start:auto}.mail-opportunity-batch{gap:.6rem;padding:.8rem}.mail-opportunity-batch>.mail-opportunity-send{flex:1;flex-basis:70%}.mail-opportunity-review dl>div{grid-template-columns:1fr;gap:.15rem}.mail-opportunity-detail{padding:.8rem}.mail-opportunity-letter{font-size:.82rem}.mail-opportunities:has(.mail-opportunity-batch){padding-block-end:14rem}}
+
+.mail-opportunity-recipients{display:flex;gap:.5rem .8rem;flex-wrap:wrap;border:1px solid #47d9b430;border-radius:.7rem;padding:.8rem;margin-block:.8rem;min-width:0}
+.mail-opportunity-recipients legend{font-size:.82rem;padding-inline:.3rem}
+.mail-opportunity-recipients label{display:flex;align-items:center;gap:.4rem;margin:0;min-width:0;max-width:100%;font-size:.8rem}
+.mail-opportunity-recipients bdi{overflow-wrap:anywhere;min-width:0}
+.mail-opportunity-pages{display:flex;align-items:center;justify-content:center;gap:.7rem;flex-wrap:wrap;margin-block:1rem;font-size:.82rem}
+
+.mail-opportunity-batch-review{border:1px solid #47dfac60;border-radius:.85rem;padding:.85rem;margin-block:1rem;min-width:0}
+.mail-opportunity-batch-review h4{font-size:.92rem;line-height:1.8;margin-block:.2rem .7rem}
+.mail-opportunity-batch-review ol{display:grid;gap:.8rem;padding-inline-start:1.5rem}
+.mail-opportunity-batch-review li{padding:.7rem;border:1px solid #47dfac30;border-radius:.7rem;min-width:0;overflow-wrap:anywhere;font-size:.83rem;line-height:1.8}
+.mail-opportunity-batch-review li p{margin:.25rem 0}
+.mail-opportunity-batch-review li summary{cursor:pointer;color:var(--cyan,#68e5c1);padding:.35rem}
+.mail-opportunity-fit{border:1px solid #47d9b42b;border-radius:.7rem;padding:.65rem;margin-block:.75rem;font-size:.82rem;line-height:1.8}
+.mail-opportunity-fit summary{cursor:pointer;color:var(--cyan,#68e5c1)}

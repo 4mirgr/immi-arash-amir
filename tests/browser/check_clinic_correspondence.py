@@ -47,7 +47,7 @@ def response(person, mailbox, suffix=""):
     name = person + " " + mailbox + " clinic" + suffix
     item = {"id": "threadWaiting", "threadId": "threadWaiting", "clinicLabel": name, "recipient": recipient, "subject": "Synthetic GP application", "status": "waiting", "lastSentAt": "2026-11-01T10:00:00Z", "lastReceivedAt": None, "signals": {"level1": {"status": "unknown"}, "sponsorship": {"status": "unknown"}, "pesci": {"status": "unknown"}}, "timeline": [{"id": "messageSent", "direction": "sent", "date": "2026-11-01T10:00:00Z", "from": person + "@example.invalid", "to": recipient, "excerpt": "Synthetic clinical application text."}], "followUp": {"eligible": True, "dueAt": "2026-11-08T10:00:00Z", "reason": "follow_up_due"}}
     replied = {**item, "id": "threadReplied", "threadId": "threadReplied", "clinicLabel": name + " replied", "status": "documents_requested", "lastReceivedAt": "2026-11-05T10:00:00Z", "signals": {"level1": {"status": "positive", "excerpt": "Synthetic Level 1 response."}, "sponsorship": {"status": "unknown"}, "pesci": {"status": "unknown"}}, "replyMessage": {"id": "messageReceived", "threadId": "threadReplied", "from": recipient, "subject": "Synthetic GP application", "plainBody": "Please send the requested documents."}, "timeline": item["timeline"] + [{"id": "messageReceived", "direction": "received", "date": "2026-11-05T10:00:00Z", "from": recipient, "to": person + "@example.invalid", "excerpt": "Please send the requested documents."}], "followUp": {"eligible": False, "dueAt": None, "reason": "reply_received_stop_follow_up"}}
-    return {"items": [item, replied], "coverage": {"cachedMessages": 3, "windowLimit": 2000, "limited": False, "reader": {"scannedSentCount": 18, "matchedSentCount": 2, "backfillComplete": False, "pendingThreadMessageCount": 4}}, "automaticSending": False}
+    return {"items": [item, replied], "coverage": {"cachedMessages": 3, "windowLimit": 2000, "limited": False, "reader": {"coverage": "all_mail_progressive_related_threads", "scannedMessageCount": 205, "scannedReceivedCount": 187, "scannedSentCount": 18, "relatedMessageCount": 7, "matchedSentCount": 7, "ignoredLabelCount": 3, "archiveComplete": False, "backfillComplete": False, "pendingMessageCount": 8, "pendingThreadMessageCount": 4, "failedThreadCount": 0, "historyCaughtUp": False, "historyGapRequiresReview": False, "historyRecoveryActive": False, "historyPendingCount": 2, "unreadableMessageCount": 2, "fullReadingComplete": False}}, "automaticSending": False}
 
 
 def route(request):
@@ -61,6 +61,14 @@ def route(request):
             deferred.append((request, response(person, mailbox, " OLD RESPONSE")))
             return
         data = response(person, mailbox)
+        if scenario in ["archive_gap", "unreadable_only", "full_complete", "inconsistent_complete"]:
+            data["coverage"]["reader"].update({"archiveComplete": True, "backfillComplete": True, "pendingMessageCount": 0, "pendingThreadMessageCount": 0, "historyPendingCount": 0, "historyCaughtUp": True})
+            if scenario in ["archive_gap", "inconsistent_complete"]:
+                data["coverage"]["reader"].update({"historyGapRequiresReview": True, "historyRecoveryActive": True, "historyCaughtUp": False})
+            if scenario == "full_complete":
+                data["coverage"]["reader"].update({"fullReadingComplete": True, "unreadableMessageCount": 0})
+            if scenario == "inconsistent_complete":
+                data["coverage"]["reader"]["fullReadingComplete"] = True
         if scenario == "background_permission":
             data["coverage"]["reader"]["lastError"] = "gmail_read_scope_required"
         if scenario == "background_transient":
@@ -100,6 +108,14 @@ with sync_playwright() as playwright:
     cards = panel.locator(".clinic-conversation")
     expect(cards).to_have_count(2)
     assert not writes, writes
+    progress = panel.locator(".clinic-correspondence-coverage")
+    progress.locator("summary").click()
+    expect(progress.locator('[data-reader-count="all"]')).to_have_text("۲۰۵")
+    expect(progress.locator('[data-reader-count="received"]')).to_have_text("۱۸۷")
+    expect(progress.locator('[data-reader-count="sent"]')).to_have_text("۱۸")
+    expect(progress.locator('[data-reader-state="incomplete"]')).to_contain_text("هنوز تأیید نشده")
+    expect(progress).to_contain_text("Spam و Trash")
+    progress.locator("summary").click()
     cards.first.locator("summary").click()
     expect(cards.first.get_by_role("button", name="آماده‌کردن پیگیری برای بازبینی", exact=True)).to_be_visible()
     expect(cards.first.get_by_text("اسپانسرشیپ ویزای کار", exact=True)).to_be_visible()
@@ -135,6 +151,27 @@ with sync_playwright() as playwright:
     expect(warning).to_contain_text("gmail_unavailable")
     expect(warning.get_by_role("button")).to_have_count(0)
     expect(cards).to_have_count(2)
+    scenario = "normal"
+
+    # Finishing the archive cursor must not be presented as full reading while
+    # changes need reconciliation or some bodies/links remain unreadable.
+    for state in ["archive_gap", "unreadable_only", "inconsistent_complete", "full_complete"]:
+        scenario = state
+        panel.get_by_role("button", name="خواندن و ادامهٔ بررسی Gmail", exact=True).click()
+        progress.locator("summary").click()
+        expect(progress.locator('[data-reader-progress="archive"]')).to_contain_text("به‌تنهایی")
+        if state == "full_complete":
+            expect(progress.locator('[data-reader-state="complete"]')).to_contain_text("این نوبت تکمیل شد")
+            expect(progress.locator('[data-reader-progress="unreadable"]')).to_have_count(0)
+        else:
+            expect(progress.locator('[data-reader-state="incomplete"]')).to_be_visible()
+            expect(progress.locator('[data-reader-progress="unreadable"]')).to_contain_text("ناقص")
+            if state in ["archive_gap", "inconsistent_complete"]:
+                expect(progress.locator('[data-reader-progress="history"]')).to_contain_text("بازخوانی")
+            else:
+                expect(progress.locator('[data-reader-progress="history"]')).to_contain_text("تطبیق داده شده‌اند")
+        progress.locator("summary").click()
+        expect(cards).to_have_count(2)
     scenario = "normal"
 
     panel.get_by_role("combobox", name="صندوق مکاتبات کلینیک‌ها", exact=True).select_option("secondary")
@@ -182,6 +219,16 @@ with sync_playwright() as playwright:
     page.evaluate("document.documentElement.lang='en';document.documentElement.dataset.language='en';document.documentElement.dir='ltr';dispatchEvent(new Event('masir-language-change'))")
     expect(panel.get_by_role("heading", name="Clinic conversations, from application to reply", exact=True)).to_be_visible()
     panel.locator(".clinic-correspondence-coverage summary").click()
+    expect(progress.locator('[data-reader-count="all"]')).to_have_text("205")
+    expect(progress.locator('[data-reader-count="received"]')).to_have_text("187")
+    expect(progress.locator('[data-reader-count="sent"]')).to_have_text("18")
+    expect(progress).to_contain_text("Inbox, Sent, Archive, Spam and Trash")
+    expect(progress).to_contain_text("excluded from follow-up and sending suggestions")
+    scenario = "archive_gap"
+    panel.get_by_role("button", name="Read and continue the Gmail review", exact=True).click()
+    expect(progress.locator('[data-reader-state="incomplete"]')).to_be_visible()
+    expect(progress.locator('[data-reader-progress="history"]')).to_contain_text("being read again")
+    expect(progress.locator('[data-reader-progress="unreadable"]')).to_contain_text("body/link analysis is incomplete")
     cards.first.locator("summary").click()
     cards.nth(1).locator("summary").click()
     assert not re.search(r'[\u0600-\u06ff]', panel.inner_text()), panel.inner_text()
@@ -192,4 +239,4 @@ with sync_playwright() as playwright:
     assert not errors, errors
     browser.close()
 server.shutdown()
-print("PASS clinic correspondence: mailbox/owner isolation, late-response rejection, private draft handoff, reply-aware actions, transient continuity, English and mobile layout; no sends.")
+print("PASS clinic correspondence: all-mail/sent/received counters, archive versus full-reading completion, history gaps and unreadable bodies, private owner/mailbox recovery, English and mobile layout; no sends.")

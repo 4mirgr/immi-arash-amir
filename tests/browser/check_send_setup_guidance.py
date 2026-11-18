@@ -8,6 +8,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -121,9 +122,24 @@ with sync_playwright() as playwright:
     page.locator(".arash-row-quick-actions > button").first.click()
     expect(page.locator(".gp-application-compact")).to_be_visible()
     expect(page.locator(".opportunity-mail")).to_have_count(0)
+    letter_action = page.locator(".send-action-dock-letter")
+    expect(letter_action.locator("button")).to_be_enabled()
+    letter_action.locator("button").click()
+    expect(page.locator(".gp-compact-continue input")).to_be_focused()
+    assert not writes, writes
+    page.locator(".gp-compact-continue input").check()
+    expect(letter_action.locator("button")).to_have_text("ادامه به ارسال ایمیل و رزومه")
     expect(page.locator(".opportunity-batch-launcher")).to_be_in_viewport()
-    page.evaluate("window.scrollTo(0,document.body.scrollHeight)")
-    expect(page.locator(".opportunity-batch-launcher")).to_be_in_viewport()
+    for width in [390, 1440]:
+        page.set_viewport_size({"width": width, "height": 780})
+        page.evaluate("document.documentElement.style.fontSize='140%';window.scrollTo(0,document.body.scrollHeight)")
+        expect(page.locator(".opportunity-batch-launcher")).to_be_in_viewport()
+        expect(letter_action.locator("button")).to_be_in_viewport()
+        action_boxes=page.evaluate("Array.from(document.querySelectorAll('.send-action-stack .send-execute-button')).map(button=>{const box=button.getBoundingClientRect();return {top:box.top,bottom:box.bottom,left:box.left,right:box.right,color:getComputedStyle(button).backgroundColor}})")
+        for box in action_boxes:
+            red, green, blue = map(int, re.findall(r'\d+', box['color'])[:3])
+            assert box['top']>=0 and box['bottom']<=780 and box['left']>=0 and box['right']<=width and green-red>=70 and green-blue>=30, box
+        assert not page.evaluate("document.documentElement.scrollWidth>innerWidth")
     assert not writes, writes
 
     # An owner change removes the other owner's selected adverts and open letter.
