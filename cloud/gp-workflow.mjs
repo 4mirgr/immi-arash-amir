@@ -38,10 +38,20 @@ export function assessFiveTier(source,goalMode='pesci_readiness',at=Date.now()){
  const closing=Date.parse(item.closingAt||item.closing_at||''),published=Date.parse(item.publishedAt||item.published_at||'');
  const unavailable=['closed','source_removed','future'].includes(item.status)||(Number.isFinite(closing)&&closing<=at)||(Number.isFinite(published)&&published>at);
  const clearRestrictions=['level1','img','supervision'].filter(key=>signals[key]?.status==='restricted');
+ // Employment support and clinical supervision are different commitments. A
+ // refusal of visa support is a barrier only for the employer-supported goal;
+ // silence and ordinary candidate prerequisites must not become refusals.
+ const sponsorshipRefused=signals.sponsorship.status==='restricted'&&(signals.sponsorship.excerpts||[]).some(e=>e.status==='restricted'&&!/\b(?:no|without)\s+(?:visa\s+|work\s+visa\s+|employer\s+)?sponsorship\s+(?:(?:is|will be)\s+)?(?:required|needed|necessary)\b/i.test(e.text));
+ if(signals.sponsorship.status==='restricted'&&!sponsorshipRefused){
+  const excerpts=signals.sponsorship.excerpts.map(e=>e.status==='restricted'?{...e,status:'not_stated',reason:'candidate_requirement_not_employer_refusal'}:e);
+  signals.sponsorship={...signals.sponsorship,excerpts,status:excerpts.some(e=>e.status==='supported')?'supported':'not_stated'};
+  known.sponsorship=positive(signals.sponsorship);
+ }
+ const employmentSponsorshipBarrier=goalMode==='employment'&&sponsorshipRefused;
  const onlyFellowshipEvidence=parts.filter(s=>!/\b(?:not required|not essential|not mandatory|preferred|working towards|non[- ]VR|not(?:\s+\w+){0,3}\s+only|not restricted to|not limited to)\b/i.test(s)&&(/\b(?:FRACGP|FACRRM)\b[^.!?;]{0,35}\bonly\b|\bonly\b[^.!?;]{0,50}\b(?:FRACGP|FACRRM)\b/i.test(s)||/\b(?:only VR GPs?|VR GPs? only|VR status (?:is )?required|must (?:have|hold) VR status)\b/i.test(s))).slice(0,2);
  const fellowshipRestriction=onlyFellowshipEvidence.length>0||(signals.registration?.excerpts||[]).some(e=>e.status==='restricted'&&/\b(?:FRACGP|FACRRM)\b/i.test(e.text)&&!/\b(?:preferred|not required|not essential|not mandatory|working towards)\b/i.test(e.text));
  let tier=2,reasons=[];
- if(unavailable||nonGp||clearRestrictions.length||fellowshipRestriction){tier=1;reasons.push(unavailable?'این آگهی برای اقدام فعلی در دسترس نیست، مهلتش گذشته یا هنوز زمان انتشارش نرسیده است؛ این به معنی تعطیلی کلینیک نیست.':nonGp?'عنوان این آگهی برای نقش GP نیست؛ بهتر است موقعیت پزشکی مناسب همان مجموعه را پیدا کنیم.':'در متن، مانع مشخصی دربارهٔ نظارت، پذیرش IMG یا مدرک Fellowship آمده است؛ پیش از درخواست باید آن را روشن کنیم.');}
+ if(unavailable||nonGp||clearRestrictions.length||fellowshipRestriction||employmentSponsorshipBarrier){tier=1;reasons.push(unavailable?'این آگهی برای اقدام فعلی در دسترس نیست، مهلتش گذشته یا هنوز زمان انتشارش نرسیده است؛ این به معنی تعطیلی کلینیک نیست.':nonGp?'عنوان این آگهی برای نقش GP نیست؛ بهتر است موقعیت پزشکی مناسب همان مجموعه را پیدا کنیم.':employmentSponsorshipBarrier?'منبع، حمایت ویزای کاری را صریحاً رد کرده است؛ این موقعیت فعلاً با هدف شغلِ همراه با حمایت کارفرما سازگار نیست.':'در متن، مانع مشخصی دربارهٔ نظارت، پذیرش IMG یا مدرک Fellowship آمده است؛ پیش از درخواست باید آن را روشن کنیم.');}
  else if(roleRelevant&&known.level1&&known.img&&known.pesci&&known.sponsorship){tier=5;reasons.push('متن منبع از پذیرش IMG، نظارت Level 1، همراهی برای PESCI و اسپانسرشیپ ویزا صحبت می‌کند؛ این مورد ارزش پیگیری سریع دارد.');}
  else if(roleRelevant&&(known.level1&&known.img||known.img&&known.supervision&&(known.pesci||teamEvidence.length))){tier=4;reasons.push(known.level1?'برای IMG و نظارت Level 1 شواهد خوبی داریم؛ می‌توان درخواست اختصاصی آماده کرد و شرایط باقی‌مانده را از مرکز پرسید.':'منبع از پذیرش IMG و نظارت برای متقاضی می‌گوید و نشانهٔ آموزش یا حمایت PESCI دارد؛ سطح دقیق نظارت را کتبی بپرسید.');}
  else if(roleRelevant&&(Object.values(known).some(Boolean)||rangeEvidence.length||potentialSupervision.length)){tier=3;reasons.push(rangeEvidence.length&&!known.level1?'در متن به بازهٔ Level 1–2 اشاره شده است؛ ظرفیت واقعی Level 1 هنوز تأیید نشده و باید از مرکز پرسیده شود.':'این موقعیت به مسیر GP مربوط است و نشانه‌ای از حمایت دارد؛ چند پرسش مشخص می‌تواند وضعیت آن را روشن کند.');}
@@ -51,14 +61,17 @@ export function assessFiveTier(source,goalMode='pesci_readiness',at=Date.now()){
  const weights=goalMode==='pesci_readiness'?{level1:4,pesci:4,img:2,supervision:2,sponsorship:1}:{level1:3,pesci:1,img:2,supervision:3,sponsorship:4};
  const priorityWeight=tier===1?0:Object.entries(weights).reduce((sum,[key,weight])=>sum+(known[key]?weight:0),0)+(rangeEvidence.length&&!known.level1?1:0);
  const nextSteps=[];
- if(tier===1)nextSteps.push('اصل شرط یا تاریخ آگهی را دوباره بخوانید؛ اگر تغییر کرده، نسخهٔ تازه یا موقعیت مناسب‌تر همان مرکز را پیدا کنید.');
+ if(tier===1){
+  nextSteps.push('اصل شرط یا تاریخ آگهی را دوباره بخوانید؛ اگر تغییر کرده، نسخهٔ تازه یا موقعیت مناسب‌تر همان مرکز را پیدا کنید.');
+  if(employmentSponsorshipBarrier)nextSteps.push('اگر شرایط حمایت ویزا تغییر کرده است، تأیید تازهٔ کارفرما را بگیرید؛ داشتن سوپروایزر به‌تنهایی جای اسپانسرشیپ ویزا را نمی‌گیرد.');
+ }
  else{
   if(!(Array.isArray(item.contactEvidence)?item.contactEvidence:[]).some(c=>c?.type==='email'&&c?.value)||!text(item.practiceManager))nextSteps.push('نتیجهٔ جست‌وجوی خودکار ایمیل و نام مسئول را در پرونده ببینید. اگر نامی منتشر نشده باشد، نامه با خطاب Practice Manager آماده می‌شود.');
   if(!known.level1)nextSteps.push('کتبی بپرسید آیا مرکز برای همین سمت، سوپروایزر و ظرفیت واقعی Level 1 دارد.');
   else nextSteps.push('از مرکز بخواهید ظرفیت فعلی سوپروایزر و شرایط نظارت همین سمت را تأیید کند.');
   nextSteps.push('شرح شغل و فرم نظارت SPPA-30 همین سمت را بگیرید و با نیازهای ثبت پزشکی تطبیق دهید.');
   if(!known.pesci)nextSteps.push('بپرسید آیا مرکز برای تکمیل مدارک درخواست PESCI همین سمت همراهی می‌کند.');
-  if(goalMode==='employment'&&!known.sponsorship)nextSteps.push('وضعیت حق کار، اسپانسرشیپ و زمان شروع پس از ثبت پزشکی را جداگانه روشن کنید.');
+  if(goalMode==='employment')nextSteps.push('حمایت ویزای کاری را از کارفرما و ظرفیت نظارت Level 1 را از مرکز جداگانه تأیید بگیرید؛ ترتیب PESCI، ثبت پزشکی و ویزا باید برای همین سمت روشن شود.');
  }
  const labels={1:'مانع مشخص برای اقدام فعلی',2:'اطلاعات ناکافی؛ اول تحقیق کنیم',3:'قابل پیگیری با چند پرسش',4:'تناسب خوب برای پیگیری',5:'تناسب قوی؛ پیگیری در اولویت'};
  const sourceUrl=https(item.url||item.sourceUrl);
@@ -69,10 +82,10 @@ export function assessFiveTier(source,goalMode='pesci_readiness',at=Date.now()){
   ...['level1','img','pesci','supervision'].map(id=>matrixRow(id,{level1:'ظرفیت نظارت Level 1',img:'پذیرش پزشک IMG',pesci:'همراهی برای PESCI',supervision:'نظارت برای متقاضی'}[id],signals[id].status==='not_stated'&&((id==='level1'&&rangeEvidence.length)||(id==='supervision'&&potentialSupervision.length))?'potential':signals[id].status,evidence.filter(e=>e.field===id||(id==='level1'&&e.field==='level1_range')).slice(0,3))),
   matrixRow('registration','مدرک یا ثبت پزشکی موردنیاز',fellowshipRestriction?'restricted':signals.registration.status,evidence.filter(e=>e.field==='registration').slice(0,3),'شرط آگهی را باید با مدارک واقعی آرش جداگانه تطبیق داد؛ این امتیاز تأیید صلاحیت شخصی نیست.'),
   matrixRow('team_training','تیم و محیط آموزشی',teamEvidence.length?'supported':'not_stated',teamEvidence.map(quote=>({quote,status:'supported'})),'وجود تیم یا آموزش، جای تأیید سوپروایزر همین سمت را نمی‌گیرد.'),
-  matrixRow('sponsorship','اسپانسرشیپ ویزا',signals.sponsorship.status,evidence.filter(e=>e.field==='sponsorship').slice(0,3),'در هدف آمادگی PESCI شرط حذف نیست؛ برای شروع کار باید جداگانه روشن شود.'),
+  matrixRow('sponsorship','اسپانسرشیپ ویزا',signals.sponsorship.status,evidence.filter(e=>e.field==='sponsorship').slice(0,3),goalMode==='employment'?'برای این هدف، حمایت ویزای کاریِ کارفرما لازم است؛ پذیرش نظارت بالینی به‌تنهایی کافی نیست.':'در هدف آمادگی PESCI شرط حذف نیست؛ برای شروع کار باید جداگانه روشن شود.'),
   matrixRow('source_currency','وضعیت آگهی برای اقدام',unavailable?'restricted':'not_stated',[],'باز بودن آگهی و فعال‌بودن کلینیک باید جداگانه بررسی شوند؛ ظاهر یا سن وب‌سایت ملاک تعطیلی نیست.'),
   matrixRow('geography','موقعیت، MMM و DPA','informational',[],'MMM1 حذف نمی‌شود. DPA اطلاعات تکمیلی است و به‌تنهایی منطقهٔ rural یا ظرفیت نظارت را ثابت نمی‌کند.')];
- return {tier,stars:tier,maxStars:5,label:labels[tier],reasons:reasons.slice(0,3),nextSteps,unknowns:fit.unknowns,evidence,matrix,goalMode,priorityWeight,eligibility:'not_assessed',meaning:'source_evidence_fit_not_acceptance_probability',profileContext:'gp_level1_pesci_route_only_no_private_cv_assessed',registrationCautions:[...CAUTIONS],sourceUrl,roleRelevant};
+ return {tier,stars:tier,maxStars:5,label:labels[tier],reasons:reasons.slice(0,3),nextSteps,unknowns:[...new Set([...fit.unknowns,...(signals.sponsorship.status==='not_stated'?['sponsorship']:[])])],evidence,matrix,goalMode,priorityWeight,eligibility:'not_assessed',meaning:'source_evidence_fit_not_acceptance_probability',profileContext:'gp_level1_pesci_route_only_no_private_cv_assessed',registrationCautions:[...CAUTIONS],sourceUrl,roleRelevant};
 }
 
 async function payload(request){

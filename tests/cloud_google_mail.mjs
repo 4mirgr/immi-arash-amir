@@ -14,11 +14,11 @@ const request=(path,body)=>new Request('https://app.example'+path,{method:body==
 const response=value=>new Response(JSON.stringify(value),{headers:{'content-type':'application/json'}});
 const mime=(id,body,extra={})=>({id,threadId:'thread1',internalDate:'1700000000000',snippet:'Visible snippet',labelIds:['INBOX'],payload:{mimeType:'multipart/alternative',headers:[{name:'From',value:'Clinic <clinic@example.invalid>'},{name:'Subject',value:'Interview invitation'}],parts:[{mimeType:'text/plain',body:{data:Buffer.from(body).toString('base64url')}}]},...extra});
 const runRequest=async(db,path,body,fetcher,who=context,provider=access)=>handleGoogleMailRequest(request(path,body),{GOOGLE_DB:db},who,fetcher,provider);
-test('MIME reads plain text only, bounds content and extracts private contacts',()=>{
+test('MIME prefers plain text, converts HTML-only mail safely, bounds content and extracts private contacts',()=>{
  const message=mime('abc1','Please arrange an interview. Reply hr@example.invalid');message.payload.parts.push({mimeType:'text/html',body:{data:Buffer.from('<script>steal()</script>').toString('base64url')}});
  const normalized=normalizeMessage(message);assert.equal(normalized.priority,'strong');assert.equal(normalized.plainBody.includes('steal'),false);assert.deepEqual(normalized.extractedEmails,['clinic@example.invalid','hr@example.invalid']);
  const huge=normalizeMessage(mime('abc2','x'.repeat(50000)));assert.ok(new TextEncoder().encode(huge.plainBody).length<=32768);
- const html=normalizeMessage({...mime('abc3',''),payload:{mimeType:'text/html',body:{data:Buffer.from('<b>not plain</b>').toString('base64url')}}});assert.equal(html.plainBody,'');
+ const html=normalizeMessage({...mime('abc3',''),payload:{mimeType:'text/html',body:{data:Buffer.from('<b>not plain</b>').toString('base64url')}}});assert.equal(html.plainBody,'not plain');assert.equal(html.bodySource,'html_as_inert_text');
 });
 test('ranking never treats rejection as a positive offer or predicts probability',()=>{
  assert.equal(rankMessage('We cannot offer sponsorship despite your interview').priority,'weak');

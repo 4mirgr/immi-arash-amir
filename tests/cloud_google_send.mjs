@@ -4,6 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {handleGoogleSendRequest} from '../cloud/google-send.mjs';
 import {encryptGoogleSecret} from '../cloud/google-oauth.mjs';
+import {normalizeMessage} from '../cloud/google-mail.mjs';
 const origin='https://immi-arash-amir.dr-gerami-md.workers.dev';
 const clinic=i=>'cl_'+i.toString(16).padStart(20,'0');
 const ownCV='11111111-1111-4111-8111-111111111111';
@@ -14,7 +15,7 @@ function sqlDb(db){
 }
 async function fixture(count=3){
  const db=new DatabaseSync(':memory:');
- for(const file of ['google-schema.sql','google-send-schema.sql','mail-automation-schema.sql','google-mail-schema.sql'])db.exec(readFileSync(new URL('../cloud/'+file,import.meta.url),'utf8'));
+ for(const file of ['google-schema.sql','google-send-schema.sql','mail-automation-schema.sql','google-mail-schema.sql','clinic-correspondence-stops-schema.sql'])db.exec(readFileSync(new URL('../cloud/'+file,import.meta.url),'utf8'));
  const env={GOOGLE_DB:sqlDb(db),GOOGLE_CLIENT_ID:'synthetic-client',GOOGLE_CLIENT_SECRET:'synthetic-secret',GOOGLE_TOKEN_KEY:Buffer.alloc(32,23).toString('base64'),GOOGLE_REDIRECT_URI:origin+'/api/google/callback'};
  const data=Array.from({length:count},(_,i)=>({id:clinic(i+1),data:{email:'clinic'+i+'@example.invalid'}}));
  const calls=[];let sequence=0;
@@ -31,6 +32,33 @@ async function fixture(count=3){
  return {db,env,data,calls,arash,amir,call};
 }
 const payload=(ids=[clinic(1)])=>({clinicIds:ids,subject:'Expression of interest',body:'Synthetic application. This test sends no real mail.'});
+function sentApplication(f){
+ const raw={id:'sent-application',threadId:'clinic-follow-up-thread',labelIds:['SENT'],internalDate:String(Date.now()-9*86400000),payload:{mimeType:'text/plain',headers:[{name:'From',value:'arash@example.invalid'},{name:'To',value:'Practice Manager <manager@clinic.example.invalid>'},{name:'Subject',value:'GP application requiring Level 1 supervision'},{name:'Message-ID',value:'<application.original@example.invalid>'}],body:{data:Buffer.from('I am applying for a general practitioner position with appropriate Level 1 supervision.').toString('base64url')}}};
+ const message=normalizeMessage(raw);f.db.prepare('INSERT INTO google_mail_messages VALUES(?,?,?,?,?,?,?,?)').run(f.arash.userId,'google-arash',message.id,message.threadId,message.dateTimestamp,message.priority,JSON.stringify(message),Date.now());
+ return {raw,context:{messageId:raw.id,threadId:raw.threadId,to:'manager@clinic.example.invalid'}};
+}
+test('explicit clinic follow-up remains threaded and rechecks Gmail at preview, enqueue and dispatch',async()=>{
+ const f=await fixture(),application=sentApplication(f);let reads=0,sends=0,delivered;
+ const provider=async(url,options)=>{if(url.includes('/messages?'))return Response.json({messages:[]});if(url.includes('/threads/')){reads++;return Response.json({id:application.raw.threadId,messages:[application.raw]});}sends++;delivered=JSON.parse(options.body);return Response.json({id:'ack-explicit-follow-up'});};
+ const input={followUpContext:application.context,subject:'Re: GP application requiring Level 1 supervision',body:'A synthetic reviewed follow-up; no actual mail is sent by this test.'};
+ assert.equal((await f.call('preview',input,f.arash,provider)).status,200);assert.equal(sends,0);
+ const queued=await(await f.call('queue',input,f.arash,provider)).json();assert.equal(queued.items.length,1);assert.equal(sends,0);assert(f.db.prepare('SELECT follow_up_context FROM google_send_queue').get().follow_up_context);
+ const result=await(await f.call('dispatch',{ids:[queued.items[0].id]},f.arash,provider)).json();assert.equal(result.items[0].status,'sent');assert.equal(reads,3);assert.equal(sends,1);assert.equal(delivered.threadId,application.raw.threadId);assert.match(Buffer.from(delivered.raw,'base64url').toString('utf8'),/In-Reply-To: <application.original@example.invalid>/);
+ await f.call('dispatch',{ids:[queued.items[0].id]},f.arash,provider);assert.equal(sends,1);
+});
+test('an employer response arriving after review stops the queued reminder before transport',async()=>{
+ const f=await fixture(),application=sentApplication(f);let reply=false,sends=0;
+ const provider=async(url)=>{if(url.includes('/messages?'))return Response.json({messages:[]});if(!url.includes('/threads/')){sends++;return Response.json({id:'must-not-send'});}const messages=[application.raw];if(reply)messages.push({id:'employer-reply',threadId:application.raw.threadId,labelIds:['INBOX'],internalDate:String(Date.now()-1000),payload:{mimeType:'text/plain',headers:[{name:'From',value:'manager@clinic.example.invalid'},{name:'To',value:'arash@example.invalid'},{name:'Subject',value:'Re: GP application requiring Level 1 supervision'}],body:{data:Buffer.from('Please send your CV and registration documents.').toString('base64url')}}});return Response.json({id:application.raw.threadId,messages});};
+ const queued=await(await f.call('queue',{followUpContext:application.context,subject:'Re: GP application requiring Level 1 supervision',body:'Synthetic follow-up'},f.arash,provider)).json();reply=true;
+ const result=await(await f.call('dispatch',{ids:[queued.items[0].id]},f.arash,provider)).json();assert.equal(result.items[0].status,'blocked_follow_up');assert.equal(sends,0);assert.equal(f.db.prepare('SELECT status FROM google_send_queue').get().status,'suppressed');
+});
+test('follow-up routing rejects mixed, forged and other-owner contexts without sending',async()=>{
+ const f=await fixture(),application=sentApplication(f),base={followUpContext:application.context,subject:'Re: GP application requiring Level 1 supervision',body:'Synthetic follow-up'};
+ assert.equal((await f.call('queue',{...base,clinicIds:[clinic(1)]})).status,400);
+ assert.equal((await f.call('queue',{...base,replyContext:application.context})).status,400);
+ assert.equal((await f.call('queue',{...base,followUpContext:{...application.context,to:'other@example.invalid'}})).status,403);
+ assert.equal((await f.call('queue',base,f.amir)).status,404);assert.equal(f.calls.length,0);
+});
 test('queue resolves recipients and attachments server-side; no send during prepare; repeated enqueue idempotent',async()=>{
  const f=await fixture();let response=await f.call('preview',{...payload(),cvVersionId:ownCV});assert.equal(response.status,200);const preview=await response.json();assert.equal(preview.sender,'arash@example.invalid');assert.equal(preview.recipients[0].attachmentName,'cv-arash-v1.docx');assert.equal(f.db.prepare('select count(*) n from google_send_queue').get().n,0);
  const first=await(await f.call('queue',{...payload(),cvVersionId:ownCV})).json();const again=await(await f.call('queue',{...payload(),cvVersionId:ownCV})).json();assert.equal(first.items[0].id,again.items[0].id);assert.equal(again.items[0].reused,true);assert.equal(f.db.prepare('select count(*) n from google_send_queue').get().n,1);assert.equal(f.calls.length,0);
@@ -158,4 +186,10 @@ test('the atomic Gmail claim rejects an approval created after manual preflight'
  const f=await fixture(),item=(await(await f.call('queue',{...payload(),cvVersionId:ownCV})).json()).items[0];scheduleTable(f);const original=f.env.GOOGLE_DB;let injected=false;
  f.env.GOOGLE_DB={...original,prepare(sql){if(!injected&&sql.startsWith("UPDATE google_send_queue SET status='sending'")){injected=true;approvalFor(f,item,{send_after:Date.now()+60000});}return original.prepare(sql);}};
  const response=await(await f.call('dispatch',{ids:[item.id]})).json();assert.equal(injected,true);assert.equal(response.items[0].status,'not_claimed');assert.equal(f.calls.length,0);assert.equal(f.db.prepare('SELECT status FROM google_send_queue WHERE id=?').get(item.id).status,'queued');
+});
+
+test('follow-up-column upgrade preserves existing reply queues and keeps new routing nullable',()=>{
+ const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../cloud/google-send-schema.sql',import.meta.url),'utf8').replace('  follow_up_context TEXT,\n',''));
+ db.exec(readFileSync(new URL('../cloud/google-send-followups.sql',import.meta.url),'utf8'));
+ assert.equal(db.prepare('pragma table_info(google_send_queue)').all().filter(column=>column.name==='follow_up_context').length,1);
 });

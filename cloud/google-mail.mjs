@@ -12,11 +12,42 @@ const header=(payload,name)=>clean(payload?.headers?.find(h=>String(h.name).toLo
 const gmailId=value=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,200}$/.test(value);
 function requireReadScope(access){const scopes=Array.isArray(access?.scopes)?access.scopes:[];if(!['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.modify','https://mail.google.com/'].some(scope=>scopes.includes(scope)))throw new MailError(403,'gmail_read_scope_required');}
 function decodeBody(data){try{const value=data.replaceAll('-','+').replaceAll('_','/');return new TextDecoder().decode(Uint8Array.from(atob(value),c=>c.charCodeAt(0)));}catch{return '';}}
+const attachedPart=payload=>!!payload?.filename||/^attachment\b/i.test(header(payload,'content-disposition'))||payload?.mimeType==='message/rfc822';
 function plainParts(payload,depth=0){
- if(!payload||depth>10)return '';
+ if(!payload||depth>10||attachedPart(payload))return '';
  let value=payload.mimeType==='text/plain'&&typeof payload.body?.data==='string'?decodeBody(payload.body.data):'';
  for(const part of (payload.parts||[]).slice(0,30)){value+='\n'+plainParts(part,depth+1);if(new TextEncoder().encode(value).length>=MAX_BODY)break;}
  return trimBytes(value);
+}
+// HTML mail is converted to inert text. Scripts, styles, attachments and quoted
+// HTML history cannot become fresh employer intent or browser markup.
+function htmlParts(payload,depth=0){
+ if(!payload||depth>10||attachedPart(payload))return '';
+ let value=payload.mimeType==='text/html'&&typeof payload.body?.data==='string'?decodeBody(payload.body.data):'';
+ for(const part of (payload.parts||[]).slice(0,30)){value+='\n'+htmlParts(part,depth+1);if(new TextEncoder().encode(value).length>=MAX_BODY)break;}
+ return trimBytes(value);
+}
+function inertHtmlText(value){
+ const html=trimBytes(value),lower=html.toLowerCase();let text='',cursor=0;
+ // A single forward scan avoids repeated regex searches on malformed mail
+ // containing thousands of unclosed tags. Attributes never become body text.
+ while(cursor<html.length){
+  const start=html.indexOf('<',cursor);if(start<0){text+=html.slice(cursor);break;}
+  text+=html.slice(cursor,start);let end=start+1,quote=null;
+  for(;end<html.length;end++){const char=html[end];if(quote){if(char===quote)quote=null;}else if(char==='"'||char==="'")quote=char;else if(char==='>')break;}
+  if(end>=html.length)break;
+  const tag=lower.slice(start+1,end).trim(),name=tag.match(/^\/?([a-z][a-z0-9-]*)\b/)?.[1],closing=tag.startsWith('/');
+  if(!closing&&(name==='script'||name==='style')){
+   let stop=lower.indexOf('</'+name,end+1);while(stop>=0&&!/[\s/>]/.test(lower[stop+name.length+2]||''))stop=lower.indexOf('</'+name,stop+name.length+2);if(stop<0)break;
+   const stopEnd=html.indexOf('>',stop+name.length+2);if(stopEnd<0)break;cursor=stopEnd+1;continue;
+  }
+  if(!closing&&(name==='blockquote'||name==='div'&&/\bclass\s*=\s*["'][^"']*\bgmail_quote\b/.test(tag))){text+='\n> [quoted history omitted]';break;}
+  if(name==='br'||name==='hr'||closing&&['p','div','li','tr'].includes(name))text+='\n';
+  cursor=end+1;
+ }
+ return text
+ .replace(/&(?:nbsp|amp|lt|gt|quot|apos|#39);/gi,m=>({'&nbsp;':' ','&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&apos;':"'",'&#39;':"'"}[m.toLowerCase()]))
+ .replace(/&#(x[0-9a-f]{1,6}|[0-9]{1,7});/gi,(m,n)=>{const code=n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):Number(n);return code>0&&code<=0x10ffff&&!(code>=0xd800&&code<=0xdfff)?String.fromCodePoint(code):' ';}).trim();
 }
 export function extractEmails(text){
  const emails=new Set();
@@ -118,13 +149,13 @@ export function normalizeMessage(raw){
  if(!gmailId(raw?.id))throw new MailError(502,'invalid_gmail_response');
  const labels=Array.isArray(raw.labelIds)?raw.labelIds.filter(v=>typeof v==='string').slice(0,50):[];
  const direction=labels.includes('SENT')?'sent':'received';
- const from=header(raw.payload,'from'), subject=header(raw.payload,'subject'), plainBody=plainParts(raw.payload).trim();
+ const from=header(raw.payload,'from'), subject=header(raw.payload,'subject'), originalPlain=plainParts(raw.payload).trim(), plainBody=originalPlain||inertHtmlText(htmlParts(raw.payload));
  const originalId=header(raw.payload,'message-id').trim();
  const rfcMessageId=/^<[^<>\s@]+@[^<>\s@]+>$/.test(originalId)?originalId:null;
  const dateNumber=Number(raw.internalDate)||Date.parse(header(raw.payload,'date'))||0;
  const safeDate=Number.isFinite(dateNumber)&&dateNumber>0&&dateNumber<8640000000000000?dateNumber:0;
  const snippet=trimBytes(clean(raw.snippet).replace(/<[^>]*>/g,''),2000);
- return {rfcMessageId,replyTo:header(raw.payload,'reply-to'),id:raw.id,threadId:gmailId(raw.threadId)?raw.threadId:raw.id,from,subject,date:safeDate?new Date(safeDate).toISOString():null,dateTimestamp:safeDate,snippet,plainBody,hasPlainBody:!!plainBody,labels,direction,...rankMessage(subject+'\n'+(plainBody||snippet),direction),extractedEmails:extractEmails(from+'\n'+header(raw.payload,'reply-to')+'\n'+plainBody)};
+ return {rfcMessageId,replyTo:header(raw.payload,'reply-to'),to:header(raw.payload,'to'),cc:header(raw.payload,'cc'),bcc:header(raw.payload,'bcc'),id:raw.id,threadId:gmailId(raw.threadId)?raw.threadId:raw.id,from,subject,date:safeDate?new Date(safeDate).toISOString():null,dateTimestamp:safeDate,snippet,plainBody,hasPlainBody:!!plainBody,bodySource:originalPlain?'text_plain':plainBody?'html_as_inert_text':'snippet_only',labels,direction,...rankMessage(subject+'\n'+(plainBody||snippet),direction),extractedEmails:extractEmails(from+'\n'+header(raw.payload,'reply-to')+'\n'+plainBody)};
 }
 async function googleJson(fetcher,accessToken,path,recovery=null){
  const read=async()=>{try{return await fetcher('https://gmail.googleapis.com/gmail/v1/users/me/'+path,{headers:{Authorization:'Bearer '+(recovery?.access.accessToken||accessToken)},signal:AbortSignal.timeout(12000),redirect:'manual'});}catch{throw new MailError(502,'gmail_unavailable');}};
@@ -145,6 +176,9 @@ async function googleJson(fetcher,accessToken,path,recovery=null){
  if(reader){let size=0;const decoder=new TextDecoder();while(true){const {value,done}=await reader.read();if(done)break;size+=value.byteLength;if(size>MAX_RESPONSE){await reader.cancel();throw new MailError(502,'gmail_response_too_large');}text+=decoder.decode(value,{stream:true});}text+=decoder.decode();}else text=await response.text();
  try{return JSON.parse(text);}catch{throw new MailError(502,'invalid_gmail_response');}
 }
+// Shared GET-only provider adapter; it preserves bounded bodies and the single
+// rejected-token refresh without restarting the enclosing mailbox operation.
+export {googleJson as readGoogleMailJson};
 const row=(db,sql,...args)=>db.prepare(sql).bind(...args).first();
 const run=(db,sql,...args)=>db.prepare(sql).bind(...args).run();
 function pendingIds(raw){let values;try{values=JSON.parse(raw||'[]');}catch{throw new MailError(409,'invalid_sync_state');}if(!Array.isArray(values)||values.length>MAX_PENDING||values.some(v=>!gmailId(v)))throw new MailError(409,'invalid_sync_state');return values;}

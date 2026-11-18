@@ -1,5 +1,7 @@
 # Resume this project with minimal context
 
+Clinic mail lifecycle: [2026-11-18 change](CLINIC-CORRESPONDENCE-2026-11-18.fa.md). Actual Gmail Sent history differs from the panel send queue. Progressive private thread reading, reply classifications, durable contact stops, reviewed threaded follow-ups and employer-supported GP goal are implemented; consult its release receipt before assuming live state. Never ask the owner to manually reconstruct Sent while an authorized own grant can be read.
+
 Latest Arash performance/correctness audit: [2026-11-17 report](ARASH-AUDIT-2026-11-17.fa.md). Source continuation, reader leases/child proof, factual writing, single-request snapshots and cancellable two-clinic draft preparation were reviewed and tested; read its deployment receipt before assuming runtime.
 
 Latest Arash repair: [2026-11-16 report](ARASH-REPAIR-2026-11-16.fa.md). It covers provider verification/recovery, visible single/bulk sending, complete private signatures, source-bound academic editing and bounded parallel clinic research. Read before diagnosing the same symptoms again.

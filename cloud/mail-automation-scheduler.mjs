@@ -113,10 +113,10 @@ export async function handleMailSchedulerRequest(request,env,context){
   fail('not_found',404);
  }catch(error){return json({error:error instanceof SchedulerError?error.message:'scheduler_request_failed'},error instanceof SchedulerError?error.status:500);}
 }
-export async function dispatchScheduledMail(env,fetcher=fetch){
+export async function dispatchScheduledMail(env,fetcher=fetch,options={}){
  if(!enabled(env)||!env.GOOGLE_DB||!env.OPPORTUNITY_DB)return {enabled:false,attempted:0};const db=env.GOOGLE_DB,now=Date.now(),day=new Date(now).toISOString().slice(0,10);
  await stmt(db,"UPDATE mail_scheduled_approvals SET status='expired',reason='approval_window_expired',updated_at=? WHERE status='approved' AND expires_at<=?",now,now).run();
- const row=await stmt(db,"SELECT * FROM mail_scheduled_approvals WHERE status='approved' AND send_after<=? AND expires_at>? ORDER BY send_after,created_at LIMIT 1",now,now).first();if(!row)return {enabled:true,attempted:0};
+ const row=await stmt(db,"SELECT * FROM mail_scheduled_approvals WHERE status='approved' AND send_after<=? AND expires_at>? ORDER BY send_after,created_at LIMIT 1",now,now).first();if(!row)return {enabled:true,attempted:0,...(options.reportIdle===true?{idle:true}:{})};
  let checked;try{const membership=await checkAutomationMembership(env,row.owner_id,row.profile_id,fetcher);if(!membership.active)fail(membership.reason,409);checked=await checkJob(env,row.owner_id,row.profile_id,row.job_id,row);}catch(error){await stmt(db,"UPDATE mail_scheduled_approvals SET status='blocked',reason=?,updated_at=? WHERE id=? AND status='approved'",error instanceof SchedulerError?error.message:'preflight_failed',now,row.id).run();return {enabled:true,attempted:0,blocked:1};}
  const claim=await stmt(db,"UPDATE mail_scheduled_approvals SET status='sending',attempted_at=?,attempt_day=?,updated_at=? WHERE id=? AND status='approved' AND send_after<=? AND expires_at>? AND EXISTS(SELECT 1 FROM mail_automation_settings s WHERE s.owner_id=mail_scheduled_approvals.owner_id AND s.requested_mode='automatic') AND (SELECT count(*) FROM mail_scheduled_approvals p WHERE p.owner_id=mail_scheduled_approvals.owner_id AND p.attempt_day=?)<? RETURNING id",now,day,now,row.id,now,now,day,checked.dailyLimit).first();
  if(!claim){await stmt(db,"UPDATE mail_scheduled_approvals SET status='blocked',reason='daily_scheduled_quota_or_guard',updated_at=? WHERE id=? AND status='approved'",now,row.id).run();return {enabled:true,attempted:0};}

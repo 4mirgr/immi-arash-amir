@@ -1,4 +1,10 @@
 export const EN_ARASH_WORKFLOW_AUDIT={
+ 'شغل با حمایت کارفرما':'Employer-supported employment',
+ 'در هدف شغل با حمایت کارفرما، اسپانسرشیپ ویزا و ظرفیت نظارت Level 1 جداگانه بررسی می‌شوند؛ شرایط ثبت، PESCI و Medicare همچنان لازم‌اند.':'For employer-supported employment, visa sponsorship and Level 1 supervision are checked separately. Registration, PESCI and Medicare requirements still apply.',
+ 'منبع، حمایت ویزای کاری را صریحاً رد کرده است؛ این موقعیت فعلاً با هدف شغلِ همراه با حمایت کارفرما سازگار نیست.':'The source explicitly rules out work visa sponsorship. This position currently conflicts with the employer-supported employment goal.',
+ 'اگر شرایط حمایت ویزا تغییر کرده است، تأیید تازهٔ کارفرما را بگیرید؛ داشتن سوپروایزر به‌تنهایی جای اسپانسرشیپ ویزا را نمی‌گیرد.':'If visa support has changed, obtain fresh employer confirmation. A clinical supervisor alone does not provide employer visa sponsorship.',
+ 'حمایت ویزای کاری را از کارفرما و ظرفیت نظارت Level 1 را از مرکز جداگانه تأیید بگیرید؛ ترتیب PESCI، ثبت پزشکی و ویزا باید برای همین سمت روشن شود.':'Confirm work visa sponsorship with the employer and Level 1 supervision with the practice separately. Clarify the PESCI, registration and visa sequence for this specific position.',
+ 'برای این هدف، حمایت ویزای کاریِ کارفرما لازم است؛ پذیرش نظارت بالینی به‌تنهایی کافی نیست.':'This goal requires employer work visa sponsorship; acceptance of clinical supervision alone is insufficient.',
  'وضعیت Gmail دریافت نشد؛ ابتدا وضعیت فرستنده را دوباره بررسی کنید.':'Gmail status could not be loaded. Check the selected sender again first.',
  'وضعیت Gmail دریافت نشد؛ این خطا به معنی قطع اتصال نیست.':'Gmail status could not be loaded. This does not establish a disconnected account.',
  'بررسی دوبارهٔ وضعیت Gmail':'Check Gmail status again',

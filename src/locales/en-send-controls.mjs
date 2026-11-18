@@ -1,5 +1,6 @@
 // Persistent application actions; drafts and send consent remain in the existing flow.
 export const EN_SEND_CONTROLS=Object.freeze({
+ 'پیگیری متوقف شد؛ پاسخ یا وضعیت گفتگو را بررسی کنید':'Follow-up stopped; review the response or conversation status',
  'اقدام ارسال همین آگهی':'Email action for this vacancy',
  'ارسال برای همین آگهی':'Apply to this vacancy',
  'ارسال نهایی ایمیل و رزومه':'Send reviewed email and CV',

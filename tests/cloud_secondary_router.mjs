@@ -6,7 +6,7 @@ import {createHandler} from '../cloud/worker.mjs';
 import {encryptGoogleSecret,GOOGLE_SCOPES} from '../cloud/google-oauth.mjs';
 const origin='https://workspace.example';
 async function fixture(){
- const db=new DatabaseSync(':memory:');for(const file of ['google-schema.sql','google-mail-schema.sql','google-send-schema.sql','mail-automation-schema.sql','google-mail-project-schema.sql'])db.exec(readFileSync(new URL('../cloud/'+file,import.meta.url),'utf8'));
+ const db=new DatabaseSync(':memory:');for(const file of ['google-schema.sql','google-mail-schema.sql','clinic-correspondence-stops-schema.sql','google-send-schema.sql','mail-automation-schema.sql','google-mail-project-schema.sql','google-mail-correspondence-schema.sql'])db.exec(readFileSync(new URL('../cloud/'+file,import.meta.url),'utf8'));
  const binding={prepare(sql){return {bind(...values){const p=db.prepare(sql);return {async first(){return p.get(...values)||null;},async all(){return {results:p.all(...values)};},async run(){return {meta:p.run(...values)};},_run(){return p.run(...values);}};}};},async batch(items){db.exec('BEGIN');try{for(const item of items)item._run();db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}}};
  const env={GOOGLE_DB:binding,SUPABASE_URL:'https://auth.example',SUPABASE_PUBLISHABLE_KEY:'sb_publishable_test',GOOGLE_CLIENT_ID:'synthetic-client',GOOGLE_CLIENT_SECRET:'synthetic-secret',GOOGLE_TOKEN_KEY:Buffer.alloc(32,21).toString('base64'),GOOGLE_REDIRECT_URI:origin+'/api/google/callback',GOOGLE_SECONDARY_EMAIL:'second@example.invalid'};
  for(const [id,profile,subject,email]of [['owner-amir','amir','first-sub','first@example.invalid'],['owner-amir:secondary','amir','second-sub','second@example.invalid'],['owner-arash','arash','arash-sub','arash@example.invalid']]){
@@ -30,6 +30,14 @@ async function fixture(){
  return {db,call,writes,providerCalls,env};
 }
 const reply={replyContext:{messageId:'abc1',threadId:'thread1'},subject:'Re: Project reply',body:'Synthetic reply for review only'};
+test('clinic history routes retain mailbox ownership and return actionable safe connection errors',async()=>{
+ const {call,providerCalls}=await fixture();
+ assert.equal((await call('amir','google/clinic-correspondence?profile=arash')).status,403);
+ const own=await call('arash','google/clinic-correspondence');assert.equal(own.status,200);assert.equal((await own.json()).items.length,0);
+ const missing=await call('arash','google/clinic-correspondence/sync?mailbox=secondary',{});assert.equal(missing.status,409);assert.equal((await missing.json()).error,'not_connected');
+ assert.equal((await call('arash','google/clinic-correspondence/sync',{ownerId:'owner-amir'})).status,400);
+ assert.deepEqual(providerCalls,[]);
+});
 
 test('authenticated secondary status and draft reply use only the chosen grant and retain actual application owner',async()=>{
  const {call,writes}=await fixture();

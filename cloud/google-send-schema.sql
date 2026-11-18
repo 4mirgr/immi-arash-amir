@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS google_send_queue (
   cv_version_id TEXT,
   attachment_name TEXT,
   reply_thread_id TEXT,
+  follow_up_context TEXT,
   status TEXT NOT NULL CHECK(status IN ('queued','sending','sent','delivery_unknown','failed','suppressed')),
   created_at TEXT NOT NULL,
   created_day TEXT NOT NULL,

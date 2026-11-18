@@ -44,6 +44,7 @@ import { api } from "./api";
 import { AccessGate } from "./auth";
 import { CVVersions, Presets } from "./workspace-tools";
 import { useGoogleConnection, GoogleConnection, GoogleInbox } from "./google-tools";
+import {ClinicCorrespondence} from "./clinic-correspondence";
 import { GoogleSendPanel } from "./google-send-panel";
 import { CalendarDriveTools } from "./calendar-drive-tools";
 import { ProfilePlanning } from "./profile-planning";
@@ -125,6 +126,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
   const setComposeMailbox=mailbox=>setComposeSelection({owner:person,mailbox});
   const mailConnection = composeMailbox === "secondary" ? secondaryGoogleConnection : googleConnection;
   const [replyContext, setReplyContext] = useState(null);
+  const [followUpContext, setFollowUpContext] = useState(null);
   const notify = (t) => {
     setToast(t);
     setTimeout(() => setToast(""), 4500);
@@ -206,6 +208,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
     refresh();
     setBody("");
     setReplyContext(null);
+    setFollowUpContext(null);
     setSubject("Expression of interest — Medical Practitioner");
     setDrafts([]);
     let active = true;
@@ -290,6 +293,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
           clinic_ids: selected,
           mailbox:composeMailbox,
           ...(replyContext ? {replyContext:{messageId:replyContext.messageId,...(replyContext.threadId?{threadId:replyContext.threadId}:{})}} : {}),
+          ...(followUpContext ? {followUpContext:{messageId:followUpContext.messageId,threadId:followUpContext.threadId,to:followUpContext.to}} : {}),
           to: clinics
             .filter((c) => selected.includes(c.id))
             .map((c) => c.email)
@@ -321,6 +325,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
     speechSynthesis.speak(u);
   }
   function select(id) {
+    setReplyContext(null);setFollowUpContext(null);
     setSelected((x) =>
       x.includes(id) ? x.filter((v) => v !== id) : [...x, id],
     );
@@ -617,6 +622,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
                               className="icon"
                               aria-label="تهیه پیش‌نویس"
                               onClick={() => {
+                                setReplyContext(null);setFollowUpContext(null);
                                 setSelected([c.id]);
                                 setTab("mail");
                               }}
@@ -678,17 +684,30 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
             </section></WorkspaceFold>
           )}
           {tab === "mail" && (
-            <div className="two-col compose-grid">
+            <><ClinicCorrespondence person={person} ownerId={workspaceOwnerId} connection={googleConnection} secondaryConnection={secondaryGoogleConnection} cloud={cloud} onSettings={()=>setTab("settings")} notify={notify} onReply={message=>{
+              setSelected([]);setFollowUpContext(null);
+              const mailbox=message.mailbox === "secondary" ? "secondary" : "primary";
+              setComposeMailbox(mailbox);if(mailbox === "secondary")secondaryGoogleConnection.refresh();
+              setReplyContext({messageId:message.id,threadId:message.threadId,to:message.replyTo||message.from||"",mailbox});
+              setSubject(/^re:/i.test(message.subject||"")?message.subject:"Re: "+(message.subject||""));
+              setBody("\n\n"+(message.plainBody||message.body||message.snippet||"").split("\n").map(line=>"> "+line).join("\n"));
+              requestAnimationFrame(()=>document.getElementById("body")?.focus());
+            }} onPrepare={draft=>{
+              setSelected([]);setComposeMailbox(draft.mailbox);if(draft.mailbox === "secondary")secondaryGoogleConnection.refresh();
+              setReplyContext(draft.replyContext||null);setFollowUpContext(draft.followUpContext||null);setSubject(draft.subject||"");setBody(draft.body||"");
+              requestAnimationFrame(()=>document.getElementById("body")?.focus());
+            }}/><div className="two-col compose-grid">
               <section className="panel">
                 <div className="section-head">
                   <h3>پیش‌نویس مکاتبه</h3>
                   <span className="tag">{mailConnection.state.connected ? "Gmail همین حساب متصل است" : "Gmail متصل نیست"}</span>
                 </div>
-                {<label>صندوق فرستندهٔ همین پیش‌نویس<select value={composeMailbox} onChange={e=>{setComposeMailbox(e.target.value);setReplyContext(null);if(e.target.value==='secondary')secondaryGoogleConnection.refresh();}}><option value="primary">{googleAccountLabel(person,'primary',googleConnection.state.email)}</option><option value="secondary">{googleAccountLabel(person,'secondary',secondaryGoogleConnection.state.email)}</option></select></label>}
+                {<label>صندوق فرستندهٔ همین پیش‌نویس<select value={composeMailbox} onChange={e=>{setComposeMailbox(e.target.value);setReplyContext(null);setFollowUpContext(null);if(e.target.value==='secondary')secondaryGoogleConnection.refresh();}}><option value="primary">{googleAccountLabel(person,'primary',googleConnection.state.email)}</option><option value="secondary">{googleAccountLabel(person,'secondary',secondaryGoogleConnection.state.email)}</option></select></label>}
                 {replyContext && <div className="notice">پاسخ به پیام همین صندوق: <span dir="ltr">{replyContext.to}</span><button className="text-button" onClick={()=>setReplyContext(null)}>حذف زمینهٔ پاسخ</button><small>این مرحله فقط متن پیش‌نویس را آماده می‌کند؛ ارسال هنوز انجام نمی‌شود.</small></div>}
+                {followUpContext && <div className="notice"><span>{interfaceLocale('fa-IR').startsWith('en')?'Follow-up in this mailbox: ':'پیگیری نامهٔ همین صندوق: '}</span><bdi>{followUpContext.to}</bdi><button type="button" className="text-button" onClick={()=>setFollowUpContext(null)}>{interfaceLocale('fa-IR').startsWith('en')?'Remove follow-up context':'حذف زمینهٔ پیگیری'}</button><small>{interfaceLocale('fa-IR').startsWith('en')?'Gmail is checked again before this follow-up is prepared and sent. Review the text and recipient first.':'پیش از آماده‌سازی و ارسال، آخرین وضعیت پاسخ در Gmail دوباره بررسی می‌شود. متن و گیرنده را بازبینی کنید.'}</small></div>}
                 <label>مخاطبان انتخاب‌شده</label>
                 <div className="recipient-list">
-                  {selected.length
+                  {replyContext||followUpContext?<span><bdi>{replyContext?.to||followUpContext?.to}</bdi></span>:selected.length
                     ? clinics
                         .filter((c) => selected.includes(c.id))
                         .map((c) => (
@@ -751,7 +770,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
                   پیوست و ارسال واقعی، پس از راه‌اندازی OAuth و انتخاب CV
                   تأییدشده فعال می‌شود.
                 </p>
-                <GoogleSendPanel person={person} selected={selected} subject={subject} body={body} connection={mailConnection} mailbox={composeMailbox} replyContext={replyContext} notify={notify}/>
+                <GoogleSendPanel person={person} selected={selected} subject={subject} body={body} connection={mailConnection} mailbox={composeMailbox} replyContext={replyContext} followUpContext={followUpContext} notify={notify}/>
                 <Presets
                   person={person}
                   subject={subject}
@@ -765,7 +784,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
               </section>
               <section className="panel">
                 <GoogleInbox person={person} connection={googleConnection} onSettings={()=>setTab("settings")} notify={notify} onReply={message=>{
-                  setSelected([]);
+                  setSelected([]);setFollowUpContext(null);
                   const mailbox=message.mailbox === "secondary" ? "secondary" : "primary";
                   setComposeMailbox(mailbox);if(mailbox === "secondary")secondaryGoogleConnection.refresh();
                   setReplyContext({messageId:message.id,threadId:message.threadId,to:message.from||"",mailbox});
@@ -778,10 +797,16 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
                     <FileText size={16} />
                     <MixedText>{d.subject || subject}</MixedText>
                     <span className="status">ذخیره شد</span>
+                    <button type="button" className="text-button" onClick={()=>{
+                      setSelected(d.replyContext||d.followUpContext?[]:(Array.isArray(d.clinicIds)?d.clinicIds.filter(id=>clinics.some(clinic=>clinic.id===id)):[]));setComposeMailbox(d.mailbox==='secondary'?'secondary':'primary');
+                      setReplyContext(d.replyContext||null);setFollowUpContext(d.followUpContext||null);
+                      setSubject(d.subject||'');setBody(d.body||'');
+                      document.getElementById('subject')?.scrollIntoView({behavior:'smooth',block:'center'});
+                    }}>{interfaceLocale('fa-IR').startsWith('en')?'Open draft':'بازکردن پیش‌نویس'}</button>
                   </div>
                 ))}
               </section>
-            </div>
+            </div></>
           )}
           {tab === "cv" && (
             <>

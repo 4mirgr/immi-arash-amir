@@ -10,6 +10,7 @@ const D1=Object.fromEntries(PRIVATE.map(table=>[table,{owner:'owner_id',columns:
 D1.team_board_tasks={owner:'creator_id',columns:'*'};
 D1.google_send_queue={owner:'owner_id',columns:SEND_COLUMNS,secondary:true};
 D1.google_send_suppressions={owner:'owner_id',columns:'owner_id,email,created_at',secondary:true};
+D1.clinic_correspondence_stops={owner:'owner_id',columns:'*',secondary:true};
 const exclusions=['provider_credentials_and_oauth_state','scheduled_send_and_publish_approvals','received_mail_bodies_and_sync_tokens','raw_send_mime_and_attachments','private_provider_files_not_stored_by_this_app','public_opportunity_database','other_doctor_private_data','shared_tasks_authored_by_other_doctor'];
 const recovery={providerReconnectRequired:true,scheduledApprovalsExcluded:true,automaticJobsRequireReview:true,transportRecordsReferenceOnly:true,productionRestoreImplemented:false};
 const utf8=value=>new TextEncoder().encode(value);

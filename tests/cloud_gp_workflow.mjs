@@ -16,11 +16,20 @@ function fixture(){
  const call=(path='settings',body,context=owner,headers={})=>route(new Request(origin+'/api/gp-workflow/'+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',Origin:origin,...headers},...(body===undefined?{}:{body:JSON.stringify(body)})}),env,context);
  return {db,env,call};
 }
-test('PESCI-readiness mode changes evidence weights without a visa or MMM1 exclusion',()=>{
+test('PESCI preparation retains no-sponsorship and MMM1 leads while employer-supported employment exposes the visa barrier',()=>{
  const record={...source,location:'MMM1 metropolitan clinic. Non-DPA.',fullText:source.fullText+' No visa sponsorship is available.'};
  const a=assessFiveTier(record),b=assessFiveTier(record,'employment');
- assert.equal(a.tier,4);assert.equal(b.tier,4);assert.equal(a.stars,4);assert(a.priorityWeight>b.priorityWeight);assert.equal(a.eligibility,'not_assessed');assert(!('acceptanceProbability' in a));assert(a.unknowns.includes('registration'));
+ assert.equal(a.tier,4);assert.equal(b.tier,1);assert.equal(a.stars,4);assert(a.priorityWeight>b.priorityWeight);assert.equal(a.eligibility,'not_assessed');assert(!('acceptanceProbability' in a));assert(a.unknowns.includes('registration'));
+ assert(b.reasons.some(value=>value.includes('حمایت ویزای کاری')));assert(b.nextSteps.some(value=>value.includes('سوپروایزر')));assert.equal(b.matrix.find(row=>row.id==='sponsorship').status,'restricted');
  assert(a.registrationCautions.some(x=>x.includes('19AB')));assert(a.registrationCautions.some(x=>x.includes('FSP')));
+});
+test('employer support remains separate from supervision; unknown or ordinary sponsorship prerequisites are not refusals',()=>{
+ for(const addition of ['', 'Visa sponsorship may be available.', 'Visa sponsorship is not essential.', 'No visa sponsorship is required for applicants who already have work rights.']){
+  const assessment=assessFiveTier({...source,fullText:source.fullText+' '+addition},'employment');assert.equal(assessment.tier,4);assert.equal(assessment.matrix.find(row=>row.id==='sponsorship').status,'not_stated');assert(assessment.unknowns.includes('sponsorship'));
+ }
+ const supported=assessFiveTier({...source,fullText:source.fullText+' We offer work visa sponsorship.'},'employment');assert.equal(supported.tier,5);assert.equal(supported.matrix.find(row=>row.id==='level1').status,'supported');assert.equal(supported.matrix.find(row=>row.id==='sponsorship').status,'supported');assert(supported.nextSteps.some(value=>value.includes('از کارفرما')&&value.includes('Level 1')));
+ for(const addition of ['We cannot provide visa sponsorship.','Visa sponsorship is not available.'])assert.equal(assessFiveTier({...source,fullText:source.fullText+' '+addition},'employment').tier,1);
+ const metro=assessFiveTier({...source,location:'MMM1 metropolitan non-DPA practice'},'employment');assert.equal(metro.tier,4);assert(metro.matrix.find(row=>row.id==='geography').note.includes('MMM1'));
 });
 test('large teams and a simple or old website never manufacture supervision or clinic closure',()=>{
  const record={...source,fullText:'We are a teaching practice with 20 doctors and clinics across Australia. Website last updated 2021.',websiteStatus:'404'};

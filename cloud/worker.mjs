@@ -4,6 +4,9 @@ import {handleTeamBoardRequest} from './team-board.mjs';
 import {createDocx} from './docx.mjs';
 import {GoogleError,handleGoogleCallback,handleGoogleLaunch,googleStartOriginAllowed,handleGoogleRequest,googleStatus} from './google-oauth.mjs';
 import {handleGoogleMailRequest,getOwnedMailReplyContext} from './google-mail.mjs';
+import {handleClinicCorrespondenceRequest,getOwnedClinicFollowUpContext,recordClinicCorrespondenceStops} from './clinic-correspondence.mjs';
+import {syncClinicCorrespondence} from './google-mail-correspondence-reader.mjs';
+import {runCorrespondenceMailCycle} from './clinic-correspondence-cycle.mjs';
 import {handleGoogleSendRequest} from './google-send.mjs';
 import {handleGoogleServicesRequest} from './google-services.mjs';
 import {handleOpportunityV2Request} from './opportunity-store.mjs';
@@ -31,7 +34,7 @@ import {handleGpWorkflowRequest} from './gp-workflow.mjs';
 import {handleOwnerBackupRequest} from './owner-backup.mjs';
 import {handleBackupDriveRequest} from './backup-drive.mjs';
 import {handleLinkedInSchedulerRequest} from './linkedin-scheduler.mjs';
-import {handleMailSchedulerRequest,dispatchScheduledMail} from './mail-automation-scheduler.mjs';
+import {handleMailSchedulerRequest} from './mail-automation-scheduler.mjs';
 import {handleClinicBankRequest} from './clinic-bank.mjs';
 import {runBackgroundCycle} from './background-cycle.mjs';
 import {runConnectionSupportCheck} from './connection-support-check.mjs';
@@ -133,6 +136,13 @@ export function createHandler(fetcher = fetch) {
       }
       if(url.pathname.startsWith('/api/google/')){
         const context=googleAccountContext(request,{userId:user.id,profileId,rest});
+        if(url.pathname==='/api/google/clinic-correspondence/sync'){
+          if(request.method!=='POST')throw new ApiError(405,'Method not allowed');
+          const body=await payload(request);if(Object.keys(body).length)throw new ApiError(400,'No synchronization parameters are accepted');
+          try{const progress=await syncClinicCorrespondence(env,context,fetcher);const stops=await recordClinicCorrespondenceStops(env,context);return json({...progress,stopReceipts:stops});}
+          catch(error){const known=/^[a-z_]{3,80}$/.test(error?.code||'');return json({error:known?error.code:'clinic_correspondence_unavailable'},Number.isInteger(error?.status)&&error.status>=400&&error.status<=599?error.status:503);}
+        }
+        if(url.pathname==='/api/google/clinic-correspondence'||url.pathname.startsWith('/api/google/clinic-correspondence/'))return await handleClinicCorrespondenceRequest(request,env,context,fetcher)||json({error:'Not found'},404);
         for(const handler of [handleGoogleRequest,handleGoogleMailRequest,handleGoogleSendRequest,handleGoogleServicesRequest]){
           const response=await handler(request,env,context,fetcher);
           if(response)return response;
@@ -223,6 +233,11 @@ export function createHandler(fetcher = fetch) {
         const draftUrl=new URL(request.url);draftUrl.searchParams.set('mailbox',body.mailbox===undefined?'primary':body.mailbox);
         const draftAccount=googleAccountContext(new Request(draftUrl),{userId:user.id,profileId,rest});
         const data = {id:crypto.randomUUID(),profileId,clinicIds,subject:body.subject,body:body.body,status:'draft',mailbox:draftAccount.mailbox};
+        if(body.followUpContext!==undefined){
+          if(body.replyContext!==undefined||clinicIds.length)throw new ApiError(400,'Select one correspondence context');
+          try{const verified=await getOwnedClinicFollowUpContext(env,draftAccount.userId,body.followUpContext,fetcher);data.followUpContext={messageId:verified.messageId,threadId:verified.threadId,to:verified.to};}
+          catch(error){if(/^[a-z_]{3,80}$/.test(error.code||'')&&Number.isInteger(error.status)&&error.status>=400&&error.status<600)throw new ApiError(error.status,error.code);throw error;}
+        }
         if(body.replyContext!==undefined){
           if(!body.replyContext||typeof body.replyContext!=='object'||Array.isArray(body.replyContext)||Object.keys(body.replyContext).some(k=>!['messageId','threadId','to'].includes(k)))throw new ApiError(400,'Invalid reply context');
           try{data.replyContext=await getOwnedMailReplyContext(env,draftAccount.userId,body.replyContext,fetcher);}catch(error){if(/^[a-z_]{3,80}$/.test(error.code||'')&&Number.isInteger(error.status)&&error.status>=400&&error.status<600)throw new ApiError(error.status,error.code);throw error;}
@@ -242,4 +257,4 @@ export function createHandler(fetcher = fetch) {
     } catch (error) { const expected=error instanceof ApiError||error instanceof GoogleError;return json({error:expected ? error.message : 'Request failed',...(error instanceof GoogleError?{code:error.code}:{})},expected ? error.status : 500); }
   };
 }
-export default {fetch:createHandler(),async scheduled(event,env){const cron=event.cron||'0 * * * *';if(cron==='*/15 * * * *'){const support=await runConnectionSupportCheck(env);if(support.attempted)return {support,telegram:{status:'deferred_support_check'}};return await dispatchTelegramNotifications(env);}if(cron==='*/5 * * * *')return await runBackgroundCycle(env,{now:Number.isFinite(event.scheduledTime)?event.scheduledTime:Date.now()});if(cron==='2-57/5 * * * *')return await dispatchScheduledMail(env);if(cron==='15 */6 * * *'){const maintenance=await runMaintenance(env);const evidence=await watchEvidenceSources(env);return {maintenance,evidence};}return await runScheduledCollection(event,env,collectRegisteredSources);}};
+export default {fetch:createHandler(),async scheduled(event,env){const cron=event.cron||'0 * * * *';if(cron==='*/15 * * * *'){const support=await runConnectionSupportCheck(env);if(support.attempted)return {support,telegram:{status:'deferred_support_check'}};return await dispatchTelegramNotifications(env);}if(cron==='*/5 * * * *')return await runBackgroundCycle(env,{now:Number.isFinite(event.scheduledTime)?event.scheduledTime:Date.now()});if(cron==='2-57/5 * * * *')return await runCorrespondenceMailCycle(env,{now:Number.isFinite(event.scheduledTime)?event.scheduledTime:Date.now()});if(cron==='15 */6 * * *'){const maintenance=await runMaintenance(env);const evidence=await watchEvidenceSources(env);return {maintenance,evidence};}return await runScheduledCollection(event,env,collectRegisteredSources);}};

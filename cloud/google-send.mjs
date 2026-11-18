@@ -1,6 +1,7 @@
 import { getGoogleAccess } from './google-oauth.mjs';
 import { createDocx } from './docx.mjs';
 import { getOwnedMailReplyContext } from './google-mail.mjs';
+import { getOwnedClinicFollowUpContext } from './clinic-correspondence.mjs';
 
 const LIMIT = 20, MAX_MIME = 1400000, MAX_DRIVE_BYTES=1000000;
 const DRIVE='https://www.googleapis.com/drive/v3/files/';
@@ -49,7 +50,7 @@ async function body(request){if(Number(request.headers.get('Content-Length')||0)
 function dbFor(env){if(!env.GOOGLE_DB)throw new SendError(503,'google_storage_not_configured');return env.GOOGLE_DB;}
 function stmt(db,sql,...args){return db.prepare(sql).bind(...args);}
 async function all(db,sql,...args){return (await stmt(db,sql,...args).all()).results||[];}
-function publicItem(row){return {id:row.id,recipient:row.recipient,sender:row.google_email,subject:row.subject,status:row.status,createdAt:row.created_at,attemptedAt:row.attempted_at||null,gmailMessageId:row.gmail_message_id||null,cvVersionId:row.cv_version_id||null,attachmentName:row.attachment_name||null,replyThreadId:row.reply_thread_id||null};}
+function publicItem(row){return {id:row.id,recipient:row.recipient,sender:row.google_email,subject:row.subject,status:row.status,createdAt:row.created_at,attemptedAt:row.attempted_at||null,gmailMessageId:row.gmail_message_id||null,cvVersionId:row.cv_version_id||null,attachmentName:row.attachment_name||null,replyThreadId:row.reply_thread_id||null,followUp:Boolean(row.follow_up_context)};}
 function rootOwner(context){return context.rootUserId||context.userId;}
 async function dispatchScheduleGuard(env,context,rows){
  const db=dbFor(env),exists=await stmt(db,"SELECT name FROM sqlite_master WHERE type='table' AND name='mail_scheduled_approvals' LIMIT 1").first();
@@ -83,20 +84,23 @@ function mime({sender,recipient,subject,text,attachment,messageId,reply}){
   return [...headers,`Content-Type: multipart/mixed; boundary="${boundary}"`,'',`--${boundary}`,'Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: base64','',lines(utf8b64(text)),`--${boundary}`,`Content-Type: ${attachment.mimeType||'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}`,`Content-Disposition: attachment; filename="${attachment.name}"`,'Content-Transfer-Encoding: base64','',lines(b64(attachment.bytes)),`--${boundary}--`,''].join('\r\n');
 }
 async function prepare(env,context,payload,fetcher){
-  const allowed=['clinicIds','presetId','subject','body','cvVersionId','replyContext','driveFileId','driveAttachmentHash'];
+  const allowed=['clinicIds','presetId','subject','body','cvVersionId','replyContext','followUpContext','driveFileId','driveAttachmentHash'];
   if(Object.keys(payload).some(key=>!allowed.includes(key)))throw new SendError(400,'unexpected_queue_field');
   if(payload.cvVersionId&&payload.driveFileId)throw new SendError(400,'select_one_attachment');
   if(payload.driveAttachmentHash!==undefined&&!payload.driveFileId)throw new SendError(400,'invalid_drive_selection');
-  const replying=payload.replyContext!==undefined;
+  const followingUp=payload.followUpContext!==undefined;
+  const replying=payload.replyContext!==undefined||followingUp;
+  if(followingUp&&payload.replyContext!==undefined)throw new SendError(400,'select_one_reply_context');
+  const routing=followingUp?payload.followUpContext:payload.replyContext;
   if(replying){
-    if(!payload.replyContext||typeof payload.replyContext!=='object'||Array.isArray(payload.replyContext)||Object.keys(payload.replyContext).some(key=>!['messageId','threadId','to'].includes(key))||payload.clinicIds!==undefined||payload.presetId!==undefined)throw new SendError(400,'invalid_reply_context');
+    if(!routing||typeof routing!=='object'||Array.isArray(routing)||Object.keys(routing).some(key=>!['messageId','threadId','to'].includes(key))||payload.clinicIds!==undefined||payload.presetId!==undefined)throw new SendError(400,'invalid_reply_context');
   }else if(!Array.isArray(payload.clinicIds)||payload.clinicIds.length<1||payload.clinicIds.length>200||payload.clinicIds.some(id=>typeof id!=='string'||!CLINIC.test(id)))throw new SendError(400,'invalid_clinic_selection');
   const account=await access(env,context.userId,fetcher), db=dbFor(env);
   // Trusted application adapters may pin the identity reviewed before queueing.
   if(context.expectedGoogleIdentity&&(account.subject!==context.expectedGoogleIdentity.subject||account.email.toLowerCase()!==context.expectedGoogleIdentity.email.toLowerCase()))throw new SendError(409,'google_account_changed');
   let reply=null;
   if(replying){
-    reply=await getOwnedMailReplyContext(env,context.userId,payload.replyContext,fetcher);
+    reply=await (followingUp?getOwnedClinicFollowUpContext:getOwnedMailReplyContext)(env,context.userId,routing,fetcher);
     if(reply.googleSubject!==account.subject)throw new SendError(409,'reply_account_changed');
     if(typeof reply.rfcMessageId!=='string'||reply.rfcMessageId.length>998||!/^<[^<>@\s\x00-\x1f\x7f]+@[^<>@\s\x00-\x1f\x7f]+>$/.test(reply.rfcMessageId))throw new SendError(400,'reply_message_header_required');
     if(!mailbox(reply.to))throw new SendError(400,'invalid_reply_recipient');
@@ -138,12 +142,12 @@ async function prepare(env,context,payload,fetcher){
     if(rootSuppressed.has(email)){excluded.push({clinicId:clinic.id,reason:'suppressed'});continue;}
     if(await stmt(db,'SELECT email FROM google_send_suppressions WHERE owner_id=? AND email=?',context.userId,email).first()){excluded.push({clinicId:clinic.id,reason:'suppressed'});continue;}
     if(recipients.has(email))continue;
-    const fingerprint=await hash(JSON.stringify({subject,body:text,recipient:email,cvHash,googleSubject:account.subject,googleEmail:account.email.toLowerCase(),...(reply?{reply:{messageId:reply.messageId,threadId:reply.threadId,rfcMessageId:reply.rfcMessageId}}:{})}));
+    const fingerprint=await hash(JSON.stringify({subject,body:text,recipient:email,cvHash,googleSubject:account.subject,googleEmail:account.email.toLowerCase(),...(reply?{reply:{messageId:reply.messageId,threadId:reply.threadId,rfcMessageId:reply.rfcMessageId}}:{}),...(followingUp?{kind:'clinic_follow_up'}:{})}));
     const existing=await stmt(db,'SELECT * FROM google_send_queue WHERE owner_id=? AND fingerprint=?',context.userId,fingerprint).first();
     const id=existing?.id||crypto.randomUUID();
     const raw=mime({sender:account.email,recipient:email,subject,text,attachment,messageId:id,reply});
     if(encoder.encode(raw).length>MAX_MIME)throw new SendError(413,'mail_too_large');
-    recipients.set(email,{id,email,subject,fingerprint,raw,existing,cvVersionId:payload.cvVersionId||null,attachmentName:attachment?.name||null,replyThreadId:reply?.threadId||null});
+    recipients.set(email,{id,email,subject,fingerprint,raw,existing,cvVersionId:payload.cvVersionId||null,attachmentName:attachment?.name||null,replyThreadId:reply?.threadId||null,followUpContext:followingUp?JSON.stringify({messageId:reply.messageId,threadId:reply.threadId,to:reply.to}):null});
   }
   const createdDay=now().slice(0,10);
   const reserved=Number((await stmt(db,'SELECT count(*) AS n FROM google_send_queue WHERE owner_id=? AND created_day=?',context.userId,createdDay).first()).n);
@@ -157,9 +161,9 @@ async function enqueue(env,context,payload,fetcher){
     if(item.existing){items.push({...publicItem(item.existing),reused:true});continue;}
     // Each conditional insert reserves one daily slot atomically, including concurrent requests.
     const storedMime=data.attachment?await protectDriveMime(env,context.userId,item.raw):item.raw;
-    const inserted=await stmt(db,`INSERT INTO google_send_queue(id,owner_id,profile_id,google_subject,google_email,fingerprint,recipient,subject,raw_mime,cv_version_id,attachment_name,reply_thread_id,status,created_at,created_day)
-      SELECT ?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,? WHERE (SELECT count(*) FROM google_send_queue WHERE owner_id=? AND created_day=?)<?
-      ON CONFLICT(owner_id,fingerprint) DO NOTHING RETURNING *`,item.id,context.userId,context.profileId,data.account.subject,data.account.email.toLowerCase(),item.fingerprint,item.email,item.subject,storedMime,item.cvVersionId,item.attachmentName,item.replyThreadId,now(),data.createdDay,context.userId,data.createdDay,LIMIT).first();
+    const inserted=await stmt(db,`INSERT INTO google_send_queue(id,owner_id,profile_id,google_subject,google_email,fingerprint,recipient,subject,raw_mime,cv_version_id,attachment_name,reply_thread_id,follow_up_context,status,created_at,created_day)
+      SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,? WHERE (SELECT count(*) FROM google_send_queue WHERE owner_id=? AND created_day=?)<?
+      ON CONFLICT(owner_id,fingerprint) DO NOTHING RETURNING *`,item.id,context.userId,context.profileId,data.account.subject,data.account.email.toLowerCase(),item.fingerprint,item.email,item.subject,storedMime,item.cvVersionId,item.attachmentName,item.replyThreadId,item.followUpContext,now(),data.createdDay,context.userId,data.createdDay,LIMIT).first();
     const row=inserted||await stmt(db,'SELECT * FROM google_send_queue WHERE owner_id=? AND fingerprint=?',context.userId,item.fingerprint).first();
     if(row)items.push({...publicItem(row),reused:!inserted});else excluded.push({recipient:item.email,reason:'daily_quota_reached'});
   }
@@ -167,10 +171,12 @@ async function enqueue(env,context,payload,fetcher){
 }
 async function dispatch(env,context,payload,fetcher){
   if(Object.keys(payload).some(key=>key!=='ids')||!Array.isArray(payload.ids)||payload.ids.length<1||payload.ids.length>5||payload.ids.some(id=>typeof id!=='string'||!UUID.test(id)))throw new SendError(400,'select_one_to_five_queue_items');
-  const db=dbFor(env);let account=await access(env,context.userId,fetcher);const results=[];
+  const db=dbFor(env);let account;const results=[];
   // Verify all supplied IDs before making any external send request.
   const owned=[];
   for(const id of [...new Set(payload.ids)]){const row=await stmt(db,'SELECT * FROM google_send_queue WHERE owner_id=? AND id=?',context.userId,id).first();if(!row)throw new SendError(404,'queue_item_not_found');owned.push(row);}
+  if(owned.some(row=>row.follow_up_context)&&owned.length>2)throw new SendError(400,'select_at_most_two_when_following_up');
+  account=await access(env,context.userId,fetcher);
   // Validate the whole batch before any transport. The claim below repeats the
   // schedule condition atomically so approvals created meanwhile cannot be bypassed.
   const hasSchedules=await dispatchScheduleGuard(env,context,owned);
@@ -178,6 +184,23 @@ async function dispatch(env,context,payload,fetcher){
     try{account=await access(env,context.userId,fetcher);}catch{results.push({id:row.id,status:'blocked_google_connection'});continue;}
     if(row.google_subject!==account.subject||row.google_email!==account.email.toLowerCase()){results.push({id:row.id,status:'blocked_account_changed'});continue;}
     if(row.status!=='queued'){results.push(publicItem(row));continue;}
+    // A reply may arrive between drafting, queueing and clicking Send. Re-read
+    // the owned thread at transport time; never send an obsolete reminder.
+    if(row.follow_up_context){
+      try{
+        const routing=JSON.parse(row.follow_up_context),verified=await getOwnedClinicFollowUpContext(env,context.userId,routing,fetcher);
+        if(verified.googleSubject!==account.subject||verified.to!==row.recipient||verified.threadId!==row.reply_thread_id)throw new SendError(409,'follow_up_context_changed');
+        // The read-only guard may have refreshed a rejected access token. Use
+        // that renewed grant for the one send, and pin the sender again.
+        account=await access(env,context.userId,fetcher);
+        if(account.subject!==row.google_subject||account.email.toLowerCase()!==row.google_email)throw new SendError(409,'follow_up_context_changed');
+      }catch(error){
+        const code=/^[a-z_]{3,80}$/.test(error?.code||error?.message||'')?(error.code||error.message):'follow_up_recheck_required';
+        // Keep transient failures retryable by the owner, but never retry a send.
+        if([400,403,404,409].includes(error?.status))await stmt(db,"UPDATE google_send_queue SET status='suppressed' WHERE owner_id=? AND id=? AND status='queued'",context.userId,row.id).run();
+        results.push({id:row.id,status:'blocked_follow_up',reason:code});continue;
+      }
+    }
     let rawMime;try{rawMime=await readQueuedMime(env,context.userId,row.raw_mime);}catch{await stmt(db,"UPDATE google_send_queue SET status='failed' WHERE owner_id=? AND id=? AND status='queued'",context.userId,row.id).run();results.push({id:row.id,status:'failed',reason:'attachment_integrity_failed'});continue;}
     const day=now().slice(0,10),attempted=now();
     const scheduleAt=Date.now(),scheduled=context.scheduledApprovalId!==undefined;
