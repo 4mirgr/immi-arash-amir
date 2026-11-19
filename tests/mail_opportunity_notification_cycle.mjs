@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {runMailOpportunityNotificationCycle} from '../cloud/mail-opportunity-notification-cycle.mjs';
 
-const even=1800000,odd=2700000;
+const even=120000,odd=240000,dedicated=360000;
 function fixture(privateResult={status:'idle',attempted:0},reading={status:'idle',attempted:false}){
  const calls=[];
  return {calls,options:{now:even,alerts:async()=>{calls.push('private');return privateResult;},research:async()=>{calls.push('research');return reading;},publicAlerts:async()=>{calls.push('public');return {status:'idle',attempted:0};}}};
@@ -24,4 +24,15 @@ test('only strictly idle lanes permit subsequent work and public opportunities r
 test('research failure defers transport and cannot result in automatic public fallback',async()=>{
  const f=fixture();f.options.research=async()=>{f.calls.push('research');throw Error('unavailable');};
  const result=await runMailOpportunityNotificationCycle({},f.options);assert.equal(result.research.status,'temporarily_unavailable');assert.deepEqual(f.calls,['private','research']);
+});
+test('a dedicated research turn progresses despite a permanently deferred private alert',async()=>{
+ const f=fixture({status:'source_check_deferred',attempted:0},{status:'read',attempted:1});
+ const result=await runMailOpportunityNotificationCycle({},{...f.options,now:dedicated});
+ assert.deepEqual(f.calls,['research']);assert.equal(result.research.status,'read');assert.equal(result.private.status,'deferred_research_turn');
+});
+test('six-minute rotation reserves research and public turns without appending transport after an attempt',async()=>{
+ const f=fixture(undefined,{status:'read',attempted:1});
+ for(const now of [60000,180000,300000])await runMailOpportunityNotificationCycle({}, {...f.options,now});
+ assert.deepEqual(f.calls,['research','private','research','private','public']);
+ const invalid=fixture();await runMailOpportunityNotificationCycle({}, {...invalid.options,now:NaN});assert.deepEqual(invalid.calls,[]);
 });

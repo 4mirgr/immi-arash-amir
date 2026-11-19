@@ -45,6 +45,7 @@ threading.Thread(target=server.serve_forever, daemon=True).start()
 base = "http://127.0.0.1:" + str(server.server_port)
 
 scenario = "normal"
+research_reason = None
 writes, errors, pending = [], [], []
 owner = "ownerA"
 recipients = ["manager@synthetic-clinic.example.invalid", "recruitment@synthetic-clinic.example.invalid"]
@@ -52,7 +53,11 @@ recipients = ["manager@synthetic-clinic.example.invalid", "recruitment@synthetic
 
 def item(identifier, mailbox="primary"):
     name = owner + " " + mailbox + (" Coastal Practice" if identifier == first else " Rural Practice")
-    return {"id": identifier, "title": "General practitioner; supervision needs confirmation", "clinicName": name, "sourceUrl": "https://clinic.example.invalid/careers", "receivedAt": "2026-11-18T02:00:00Z", "mailbox": mailbox, "sourceKind": "linkedin_alert", "status": "suggested", "unread": True, "fit": {"priority": "high", "level1": "unknown", "sponsorship": "unknown", "pesci": "unknown"}, "draft": {"status": "not_prepared"}, "provenance": {"gmailId": "syntheticMessage", "threadId": "syntheticThread"}}
+    researched = identifier == first and research_reason is None
+    research = {"status": "read" if researched else "queued", "verified": researched, "reason": None if researched else research_reason or "public_employer_verification_required", "checkedAt": "2026-11-18T02:00:00Z", "officialSourceUrl": "https://clinic.example.invalid/", "searchStatus": "search_not_configured", "sources": [{"url": "https://clinic.example.invalid/about", "kind": "root", "status": "read", "readAt": "2026-11-18T02:00:00Z"}, {"url": "https://www.linkedin.com/company/synthetic-practice", "kind": "public_social", "status": "discovered_not_read", "readAt": None}, {"url": "https://clinic.example.invalid/oauth/callback?code=PRIVATE_SHOULD_NOT_RENDER", "kind": "root", "status": "read", "readAt": "2026-11-18T02:00:00Z"}], "gaps": ["services_not_published", "training_not_published", "crisis_history_not_assessed", "INTERNAL_GAP_MUST_NOT_RENDER"]}
+    if scenario == "source_restrictions":
+        research["gaps"] = ["source_registration_restricted", "source_australian_residence_required", "source_level1_restricted", "source_sponsorship_restricted", "source_supervision_restricted", "source_img_restricted", "source_applications_closed", "source_deadline_expired"]
+    return {"id": identifier, "title": "General practitioner; supervision needs confirmation", "clinicName": name, "sourceUrl": "https://clinic.example.invalid/careers", "receivedAt": "2026-11-18T02:00:00Z", "mailbox": mailbox, "sourceKind": "linkedin_alert", "status": "suggested", "unread": True, "fit": {"priority": "high", "level1": "unknown", "sponsorship": "unknown", "pesci": "unknown"}, "draft": {"status": "not_prepared"}, "research": research, "provenance": {"gmailId": "syntheticMessage", "threadId": "syntheticThread"}}
 
 
 def route(request):
@@ -104,7 +109,9 @@ def route(request):
         request.fulfill(json={"read": True})
     elif path.endswith("/prepare"):
         assert body == {"cvVersionId": cv}
-        if scenario == "needs_contact":
+        if scenario == "research_blocked":
+            request.fulfill(json={"readyForReview": False, "recipients": [], "missing": ["mail_opportunity_public_evidence_required"], "cvVersionId": cv})
+        elif scenario == "needs_contact":
             request.fulfill(json={"readyForReview": False, "recipients": [], "missing": ["needs_contact"], "cvVersionId": cv})
         else:
             request.fulfill(json={"readyForReview": True, "recipients": recipients, "subject": "Synthetic tailored application", "body": "Synthetic clinic-specific letter.\n\nOwn verified clinical experience.\n\nPlease let me know a convenient time to discuss how I can support your practice.\n\nSynthetic Applicant\nEmail: applicant@example.invalid", "cvVersionId": cv})
@@ -134,9 +141,19 @@ with sync_playwright() as playwright:
     cards = panel.locator(".mail-opportunity")
     expect(cards).to_have_count(2)
     assert not writes
+    expect(cards.first.locator('.mail-opportunity-research-badge')).to_have_text('اطلاعات عمومی مرکز بررسی شده')
+    expect(cards.nth(1).locator('.mail-opportunity-research-badge')).to_have_text('سرنخ ایمیلی؛ بررسی مرکز ادامه دارد')
+    expect(panel.locator('.mail-opportunity-research')).to_have_count(0)
     cards.first.get_by_role("button", name="بررسی و ارسال ایمیل", exact=True).click()
     expect(cards.first.get_by_role("button", name="تأیید و ارسال ایمیل و رزومه", exact=True)).to_be_visible()
     expect(cards.first.locator(".mail-opportunity-recipients input:checked")).to_have_count(2)
+    research = cards.first.locator('.mail-opportunity-research')
+    expect(research).not_to_have_attribute('open', '')
+    research.locator('summary').click()
+    expect(research).to_contain_text('پیوند پیدا شده؛ هنوز خوانده نشده')
+    expect(research).to_contain_text('جست‌وجوی وبِ کمکی هنوز متصل نیست')
+    assert not any(code in research.inner_text() for code in ['search_not_configured', 'discovered_not_read', 'INTERNAL_GAP_MUST_NOT_RENDER'])
+    assert not research.locator('a[href*="PRIVATE_SHOULD_NOT_RENDER"]').count()
     assert not [entry for entry in writes if entry["path"].endswith("/send")]
     expect(cards.first.locator(".mail-opportunity-letter")).to_contain_text("Own verified clinical experience")
     single = page.get_by_role("region", name="ارسال همین فرصت ایمیلی", exact=True)
@@ -224,6 +241,55 @@ with sync_playwright() as playwright:
     assert not re.search(r"[\u0600-\u06ff]", panel.inner_text()), panel.inner_text()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
     assert not errors, errors
+
+    # Every evidence gate is translated rather than exposing implementation
+    # codes; finding a social link is not presented as a completed reading.
+    explanations = [
+        ('public_employer_verification_required', 'public employer check is incomplete'),
+        ('public_employer_identity_required', 'practice name and website'),
+        ('latest_public_employer_read_required', 'latest practice-page reading'),
+        ('published_employer_name_required', 'exact practice name'),
+        ('published_clinic_context_required', 'published information about the practice'),
+        ('published_recruitment_contact_required', 'published contact for the application'),
+        ('published_recipient_required', 'proposed recipient must match'),
+        ('invalid_evidence_time', 'timestamp could not be verified'),
+    ]
+    for research_reason, message in explanations:
+        page.reload()
+        cards.first.get_by_role('button', name='بررسی و ارسال ایمیل', exact=True).click()
+        page.evaluate("document.documentElement.lang='en';document.documentElement.dataset.language='en';document.documentElement.dir='ltr';window.dispatchEvent(new Event('masir-language-change'))")
+        research = cards.first.locator('.mail-opportunity-research')
+        research.locator('summary').click()
+        expect(research).to_contain_text(message)
+        expect(research).to_contain_text('Link found; not yet read')
+        assert not re.search(r'[\u0600-\u06ff]', research.inner_text())
+        assert research_reason not in research.inner_text()
+        assert 'PRIVATE_SHOULD_NOT_RENDER' not in research.inner_html()
+        assert 'INTERNAL_GAP_MUST_NOT_RENDER' not in research.inner_text()
+    research_reason = None
+    scenario = 'source_restrictions'
+    page.reload()
+    cards.first.get_by_role('button', name='بررسی و ارسال ایمیل', exact=True).click()
+    research = cards.first.locator('.mail-opportunity-research')
+    research.locator('summary').click()
+    expect(research).to_contain_text('متقاضیِ ساکن استرالیا')
+    expect(research).to_contain_text('پذیرش با نظارت Level 1')
+    page.evaluate("document.documentElement.lang='en';document.documentElement.dataset.language='en';document.documentElement.dir='ltr';window.dispatchEvent(new Event('masir-language-change'))")
+    for phrase in ['registration or fellowship requirement', 'applicants already living in Australia', 'under Level 1 supervision', 'employer visa sponsorship', 'providing clinical supervision', 'international medical graduates', 'Applications for this position are stated to be closed', 'published deadline has passed']:
+        expect(research).to_contain_text(phrase)
+    assert not re.search(r'[\u0600-\u06ff]', research.inner_text())
+    assert 'source_registration_restricted' not in research.inner_text()
+    assert 'source_australian_residence_required' not in research.inner_text()
+    scenario = 'research_blocked'
+    page.reload()
+    cards.first.get_by_role('button', name='بررسی و ارسال ایمیل', exact=True).click()
+    expect(cards.first).to_contain_text('این پیام فعلاً یک سرنخ است')
+    assert 'mail_opportunity_public_evidence_required' not in cards.first.inner_text()
+    page.evaluate("document.documentElement.lang='en';document.documentElement.dataset.language='en';document.documentElement.dir='ltr';window.dispatchEvent(new Event('masir-language-change'))")
+    expect(cards.first).to_contain_text('This message is currently a lead')
+    assert not re.search(r'[\u0600-\u06ff]', panel.inner_text())
+    assert not errors, errors
+    scenario = 'normal'
 
     # A Telegram link survives the real login gate. The exact secondary item
     # opens only after /me has verified its application owner.

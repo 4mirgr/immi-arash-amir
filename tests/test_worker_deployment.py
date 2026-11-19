@@ -28,8 +28,8 @@ def schedules():
 
 
 class FakeAPI:
-    def __init__(self, *, after=None, crons=None, upload_error=False):
-        self.calls=[];self.after=after;self.crons=crons;self.upload_error=upload_error;self.uploaded=False
+    def __init__(self, *, before=None, after=None, crons=None, upload_error=False):
+        self.calls=[];self.before=before;self.after=after;self.crons=crons;self.upload_error=upload_error;self.uploaded=False
 
     def request(self, method, path, body=None, content_type=None):
         self.calls.append((method,path,body,content_type))
@@ -37,11 +37,21 @@ class FakeAPI:
             if self.upload_error:raise module.DeploymentError('upload_outcome_unknown_verify_before_retry')
             self.uploaded=True
             return {'success':True,'result':{'deployment_id':'synthetic-deploy-1234567890'}}
-        if path.endswith('/settings'):return {'success':True,'result':self.after if self.uploaded and self.after is not None else settings()}
+        if path.endswith('/settings'):return {'success':True,'result':self.after if self.uploaded and self.after is not None else self.before if self.before is not None else settings()}
         return {'success':True,'result':self.crons if self.uploaded and self.crons is not None else schedules()}
 
 
 class DeploymentTests(unittest.TestCase):
+    def test_optional_search_secret_is_preserved_but_never_serialized_and_cannot_disappear(self):
+        value=settings();value['bindings'].append({'name':'TAVILY_API_KEY','type':'secret_text','text':'synthetic-private-search-key'})
+        api=FakeAPI(before=value);result=module.deploy(api,b'export default {};',SHA,lambda:None)
+        self.assertEqual(result['secretsPreserved'],9)
+        self.assertNotIn('synthetic-private-search-key',next(call[2] for call in api.calls if call[0]=='PUT').decode())
+        with self.assertRaisesRegex(module.DeploymentError,'post_upload_configuration_changed'):
+            module.deploy(FakeAPI(before=value,after=settings()),b'export default {};',SHA,lambda:None)
+        unreviewed=settings();unreviewed['bindings'].append({'name':'UNREVIEWED_SECRET','type':'secret_text'})
+        with self.assertRaises(module.DeploymentError):module.metadata(unreviewed)
+
     def test_existing_bindings_secrets_crons_and_date_are_preserved(self):
         api=FakeAPI();verified=[]
         result=module.deploy(api,b'export default {};',SHA,lambda:verified.append(True))

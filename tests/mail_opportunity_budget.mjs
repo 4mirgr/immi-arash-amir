@@ -11,6 +11,7 @@ import {handleGoogleSendRequest} from '../cloud/google-send.mjs';
 import {encryptGoogleSecret} from '../cloud/google-oauth.mjs';
 import {normalizeMessage} from '../cloud/google-mail.mjs';
 import {dispatchMailOpportunityNotifications} from '../cloud/telegram-notifications.mjs';
+import {seedVerifiedMailOpportunity} from './helpers/mail_opportunity_fixture.mjs';
 
 const owner='11111111-1111-4111-8111-111111111111',cvId='22222222-2222-4222-8222-222222222222';
 const origin='https://immi-arash-amir.dr-gerami-md.workers.dev';
@@ -49,7 +50,7 @@ async function fixture(){
  };
  const context=(slot='primary')=>({userId:owner+(slot==='secondary'?':secondary':''),rootUserId:owner,profileId:'arash',mailbox:slot,rest:async table=>{counts.http++;counts.rest++;if(table==='immi_profiles')return [{data:profile}];if(table==='immi_cv_versions')return [{id:cvId,text:cvText,version:1}];return [];}});
  const putRaw=(raw,slot='primary')=>{const id=context(slot).userId;state.rawByOwner.get(id).set(raw.id,raw);return normalizeMessage(raw);};
- const seedOpportunity=async(slot='primary')=>{const message=putRaw(notice('source-notice'),slot),identity={subject:slot==='secondary'?'subject-secondary':'subject-primary',email:slot==='secondary'?'applicant2@example.invalid':'applicant@example.invalid'};await ingestMailOpportunities(env,context(slot),[message],identity,{now:Date.now(),writingContext:writing});const row=db.prepare('SELECT id,draft_json FROM private_mail_opportunities WHERE owner_id=?').get(context(slot).userId);assert(row,'Private opportunity created');const draft=JSON.parse(row.draft_json);assert(draft.readyForReview,JSON.stringify(draft.missing));return {id:row.id,draft};};
+ const seedOpportunity=async(slot='primary')=>{const message=putRaw(notice('source-notice'),slot),identity={subject:slot==='secondary'?'subject-secondary':'subject-primary',email:slot==='secondary'?'applicant2@example.invalid':'applicant@example.invalid'};await ingestMailOpportunities(env,context(slot),[message],identity,{now:Date.now(),writingContext:writing});const row=db.prepare('SELECT id,draft_json FROM private_mail_opportunities WHERE owner_id=?').get(context(slot).userId);assert(row,'Private opportunity created');assert.equal(JSON.parse(row.draft_json).readyForReview,false,'Private notice alone cannot authorize a prepared application');const {draft}=await seedVerifiedMailOpportunity(db,row.id,writing);return {id:row.id,draft};};
  const reset=()=>{for(const key of Object.keys(counts))counts[key]=0;};
  const reviewRequest=(id,action,body)=>new Request(origin+'/api/google/mail-opportunities/'+id+'/'+action,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify(body)});
  return {db,env,counts,state,fetcher,context,putRaw,seedOpportunity,reset,reviewRequest};

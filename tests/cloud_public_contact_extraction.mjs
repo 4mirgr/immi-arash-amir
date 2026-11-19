@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import {extractPublicContacts} from '../cloud/public-contact-extraction.mjs';
 const sourceURL='https://clinic.example.org/jobs/gp',readAt='2026-11-04T12:00:00Z';
 const extract=html=>extractPublicContacts({html,sourceURL,readAt});
+
+test('visible brand headings and explicit self/publisher organizations remain separate from a hiring-organization mention',()=>{
+ const result=extract('<h1>Synthetic <span>Medical Centre</span></h1><h1 hidden>Hidden Clinic</h1><script type="application/ld+json">'+JSON.stringify({'@graph':[{'@type':'MedicalClinic',name:'Synthetic Medical Centre',url:'https://clinic.example.org/'},{'@type':'Organization',name:'No URL Clinic'},{'@type':'JobPosting',hiringOrganization:{name:'Different Hiring Clinic'},publisher:{'@type':'Organization',name:'Recruiter Publisher',url:'https://recruiter.example.org/'}}]})+'</script>');
+ assert(result.publisherIdentities.some(item=>item.name==='Synthetic Medical Centre'&&item.method==='visible_h1'&&item.sourceURL===sourceURL));assert(result.publisherIdentities.some(item=>item.name==='Synthetic Medical Centre'&&item.method==='jsonld_self_organization'&&item.url==='https://clinic.example.org/'));
+ assert(!result.publisherIdentities.some(item=>item.name==='Hidden Clinic'));assert(!result.publisherIdentities.some(item=>item.name==='Different Hiring Clinic'));assert(result.publisherIdentities.some(item=>item.name==='Recruiter Publisher'&&item.role==='publisher'));assert.equal(result.publisherIdentities.find(item=>item.name==='No URL Clinic').url,undefined);
+});
 test('published contacts retain source, quotes and conservative role; footer is general',()=>{
  const r=extract('<main><p>Send your CV by email to jobs@clinic.example.org</p><p>Phone: +61 2 9000 1111</p><p>Organization: Example Medical Centre</p></main><footer><a href="mailto:reception@clinic.example.org">Contact reception</a></footer>');
  assert.equal(r.contacts.find(x=>x.value==='jobs@clinic.example.org').contactRole,'application');assert.equal(r.contacts.find(x=>x.value==='reception@clinic.example.org').contactRole,'organization_general');assert.equal(r.contacts.find(x=>x.type==='phone').value,'+61 2 9000 1111');assert.equal(r.organizations[0].name,'Example Medical Centre');assert.ok(r.contacts.every(x=>x.sourceURL===sourceURL&&x.sourceRelation==='same_page'&&x.quote));assert.equal(r.readAt,readAt);

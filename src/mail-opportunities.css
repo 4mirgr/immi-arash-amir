@@ -64,3 +64,15 @@
 .mail-opportunity-batch-review li summary{cursor:pointer;color:var(--cyan,#68e5c1);padding:.35rem}
 .mail-opportunity-fit{border:1px solid #47d9b42b;border-radius:.7rem;padding:.65rem;margin-block:.75rem;font-size:.82rem;line-height:1.8}
 .mail-opportunity-fit summary{cursor:pointer;color:var(--cyan,#68e5c1)}
+
+.mail-opportunity-research-badge{border-radius:1rem;padding:.15rem .55rem;border:1px solid #e6bf7259;line-height:1.8;color:var(--text,#e8f3ff);font-size:.76rem}
+.mail-opportunity-research-badge.research-lead{background:#e6bf720c}.mail-opportunity-research-badge.research-checked{border-color:#46d7b568;background:#46d7b50e}
+.mail-opportunity-research{border:1px solid #5dc8da40;border-radius:.75rem;background:#45b4d006;margin-block:0 .9rem;padding:.65rem .8rem;min-width:0;font-size:.82rem;line-height:1.9}
+.mail-opportunity-research>summary{cursor:pointer;color:var(--cyan,#72dfdc);line-height:1.9;overflow-wrap:break-word;list-style-position:inside}
+.mail-opportunity-research-content{display:grid;gap:.7rem;padding-top:.75rem;min-width:0}.mail-opportunity-research-content>p{margin:0;font-size:.82rem;line-height:1.9}.mail-opportunity-research-content .section-help{max-width:none;font-size:.77rem}
+.mail-opportunity-research-content>a{display:inline-flex;gap:.4rem;align-items:center;flex-wrap:wrap;font-size:.81rem;max-width:100%;overflow-wrap:anywhere}
+.mail-opportunity-research-state{font-weight:650}.mail-opportunity-research-search{border-inline-start:2px solid #dfbd6570;padding-inline-start:.7rem}
+.mail-opportunity-research-sources{display:grid;gap:.6rem;margin:0;padding-inline-start:1.1rem;min-width:0}.mail-opportunity-research-sources li{padding-block:.3rem;min-width:0;overflow-wrap:anywhere}
+.mail-opportunity-research-sources li>a{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;font-size:.78rem;line-height:1.8}.mail-opportunity-research-sources li>span{display:block;font-size:.76rem}.mail-opportunity-research-sources li>small{display:block;font-size:.73rem;color:var(--muted,#b1c3da)}.mail-opportunity-research-sources .research-discovered{color:var(--muted,#b1c3da)}
+.mail-opportunity-research-gaps>strong{font-size:.8rem}.mail-opportunity-research-gaps ul{padding-inline-start:1.2rem;display:grid;gap:.25rem;margin-block:.35rem 0;font-size:.77rem}
+@media(max-width:700px){.mail-opportunity-research{padding:.6rem}.mail-opportunity-research-content>a{font-size:.79rem}.mail-opportunity-research-badge{max-width:100%;white-space:normal;overflow-wrap:break-word}}

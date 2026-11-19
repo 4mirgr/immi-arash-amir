@@ -24,9 +24,10 @@ SCHEMA_BASELINE = 'a092661d2adf7d319a711e9730ffd4e3fd5bc5f0'
 BASE = '/accounts/' + ACCOUNT + '/workers/scripts/' + WORKER
 SECRET_NAMES = frozenset(['AUTOMATION_MEMBERSHIP_KEY','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET',
     'GOOGLE_TOKEN_KEY','LINKEDIN_CLIENT_ID','LINKEDIN_CLIENT_SECRET','TELEGRAM_BOT_TOKEN','TELEGRAM_WEBHOOK_SECRET'])
+OPTIONAL_SECRET_NAMES = frozenset(['TAVILY_API_KEY'])
 DATABASES = {'GOOGLE_DB':'faf37526-9c8c-4a86-9f91-3ab41ee8ddff',
              'OPPORTUNITY_DB':'a9605bec-79b7-430d-8d15-cfacb4cb1a58'}
-CRONS = frozenset(['0 * * * *','*/15 * * * *','15 */6 * * *','* * * * *','*/5 * * * *'])
+CRONS = frozenset(['0 * * * *','1-59/2 * * * *','15 */6 * * *','* * * * *','*/5 * * * *'])
 SHA = re.compile(r'^[0-9a-f]{40}$')
 
 
@@ -119,7 +120,7 @@ def metadata(settings: dict) -> dict:
         raise DeploymentError('worker_bindings_missing')
     names = [item.get('name') for item in bindings if isinstance(item, dict)]
     secrets = {item['name'] for item in bindings if isinstance(item, dict) and item.get('type') == 'secret_text'}
-    if len(names) != len(bindings) or not all(isinstance(name,str) and re.fullmatch(r'[A-Z][A-Z0-9_]*',name) for name in names) or len(set(names)) != len(names) or secrets != SECRET_NAMES:
+    if len(names) != len(bindings) or not all(isinstance(name,str) and re.fullmatch(r'[A-Z][A-Z0-9_]*',name) for name in names) or len(set(names)) != len(names) or not SECRET_NAMES.issubset(secrets) or not secrets.issubset(SECRET_NAMES | OPTIONAL_SECRET_NAMES):
         raise DeploymentError('unexpected_secret_or_binding_configuration')
     preserved = []
     databases = {}
@@ -167,6 +168,7 @@ def multipart(bundle: bytes, settings: dict) -> tuple[bytes, str]:
 
 def deploy(api, bundle: bytes, expected_sha: str, before_upload) -> dict:
     before = api.request('GET', BASE + '/settings')['result']
+    before_secrets = {item['name'] for item in before.get('bindings',[]) if item.get('type') == 'secret_text'}
     crons = canonical_schedules(api.request('GET', BASE + '/schedules')['result'])
     configuration = metadata(before)
     body, content_type = multipart(bundle, configuration)
@@ -176,13 +178,14 @@ def deploy(api, bundle: bytes, expected_sha: str, before_upload) -> dict:
     uploaded = api.request('PUT', BASE, body, content_type)
     after = api.request('GET', BASE + '/settings')['result']
     after_crons = canonical_schedules(api.request('GET', BASE + '/schedules')['result'])
-    if metadata(after) != configuration or after_crons != crons:
+    after_secrets = {item['name'] for item in after.get('bindings',[]) if item.get('type') == 'secret_text'}
+    if metadata(after) != configuration or after_crons != crons or after_secrets != before_secrets:
         raise DeploymentError('post_upload_configuration_changed_manual_review_required')
     receipt = uploaded.get('result', {}).get('deployment_id')
     if not isinstance(receipt, str) or not re.fullmatch(r'[A-Za-z0-9-]{16,64}', receipt):
         raise DeploymentError('upload_receipt_missing_manual_verification_required')
     return {'status':'deployed','worker':WORKER,'commit':expected_sha,'deploymentId':receipt,
-            'bundleSha256':hashlib.sha256(bundle).hexdigest(),'secretsPreserved':8,'cronsPreserved':5}
+            'bundleSha256':hashlib.sha256(bundle).hexdigest(),'secretsPreserved':len(before_secrets),'cronsPreserved':5}
 
 
 def main() -> int:

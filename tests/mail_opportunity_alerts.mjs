@@ -103,6 +103,15 @@ test('a newly suppressed intended recipient cannot trigger a misleading ready-to
  const g=await fixture();g.seed();const sourceValidator=async(...args)=>{g.db.prepare('INSERT INTO mail_automation_suppressions VALUES(?,?,?,?)').run('arash-owner','recruitment@clinic.example.org','gmail_do_not_contact',new Date(NOW).toISOString());return g.sourceValidator(...args);};assert.equal((await dispatch(g.env,{fetcher:g.fetcher,now:NOW,sourceValidator})).attempted,0);assert.equal(g.calls.length,0);assert.equal(g.db.prepare('SELECT count(*) n FROM telegram_notification_receipts').get().n,0);
 });
 
+test('legacy ready flags without current public proof return to research without blocking other alerts',async()=>{
+ const f=await fixture(),row=f.seed();
+ const result=await dispatch(f.env,{fetcher:f.fetcher,now:NOW+1000,sourceValidator:async()=>{throw Object.assign(Error('not public employer proof'),{code:'mail_opportunity_public_evidence_required'});}});
+ assert.equal(result.status,'source_review_required');assert.equal(result.code,'mail_opportunity_public_evidence_required');assert.equal(f.calls.length,0);
+ const saved=f.db.prepare('SELECT notification_eligible,status,updated_at,draft_json FROM private_mail_opportunities WHERE id=?').get(row.id);
+ assert.equal(saved.notification_eligible,0);assert.equal(saved.status,'suggested');assert.equal(saved.updated_at,NOW+1000);assert.equal(JSON.parse(saved.draft_json).readyForReview,false);
+ assert.deepEqual(JSON.parse(saved.draft_json).missing,['public_employer_verification_required']);assert.equal(f.db.prepare('SELECT count(*) n FROM telegram_notification_receipts').get().n,0);
+});
+
 test('uncertain or redirected transport is terminal; no automatic replay and no token or provider body in result',async()=>{
  for(const redirect of [false,true]){
   const f=await fixture();f.seed();let sends=0;const failure=async(url,options)=>{if(url.includes('/rpc/immi_automation_owner_active'))return f.fetcher(url,options);sends++;assert.equal(options.redirect,'manual');if(redirect)return new Response(null,{status:302,headers:{Location:'https://attacker.invalid'}});throw Error('PRIVATE_PROVIDER_BODY');};

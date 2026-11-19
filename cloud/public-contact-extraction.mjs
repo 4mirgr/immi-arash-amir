@@ -61,7 +61,7 @@ function localPassage(text,index,length,after=140){
 function markup(html){
  const parts=[],links=[],jsonld=[],encodedEmails=[],stack=[];let anchor=null,skip=0,navigationSkips=0,footer=0,cursor=0,tokensSeen=0,limited=false,groupId=0;
  const tokens=/<\/?([a-z][\w:-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*>|<!--[\s\S]*?-->/gi;
- function append(value){const text=clean(value);if(!text)return;if(skip){if(anchor?.navigationOnly&&skip===navigationSkips)anchor.label+=' '+text;return;}parts.push({text,footer:footer>0,group:stack.findLast(item=>PERSON_GROUPS.has(item.tag))?.group||0,contactGroup:stack.findLast(item=>PERSON_GROUPS.has(item.tag)||item.tag==='p')?.group||0});if(anchor)anchor.label+=' '+text;}
+ function append(value){const text=clean(value);if(!text)return;if(skip){if(anchor?.navigationOnly&&skip===navigationSkips)anchor.label+=' '+text;return;}parts.push({text,footer:footer>0,headingGroup:stack.findLast(item=>item.tag==='h1')?.group||0,group:stack.findLast(item=>PERSON_GROUPS.has(item.tag))?.group||0,contactGroup:stack.findLast(item=>PERSON_GROUPS.has(item.tag)||item.tag==='p')?.group||0});if(anchor)anchor.label+=' '+text;}
  for(const m of html.matchAll(tokens)){
   if(++tokensSeen>50000||stack.length>=128){limited=true;break;}
   append(html.slice(cursor,m.index));cursor=m.index+m[0].length;const token=m[0];if(token.startsWith('<!--'))continue;
@@ -81,7 +81,7 @@ function markup(html){
  if(!limited)append(html.slice(cursor));return {parts,links,jsonld,encodedEmails,limited};
 }
 export function extractPublicContacts({html='',text='',sourceURL,readAt}={}){
- const source=publicURL(sourceURL),result={extractorVersion:3,sourceURL:source||String(sourceURL||'').slice(0,2000),readAt:typeof readAt==='string'?readAt:null,contacts:[],people:[],organizations:[],followLinks:[],publicationDates:[],limitations:['Published contact evidence requires review; it is not verified identity, a vacancy, eligibility or permission to send.','Static markup extraction does not evaluate external CSS, JavaScript or authenticated content.']};
+ const source=publicURL(sourceURL),result={extractorVersion:3,sourceURL:source||String(sourceURL||'').slice(0,2000),readAt:typeof readAt==='string'?readAt:null,contacts:[],people:[],organizations:[],publisherIdentities:[],followLinks:[],publicationDates:[],limitations:['Published contact evidence requires review; it is not verified identity, a vacancy, eligibility or permission to send.','Static markup extraction does not evaluate external CSS, JavaScript or authenticated content.']};
  if(!source){result.limitations.push('invalid_public_source_url');return result;}
  const seen=new Set(),peopleSeen=new Set(),orgs=new Set(),follow=new Set(),host=new URL(source).hostname;
  const sameClinicHost=hostname=>hostname.replace(/^www\./,'')===host.replace(/^www\./,'');
@@ -100,6 +100,8 @@ export function extractPublicContacts({html='',text='',sourceURL,readAt}={}){
  const htmlString=typeof html==='string'?html.slice(0,MAX_INPUT):'',plain=typeof text==='string'?text.slice(0,MAX_INPUT):'';
  // Prefer visible markup when both inputs exist: caller's body text must not reintroduce hidden contacts.
  const parsed=htmlString?markup(htmlString):{parts:plain.split(/\r?\n/).map(text=>({text:clean(text),footer:false,group:0})),links:[],jsonld:[],encodedEmails:[]};
+ const headingParts=new Map();for(const part of parsed.parts){if(part.headingGroup&&!part.footer){const previous=headingParts.get(part.headingGroup)||'';headingParts.set(part.headingGroup,clean(previous+' '+part.text).slice(0,250));}}
+ for(const heading of [...headingParts.values()].slice(0,6))if(heading&&!PERSON_QUOTE_UNSAFE.test(heading))result.publisherIdentities.push({name:heading,quote:heading,sourceURL:source,readAt:result.readAt,method:'visible_h1',role:'heading'});
  if(parsed.limited)result.limitations.push('Markup token/depth budget reached; contact extraction is partial.');
  const textWebsites=[];
  for(let i=0;i<parsed.parts.length;i++){
@@ -162,6 +164,9 @@ export function extractPublicContacts({html='',text='',sourceURL,readAt}={}){
  let nodes=0;
  function visit(value,depth=0){if(depth>8||nodes++>200||!value||typeof value!=='object')return;if(Array.isArray(value)){for(const x of value.slice(0,40))visit(x,depth+1);return;}
   const types=Array.isArray(value['@type'])?value['@type']:[value['@type']];
+  const identity=(org,identityRole,method)=>{if(!org||typeof org!=='object'||result.publisherIdentities.length>=16)return;const name=typeof org.name==='string'?clean(org.name).slice(0,180):'',url=typeof(org.url||org['@id'])==='string'&&String(org.url||org['@id']).trim()?publicURL(org.url||org['@id'],source):null;if(name&&!PERSON_QUOTE_UNSAFE.test(name))result.publisherIdentities.push({name,...(url?{url}:{}),sourceURL:source,readAt:result.readAt,quote:JSON.stringify({[identityRole]:{name,url}}).slice(0,500),role:identityRole,method});};
+  if(types.some(type=>['Organization','MedicalClinic','MedicalBusiness','MedicalOrganization','Hospital','LocalBusiness','Physician'].includes(type)))identity(value,'self_organization','jsonld_self_organization');
+  if(value.publisher)for(const publisher of (Array.isArray(value.publisher)?value.publisher:[value.publisher]).slice(0,3))identity(publisher,'publisher','jsonld_publisher');
   if(types.includes('JobPosting')){
    const organizations=Array.isArray(value.hiringOrganization)?value.hiringOrganization:[value.hiringOrganization];
    for(const org of organizations.slice(0,5)){if(!org||typeof org!=='object')continue;const name=typeof org.name==='string'?clean(org.name).slice(0,180):'';if(name&&!orgs.has(name)){orgs.add(name);result.organizations.push({name,...(publicURL(org.url,source)?{url:publicURL(org.url,source)}:{}),sourceURL:source,quote:JSON.stringify({hiringOrganization:{name:org.name,url:org.url}}).slice(0,500),method:'jsonld_jobposting'});}if(org.url)add('website',org.url,JSON.stringify({hiringOrganization:{url:org.url}}),'jsonld_jobposting','organization_general');
