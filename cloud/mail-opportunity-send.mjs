@@ -11,7 +11,7 @@ async function input(request){
  if(Number(request.headers.get('content-length')||0)>2000)fail('payload_too_large',413);
  const raw=await request.text();if(new TextEncoder().encode(raw).length>2000)fail('payload_too_large',413);
  let value;try{value=JSON.parse(raw);}catch{fail('invalid_payload');}
- if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!['cvVersionId','recipient','reviewHash','confirmSend'].includes(key))||!UUID.test(value.cvVersionId||'')||value.recipient!==undefined&&(typeof value.recipient!=='string'||value.recipient.length>320)||value.reviewHash!==undefined&&!/^[a-f0-9]{64}$/.test(value.reviewHash)||value.confirmSend!==undefined&&typeof value.confirmSend!=='boolean')fail('invalid_mail_opportunity_review');
+ if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!['cvVersionId','recipient','reviewHash','confirmSend','editedDraftId'].includes(key))||!UUID.test(value.cvVersionId||'')||value.recipient!==undefined&&(typeof value.recipient!=='string'||value.recipient.length>320)||value.reviewHash!==undefined&&!/^[a-f0-9]{64}$/.test(value.reviewHash)||value.confirmSend!==undefined&&typeof value.confirmSend!=='boolean'||value.editedDraftId!==undefined&&!/^moedit_[a-f0-9]{32}$/.test(value.editedDraftId))fail('invalid_mail_opportunity_review');
  return value;
 }
 
@@ -26,13 +26,14 @@ export async function handleMailOpportunitySendRequest(request,env,context,fetch
   if(match[2]==='send'&&selected.confirmSend!==true)fail('explicit_send_approval_required',409);
   const proposal=await prepareOwnedMailOpportunity(env,context,match[1],{cvVersionId:selected.cvVersionId});
   if(!proposal?.readyForReview) return json({error:'mail_opportunity_evidence_required',missing:proposal?.missing||proposal?.missingFields||[],proposal,sent:false},409);
+  if(selected.editedDraftId!==undefined&&selected.editedDraftId!==proposal.editedDraftId||match[2]==='send'&&(selected.editedDraftId||null)!==(proposal.editedDraftId||null))fail('mail_opportunity_edit_context_changed',409);
   const availableRecipients=[...new Set((proposal.recipients||[]).map(item=>typeof item==='string'?item:item?.recipient||item?.value).filter(Boolean))];
   const recipient=(selected.recipient||availableRecipients[0]||'').toLowerCase();
   if(!availableRecipients.includes(recipient))fail('mail_opportunity_recipient_unavailable',409);
   const root=context.rootUserId||context.userId.replace(/:secondary$/,'');
   const cvs=await context.rest('immi_cv_versions','?select=id,text,version&profile_id=eq.arash&user_id=eq.'+encodeURIComponent(root)+'&id=eq.'+selected.cvVersionId);
   if(!cvs?.[0]||typeof cvs[0].text!=='string')fail('owned_cv_required',404);
-  const payload={mailOpportunityContext:{id:match[1],recipient},subject:proposal.subject,body:proposal.body,cvVersionId:selected.cvVersionId};
+  const payload={mailOpportunityContext:{id:match[1],recipient,editedDraftId:proposal.editedDraftId||null},subject:proposal.subject,body:proposal.body,cvVersionId:selected.cvVersionId};
   const frozen={...context,rest:async(table,query)=>table==='immi_cv_versions'?[cvs[0]]:context.rest(table,query)};
   const actionRequest=(action,body=payload)=>new Request(url.origin+'/api/google/mail/'+action,{method:'POST',headers:{Origin:url.origin,'Content-Type':'application/json'},body:JSON.stringify(body)});
   let preview=null;
@@ -42,8 +43,8 @@ export async function handleMailOpportunitySendRequest(request,env,context,fetch
   }
   const identity=await env.GOOGLE_DB.prepare('SELECT google_sub,email,status FROM google_accounts WHERE owner_id=? AND profile_id=?').bind(context.userId,'arash').first();
   if(identity?.status!=='connected'||preview&&identity.email.toLowerCase()!==preview.sender?.toLowerCase())fail('mail_opportunity_account_changed',409);
-  const reviewHash=await digest({owner:root,slot:context.userId,googleSubject:identity.google_sub,sender:identity.email.toLowerCase(),id:match[1],recipient,subject:proposal.subject,body:proposal.body,cvVersionId:selected.cvVersionId,cvText:cvs[0].text,cvVersion:cvs[0].version,evidenceHash:proposal.evidenceHash});
-  const details={...preview,id:match[1],availableRecipients,recipient,mailbox:context.mailbox||'primary',subject:proposal.subject,body:proposal.body,message:{subject:proposal.subject,body:proposal.body},cvVersionId:selected.cvVersionId,reviewHash,readyForReview:preview?.recipients?.length===1,automaticSending:false};
+  const reviewHash=await digest({owner:root,slot:context.userId,googleSubject:identity.google_sub,sender:identity.email.toLowerCase(),id:match[1],recipient,subject:proposal.subject,body:proposal.body,cvVersionId:selected.cvVersionId,cvText:cvs[0].text,cvVersion:cvs[0].version,evidenceHash:proposal.evidenceHash,editedDraftId:proposal.editedDraftId||null});
+  const details={...preview,id:match[1],availableRecipients,recipient,mailbox:context.mailbox||'primary',subject:proposal.subject,body:proposal.body,message:{subject:proposal.subject,body:proposal.body},cvVersionId:selected.cvVersionId,editedDraftId:proposal.editedDraftId||null,editRevision:proposal.editRevision||null,reviewHash,readyForReview:preview?.recipients?.length===1,automaticSending:false};
   if(match[2]==='preview')return json({...details,sent:false});
   if(selected.reviewHash!==reviewHash)fail('mail_opportunity_changed_review_required',409);
   // Do not perform another discarded preview during Send. The hash above

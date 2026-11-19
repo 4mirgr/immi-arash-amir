@@ -4,7 +4,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {dispatchMailOpportunityResearch as dispatch,mailResearchURL,assessMailResearchSource} from '../cloud/mail-opportunity-research.mjs';
 import {prepareMailOpportunityDraft,prepareOwnedMailOpportunity,getOwnedMailOpportunityContext} from '../cloud/mail-opportunities.mjs';
-import {hasFreshMailPublicEmployerEvidence,inferMailLeadEmployerName,mailPublicEmployerHints,selectMailEmployerLinks,discoverMailClinicSocialLinks} from '../cloud/mail-lead-discovery.mjs';
+import {hasFreshMailPublicEmployerEvidence,inferMailLeadEmployerName,mailPublicEmployerHints,selectMailEmployerLinks,discoverMailClinicSocialLinks,verifiedMailApplicationURL} from '../cloud/mail-lead-discovery.mjs';
+import {buildMailPublicJobLead} from '../cloud/mail-public-job-headline.mjs';
 
 const NOW=Date.parse('2026-11-18T09:00:00Z'),OWNER='11111111-1111-4111-8111-111111111111',OTHER='22222222-2222-4222-8222-222222222222';
 const ID=n=>'mop_'+n.toString(16).padStart(32,'0');
@@ -210,7 +211,7 @@ test('formal fellowship and Australian-residence requirements in a public job li
 });
 
 test('optional free-plan search fills an absent clinic source then independently reads it within the shared request cap',async()=>{
- const f=fixture();f.env.MAIL_LEAD_SEARCH_ENABLED='true';f.env.TAVILY_API_KEY='SYNTHETIC_NOT_A_REAL_SEARCH_KEY';f.seed(1,{source_url:'https://www.linkedin.com/jobs/view/123/',data:{sourceUrl:'https://www.linkedin.com/jobs/view/123/',clinicName:'',title:'General Practitioner at Synthetic Medical Centre · NSW'}});
+ const f=fixture();f.env.MAIL_LEAD_SEARCH_ENABLED='true';f.env.TAVILY_API_KEY='SYNTHETIC_NOT_A_REAL_SEARCH_KEY';f.seed(1,{source_url:'https://www.linkedin.com/jobs/view/123/',data:{sourceUrl:'https://www.linkedin.com/jobs/view/123/',clinicName:clinic,title:'General Practitioner at Synthetic Medical Centre · NSW'}});
  const fetcher=async(url,options)=>{
   if(url.startsWith('https://api.tavily.com/')){
    f.counts.http++;assert.equal(options.redirect,'manual');assert.equal(options.headers.Authorization,'Bearer SYNTHETIC_NOT_A_REAL_SEARCH_KEY');
@@ -295,4 +296,45 @@ test('persistently failed or identity-unverified bank URLs reserve a later attem
   f.env.MAIL_LEAD_SEARCH_ENABLED='true';f.env.TAVILY_API_KEY='SYNTHETIC_NOT_A_REAL_SEARCH_KEY';f.db.prepare('UPDATE private_mail_opportunity_research SET next_attempt_at=0').run();requested.length=0;
   const result=await dispatch(f.env,{...f.options,fetcher,now:NOW+60000});assert.equal(result.draftReady,true,mode);assert.deepEqual(requested.slice(0,2),['https://api.tavily.com/usage','https://api.tavily.com/search']);assert(!requested.includes(origin+'/bad-home'));assert.equal(result.publicRequests,6);
  }
+});
+
+test('unknown-employer tracking notices search only GP/location attributes and require matching actual public job details',async()=>{
+ for(const matched of [true,false]){
+  const f=fixture(),source='https://email.s.seek.com.au/uni/ss/c/synthetic-private-tracker',headline='General Practitioner — $40K sign-on bonus — Adelaide northern suburbs';f.env.MAIL_LEAD_SEARCH_ENABLED='true';f.env.TAVILY_API_KEY='SYNTHETIC_NOT_A_REAL_SEARCH_KEY';f.seed(1,{source_url:source,clinic_name:'',data:{sourceUrl:source,title:headline,clinicName:'',publicJobLead:buildMailPublicJobLead({url:source,label:headline})}});
+  const urls=[],fetcher=async(url,options)=>{
+   urls.push(url);assert(!url.includes('synthetic-private-tracker'));
+   if(url==='https://api.tavily.com/usage')return Response.json({key:{usage:0,limit:1000},account:{current_plan:'Researcher',plan_usage:0,plan_limit:1000,paygo_usage:0,paygo_limit:0}});
+   if(url==='https://api.tavily.com/search'){const query=JSON.parse(options.body).query;assert.equal(query,'general practitioner job Adelaide South Australia Australia');assert(!query.includes(headline));return Response.json({results:[{url:origin+'/jobs/gp',title:'General Practitioner in Adelaide'}]});}
+   if(new URL(url).pathname==='/robots.txt')return new Response('',{status:404});
+   return new Response(html('<h1>'+clinic+'</h1><p>'+clinical+'</p><p>We are seeking a General Practitioner in Adelaide, South Australia '+(matched?'northern':'southern')+' suburbs with a '+(matched?'$40,000':'$10,000')+' sign-on bonus.</p><p>GP applications: manager@clinic.example.org</p><script type="application/ld+json">'+JSON.stringify({'@type':'JobPosting',hiringOrganization:{name:clinic,url:origin+'/'}})+'</script>','General Practitioner'),{headers:{'Content-Type':'text/html'}});
+  };
+  const result=await dispatch(f.env,{...f.options,fetcher});assert.equal(result.draftReady,matched);assert(result.publicRequests<=6);const saved=f.db.prepare('SELECT * FROM private_mail_opportunities').get(),data=JSON.parse(saved.data_json);assert.equal(data.research.discovery.searchMode,'public_gp_attributes');assert.equal(data.research.discovery.headlineMatchRequired,true);assert.equal(data.research.discovery.headlineMatchVerified,matched);assert.equal(data.applicationSourceVerified,matched);assert.equal(data.clinicName,matched?clinic:'');assert.equal(saved.clinic_name,matched?clinic:'');if(!matched){assert.equal(JSON.parse(saved.draft_json).body,'');assert.equal(f.db.prepare('SELECT count(*) n FROM clinic_bank_leads').get().n,0);}assert.equal(data.research.originalAdvertisement.status,'unread_tracking_lead');
+ }
+});
+
+test('canonical application keys use only fresh verified public job URLs and never a clinic homepage or tracker',async()=>{
+ const f=fixture();f.seed();await dispatch(f.env,f.options);const candidate=JSON.parse(f.db.prepare('SELECT data_json FROM private_mail_opportunities').get().data_json);assert.equal(verifiedMailApplicationURL(candidate,{now:NOW}),origin+'/jobs/gp');
+ const alias={...structuredClone(candidate),key:'https://click.example.org/synthetic-other-mailbox-tracker'};assert.equal(verifiedMailApplicationURL(alias,{now:NOW}),origin+'/jobs/gp');
+ const changed=structuredClone(candidate);changed.canonicalApplicationURL=origin+'/jobs/different-id';assert.equal(verifiedMailApplicationURL(changed,{now:NOW}),null);
+ const failed=structuredClone(candidate);failed.research.sourcePages.push({sourceURL:origin+'/jobs/gp',status:'robots_blocked',readAt:new Date(NOW).toISOString()});assert.equal(verifiedMailApplicationURL(failed,{now:NOW}),null);assert.equal(verifiedMailApplicationURL(candidate,{now:NOW+8*86400000}),null);
+ const g=fixture();g.seed(1,{source_url:origin+'/'});await dispatch(g.env,g.options);const home=JSON.parse(g.db.prepare('SELECT data_json FROM private_mail_opportunities').get().data_json);assert.equal(home.canonicalApplicationURL,null);assert.equal(verifiedMailApplicationURL(home,{now:NOW}),null);
+});
+
+test('actual dispatch never promotes rejected/null or legacy private titles into provider search names',async()=>{
+ for(const typed of [true,false]){
+  const f=fixture();f.env.MAIL_LEAD_SEARCH_ENABLED='true';f.env.TAVILY_API_KEY='SYNTHETIC_NOT_A_REAL_SEARCH_KEY';f.seed(1,{source_url:null,clinic_name:'',data:{sourceUrl:null,clinicName:'',title:'General Practitioner personal invitation for Dr Synthetic',...(typed?{publicJobLead:null}:{})}});
+  let provider=0;const result=await dispatch(f.env,{...f.options,fetcher:async()=>{provider++;throw Error('Private title must never leave server');}});assert.equal(result.draftReady,false);assert.equal(provider,0);assert.equal(result.publicRequests,0);const receipt=JSON.parse(f.db.prepare('SELECT receipt_json FROM private_mail_opportunity_research').get().receipt_json);assert.equal(receipt.searchStatus,'public_employer_name_required');assert.equal(receipt.searchRequests,0);
+ }
+});
+
+test('actual dispatch may search a clinic name derived only after a fresh public JobPosting read',async()=>{
+ const f=fixture();f.env.MAIL_LEAD_SEARCH_ENABLED='true';f.env.TAVILY_API_KEY='SYNTHETIC_NOT_A_REAL_SEARCH_KEY';const ad='https://jobs.example.org/position/123';f.seed(1,{source_url:ad,clinic_name:'',data:{sourceUrl:ad,clinicName:'',title:'General Practitioner PERSONAL MAIL TITLE QLD',publicJobLead:null}});
+ const queries=[],fetcher=async(url,options)=>{
+  if(url==='https://api.tavily.com/usage')return Response.json({key:{usage:0,limit:1000},account:{current_plan:'Researcher',plan_usage:0,plan_limit:1000,paygo_usage:0,paygo_limit:0}});
+  if(url==='https://api.tavily.com/search'){const query=JSON.parse(options.body).query;queries.push(query);assert.equal(query,'"'+clinic+'" Australia general practitioner clinic official website careers');assert(!query.includes('PERSONAL'));return Response.json({results:[{url:origin+'/jobs/gp',title:clinic+' GP role'}]});}
+  if(new URL(url).pathname==='/robots.txt')return new Response('',{status:404});
+  if(url===ad)return new Response(html('<p>General Practitioner position in Australia. Requirements: appropriate supervision.</p><script type="application/ld+json">'+JSON.stringify({'@type':'JobPosting',hiringOrganization:{name:clinic}})+'</script>','General Practitioner'),{headers:{'Content-Type':'text/html'}});
+  return new Response(html('<h1>'+clinic+'</h1><p>'+clinical+'</p><p>General Practitioner position. Email manager@clinic.example.org for applications.</p>'),{headers:{'Content-Type':'text/html'}});
+ };
+ const result=await dispatch(f.env,{...f.options,fetcher});assert.equal(result.draftReady,true);assert.equal(queries.length,1);assert.equal(result.publicRequests,6);const data=JSON.parse(f.db.prepare('SELECT data_json FROM private_mail_opportunities').get().data_json);assert.equal(data.clinicName,clinic);assert(hasFreshMailPublicEmployerEvidence(data,{now:NOW}));
 });

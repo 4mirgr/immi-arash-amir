@@ -5,7 +5,9 @@ import {extractEmails,normalizeMessage,readGoogleMailJson,rankMessage} from './g
 import {correspondenceReplyText} from './clinic-correspondence.mjs';
 import {assessOpportunityFit} from './opportunity-fit.mjs';
 import {composeClinicParagraphs,readGpWritingProfile,suggestEvidencePair,cvEvidencePriority} from './gp-letter-composer.mjs';
-import {assessMailPublicEmployerEvidence,hasFreshMailPublicEmployerEvidence,mailLeadPublicURL} from './mail-lead-discovery.mjs';
+import {assessMailPublicEmployerEvidence,hasFreshMailPublicEmployerEvidence,mailLeadPublicURL,verifiedMailApplicationURL} from './mail-lead-discovery.mjs';
+import {hydrateMailOpportunityEdit,handleMailOpportunityEditsRequest} from './mail-opportunity-edits.mjs';
+import {isMailGPJobAnchor,buildMailPublicJobLead,hasExplicitForeignGPJobLocation} from './mail-public-job-headline.mjs';
 
 const DAY=86400000,MAX_AGE=14*DAY,MAX_INPUTS=8,MAX_CANDIDATES=3;
 const ID=/^mop_[a-f0-9]{32}$/;
@@ -75,7 +77,7 @@ function content(message){return correspondenceReplyText(message?.plainBody||mes
 function links(message){
  const found=Array.isArray(message?.links)?message.links.filter(link=>!link?.quoted).map(link=>typeof link==='string'?{url:link,label:''}:link):[];
  for(const url of (content(message).match(/https:\/\/[^\s<>"']+/g)||[]).slice(0,80))found.push({url:url.replace(/[),.;]+$/,''),label:''});
- const seen=new Set();return found.flatMap(link=>{const url=safeURL(link?.url);if(!url||seen.has(url))return [];seen.add(url);return [{url,label:text(link.label,300)}];});
+ const seen=new Set();return found.flatMap(link=>{const lead=buildMailPublicJobLead(link),url=safeURL(link?.url)||lead?.sourceURL;if(!url||seen.has(url))return [];seen.add(url);return [{url,label:text(link.label,300),...(lead?{publicJobLead:lead}:{})}];});
 }
 function clinicName(message,label=''){
  const sources=[label,text(message.subject,500),text(message.from,500).split('<')[0],content(message)];
@@ -98,24 +100,26 @@ export async function extractMailOpportunityCandidates(message,{now=Date.now()}=
  if(!isMailOpportunityMessage(message)||!GMAIL.test(message?.id||'')||!GMAIL.test(message.threadId||''))return [];
  const body=content(message),messageLinks=links(message),from=extractEmails(message.from||'')[0]||'',linkedin=/(?:^|\.)linkedin\.com$/i.test(from.split('@')[1]||'');
  if(!linkedin&&rankMessage(((message.subject||'')+'\n'+body).replace(/\bno\s+(?:work\s+visa|visa|employer)\s+sponsorship\s+(?:is\s+)?required\b/ig,'')).reasons.includes('rejection_or_unavailable_position_signal'))return [];
- const jobLinks=messageLinks.filter(link=>/linkedin\.com\/jobs\/view\/|\b(?:job|career|vacanc|recruit|position)/i.test(link.url));
+ const jobLabels=messageLinks.filter(link=>link.label&&GP.test(link.label)&&!NON_GP.test(link.label));
+ const jobLinks=messageLinks.filter(link=>!hasExplicitForeignGPJobLocation(link.label)&&(/linkedin\.com\/jobs\/view\/|\b(?:job|career|vacanc|recruit|position)/i.test(link.url)||isMailGPJobAnchor(link)));
  const usable=jobLinks.filter(link=>link.label?GP.test(link.label)&&!NON_GP.test(link.label):jobLinks.length===1&&GP.test(message.subject+' '+body));
  const sourceItems=usable.length?usable:!linkedin?[messageLinks.find(link=>host(link.url)&&!/linkedin\.com$/.test(host(link.url)))||{url:null,label:''}]:[];
  const candidates=[];
  for(const source of sourceItems){
-  const title=text(source.label||message.subject,300);if(!GP.test(title)&&source.label)continue;
+  const title=text(source.label||message.subject,300);if(!GP.test(title)&&source.label||hasExplicitForeignGPJobLocation(title))continue;
   let localBody=body;
-  if(sourceItems.length>1){const unique=source.label&&sourceItems.filter(item=>item.label.toLowerCase()===source.label.toLowerCase()).length===1;const start=unique?body.toLowerCase().indexOf(source.label.toLowerCase()):-1;const ends=sourceItems.filter(other=>other!==source&&other.label).map(other=>body.toLowerCase().indexOf(other.label.toLowerCase(),Math.max(0,start+source.label.length))).filter(at=>at>start);localBody=start>=0?body.slice(start,ends.length?Math.min(...ends):body.length):source.label||'';}
-  const name=linkedin||sourceItems.length>1?clinicName({subject:source.label||'',plainBody:localBody,from:''},source.label):clinicName(message,source.label),sender=validContact(extractEmails(message.replyTo||message.from||'')[0]||''),fromDomain=from.split('@')[1]||'';
+  const isolated=sourceItems.length>1||jobLabels.length>1,boundaries=jobLabels.length?jobLabels:sourceItems;
+  if(isolated){const unique=source.label&&boundaries.filter(item=>item.label.toLowerCase()===source.label.toLowerCase()).length===1;const start=unique?body.toLowerCase().indexOf(source.label.toLowerCase()):-1;const ends=boundaries.filter(other=>other.label&&other.label.toLowerCase()!==source.label?.toLowerCase()).map(other=>body.toLowerCase().indexOf(other.label.toLowerCase(),Math.max(0,start+source.label.length))).filter(at=>at>start);localBody=start>=0?body.slice(start,ends.length?Math.min(...ends):body.length):source.label||'';}
+  const name=linkedin||isolated?clinicName({subject:source.label||'',plainBody:localBody,from:''},source.label):clinicName(message,source.label),sender=validContact(extractEmails(message.replyTo||message.from||'')[0]||''),fromDomain=from.split('@')[1]||'';
   const stated=!linkedin&&localBody.match(/\b(?:send|email|forward|submit|contact|applications?|CV|resume)\b[^\n.!?]{0,100}\b([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})\b/i);
   const direct=!linkedin&&!/\b(?:job alert|jobs for you|recommended jobs|newsletter|digest)\b/i.test(message.subject||'')?sender:null;
   const recipient=validContact(stated?.[1]?.toLowerCase())||direct,sourceIncomplete=message.bodyTruncated===true||message.linksTruncated===true;
   const fit=fitSignals(localBody),receivedAt=date(message),closing=localBody.match(/\b(?:closing date|applications? close|deadline)\s*[:–—-]?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\s+[A-Za-z]+\s+\d{4})\b/i),closingDate=closing?Date.parse(closing[1]):NaN,closesAt=Number.isFinite(closingDate)?new Date(closingDate+DAY-1).toISOString():null,current=receivedAt>0&&receivedAt<=now+60000&&now-receivedAt<=MAX_AGE&&(!closesAt||Date.parse(closesAt)>now);
-  candidates.push({key:source.url||'gmail:'+message.id,title:GP.test(title)?title:'General practitioner opportunity',clinicName:name,sourceUrl:source.url,sourceKind:linkedin?'linkedin_alert':recipient?'email_offer':'job_notice',sourceIncomplete,closesAt,recipient,contactBasis:recipient?{kind:stated?'private_email_stated_contact':'private_email_reply_address',gmailId:message.id,sourceUrl:null}:null,fit,receivedAt,notificationEligible:current&&!sourceIncomplete&&fit.level1!=='restricted'&&fit.sponsorship!=='restricted'&&fit.registration!=='restricted',gmailId:message.id,threadId:message.threadId,sourceText:localBody.slice(0,12000),clinicalFacts:clinicalFacts(localBody).filter(fact=>!linkedin||name&&fact.toLowerCase().includes(name.toLowerCase())),clinicalFactBasis:'private_email_statement',candidateHosts:[...new Set([host(source.url),!CONSUMER.test(fromDomain)&&!linkedin?fromDomain:null].filter(Boolean))],provenance:{gmailId:message.id,threadId:message.threadId,sourceUrl:source.url,kind:'private_email_statement',publicationVerified:false,sourceIncomplete}});
+  candidates.push({key:source.url||'gmail:'+message.id,title:GP.test(title)?title:'General practitioner opportunity',clinicName:name,sourceUrl:source.url,publicJobLead:source.publicJobLead||buildMailPublicJobLead(source),sourceKind:linkedin?'linkedin_alert':recipient?'email_offer':'job_notice',sourceIncomplete,closesAt,recipient,contactBasis:recipient?{kind:stated?'private_email_stated_contact':'private_email_reply_address',gmailId:message.id,sourceUrl:null}:null,fit,receivedAt,notificationEligible:current&&!sourceIncomplete&&fit.level1!=='restricted'&&fit.sponsorship!=='restricted'&&fit.registration!=='restricted',gmailId:message.id,threadId:message.threadId,sourceText:localBody.slice(0,12000),clinicalFacts:clinicalFacts(localBody).filter(fact=>!linkedin||name&&fact.toLowerCase().includes(name.toLowerCase())),clinicalFactBasis:'private_email_statement',candidateHosts:[...new Set([host(source.url),!CONSUMER.test(fromDomain)&&!linkedin?fromDomain:null].filter(Boolean))],provenance:{gmailId:message.id,threadId:message.threadId,sourceUrl:source.url,kind:'private_email_statement',publicationVerified:false,sourceIncomplete}});
  }
  return candidates;
 }
-async function fingerprint(message){return hash([text(message.from,2000),text(message.replyTo,2000),text(message.subject,2000),content(message),links(message)]);}
+async function fingerprint(message){return hash([text(message.from,2000),text(message.replyTo,2000),text(message.subject,2000),content(message),links(message).map(link=>({url:link.url,label:link.label}))]);}
 async function bankMatches(db,root,candidates,now){
  const domains=[...new Set(candidates.flatMap(c=>c.candidateHosts||[]))].filter(d=>d&&!/linkedin\.com$/.test(d)).slice(0,8);if(!domains.length)return [];
  const patterns=domains.flatMap(domain=>['https://'+domain+'/%','https://www.'+domain+'/%']);
@@ -206,21 +210,26 @@ async function ownedAccount(env,context){
 }
 async function writingContext(context,cvVersionId){
  if(typeof context.rest!=='function')fail('own_profile_context_required',409);
- const profileRows=await context.rest('immi_profiles','?select=data&profile_id=eq.arash'),profiles=profileRows?.[0]?.data;if(!profiles)fail('own_profile_context_required',409);
- const query='?select=id,text,version&profile_id=eq.arash'+(cvVersionId?'&id=eq.'+cvVersionId:'&order=version.desc&limit=1'),versions=await context.rest('immi_cv_versions',query),cv=versions?.[0];if(!cv||!UUID.test(cv.id||'')||typeof cv.text!=='string')fail('cv_version_required',409);
+ const root=context.rootUserId||context.userId.replace(/:secondary$/,''),suffix='&profile_id=eq.arash&user_id=eq.'+encodeURIComponent(root);
+ const profileRows=await context.rest('immi_profiles','?select=data'+suffix),profiles=profileRows?.[0]?.data;if(!profiles)fail('own_profile_context_required',409);
+ let selected=cvVersionId;
+ if(!selected){const defaults=await context.rest('immi_cv_defaults','?select=version_id'+suffix);selected=defaults?.[0]?.version_id||null;if(selected&&!UUID.test(selected))fail('invalid_cv_version',409);}
+ const query='?select=id,text,version'+suffix+(selected?'&id=eq.'+selected:'&order=version.desc&limit=1'),versions=await context.rest('immi_cv_versions',query),cv=versions?.[0];if(!cv||!UUID.test(cv.id||'')||typeof cv.text!=='string'||selected&&cv.id!==selected)fail('cv_version_required',409);
  return {profile:profiles,cvText:cv.text,cvVersionId:cv.id};
 }
 export async function prepareOwnedMailOpportunity(env,context,id,input={},options={}){
  if(!ID.test(id||''))fail('invalid_mail_opportunity_id');if(input.cvVersionId!==undefined&&!UUID.test(input.cvVersionId))fail('invalid_cv_version');
  const {owner,root,account}=await ownedAccount(env,context),row=await first(env.GOOGLE_DB,'SELECT * FROM private_mail_opportunities WHERE id=? AND owner_id=? AND google_sub=?',id,owner,account.google_sub);if(!row)fail('mail_opportunity_not_found',404);if(['source_removed','dismissed'].includes(row.status))fail('mail_opportunity_unavailable',409);
- const now=options.now||Date.now();if(row.received_at>now+60000||now-row.received_at>MAX_AGE)fail('mail_opportunity_requires_refresh',409);
+ const now=Math.max(options.now||Date.now(),Number(row.updated_at)+1);if(row.received_at>now+60000||now-row.received_at>MAX_AGE)fail('mail_opportunity_requires_refresh',409);
  const data=parse(row.data_json),matches=await bankMatches(env.GOOGLE_DB,root,[data],now),candidate=hasFreshMailPublicEmployerEvidence(data,{now})?data:applyBank(data,matches),writing=options.writingContext||await writingContext(context,input.cvVersionId),draft=await prepareMailOpportunityDraft(candidate,writing,{now});
  const changed=await run(env.GOOGLE_DB,"UPDATE private_mail_opportunities SET data_json=?,draft_json=?,updated_at=? WHERE id=? AND owner_id=? AND google_sub=? AND updated_at=? AND data_json=? AND draft_json IS ? AND status IN ('suggested','reviewed') AND EXISTS(SELECT 1 FROM google_accounts a WHERE a.owner_id=private_mail_opportunities.owner_id AND a.google_sub=private_mail_opportunities.google_sub AND a.status='connected')",JSON.stringify(candidate),JSON.stringify(draft),now,id,owner,account.google_sub,row.updated_at,row.data_json,row.draft_json);
  if(Number(changed.meta?.changes)!==1)fail('mail_opportunity_changed',409);
- return {id,...draft,mailOpportunityContext:{id},googleSubject:account.google_sub,sender:account.email,provenance:candidate.provenance,fit:parse(row.fit_json),private:true};
+ const proposal={id,...draft,clinicName:candidate.clinicName,mailOpportunityContext:{id},googleSubject:account.google_sub,sender:account.email,provenance:candidate.provenance,fit:parse(row.fit_json),private:true};
+ if(options.skipOwnerEdit)return {...proposal,...(options.includeSourceState?{sourceState:{updatedAt:now,dataJson:JSON.stringify(candidate),draftJson:JSON.stringify(draft)}}:{})};
+ return hydrateMailOpportunityEdit(env,context,proposal);
 }
 export async function getOwnedMailOpportunityContext(env,userId,selection,fetcher=fetch,accessProvider=getGoogleAccess){
- if(!env.GOOGLE_DB)fail('google_storage_required',503);if(!ID.test(selection?.id||'')||Object.keys(selection).some(k=>!['id','recipient'].includes(k)))fail('invalid_mail_opportunity_context');
+ if(!env.GOOGLE_DB)fail('google_storage_required',503);if(!ID.test(selection?.id||'')||Object.keys(selection).some(k=>!['id','recipient','editedDraftId'].includes(k))||selection.editedDraftId!==undefined&&selection.editedDraftId!==null&&!/^moedit_[a-f0-9]{32}$/.test(selection.editedDraftId))fail('invalid_mail_opportunity_context');
  const access=await accessProvider(env,userId,fetcher);if(!access.subject||!access.scopes?.some(s=>['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.modify','https://mail.google.com/'].includes(s)))fail('gmail_read_scope_required',403);
  const row=await first(env.GOOGLE_DB,"SELECT * FROM private_mail_opportunities WHERE id=? AND owner_id=? AND google_sub=? AND status IN ('suggested','reviewed')",selection.id,userId,access.subject);if(!row)fail('mail_opportunity_not_found',404);
  const data=parse(row.data_json),draft=parse(row.draft_json);if(data.sourceReviewRequired||data.publicationClosed||(Array.isArray(data.sourceRestrictions)&&data.sourceRestrictions.length))fail('mail_opportunity_source_restricted',409);if(data.sourceUnavailable)fail('mail_opportunity_source_unavailable',409);if(data.closesAt&&Date.parse(data.closesAt)<=Date.now())fail('mail_opportunity_closed',409);if(data.historyGap)fail('mail_opportunity_requires_refresh',409);if(!hasFreshMailPublicEmployerEvidence(data))fail('mail_opportunity_public_evidence_required',409);if(draft.status!=='ready_for_review'||!draft.body||!draft.subject||!UUID.test(draft.cvVersionId||''))fail('mail_opportunity_draft_not_ready',409);
@@ -233,16 +242,24 @@ export async function getOwnedMailOpportunityContext(env,userId,selection,fetche
   if(!safeURL(data.contactBasis.sourceUrl)||!Number.isFinite(at)||at>Date.now()+60000||Date.now()-at>7*DAY)fail('mail_opportunity_contact_requires_refresh',409);
  }
  const recipients=(draft.recipients||[]).filter(validContact),recipient=selection.recipient||recipients[0];if(!recipient||!recipients.includes(recipient))fail('mail_opportunity_recipient_changed',409);
- return {id:row.id,to:recipient,recipients,subject:draft.subject,body:draft.body,cvVersionId:draft.cvVersionId,evidenceHash:draft.evidenceHash,googleSubject:access.subject,sourceGmailId:row.gmail_id,referenceUrl:row.source_url,applicationKey:data.key&&!data.key.startsWith('gmail:')?data.key:'email:'+data.messageFingerprint,sourceState:{updatedAt:row.updated_at,dataJson:row.data_json,draftJson:row.draft_json}};
+ const edited=await hydrateMailOpportunityEdit(env,{userId,profileId:'arash'},{...draft,id:row.id,clinicName:row.clinic_name||data.clinicName,readyForReview:true,googleSubject:access.subject,sender:access.email,provenance:data.provenance},{includeHead:true,...(selection.editedDraftId!==undefined?{editedDraftId:selection.editedDraftId}:{})});
+ if(!edited.readyForReview)fail('mail_opportunity_edit_context_changed',409);
+ return {id:row.id,to:recipient,recipients,subject:edited.subject,body:edited.body,cvVersionId:draft.cvVersionId,evidenceHash:draft.evidenceHash,editedDraftId:edited.editedDraftId||null,googleSubject:access.subject,sourceGmailId:row.gmail_id,referenceUrl:row.source_url,applicationKey:verifiedMailApplicationURL(data)||(data.key&&!data.key.startsWith('gmail:')?data.key:'email:'+data.messageFingerprint),sourceState:{updatedAt:row.updated_at,dataJson:row.data_json,draftJson:row.draft_json,...(edited.editHeadRevision===undefined?{}:{ownerEditRevision:edited.editHeadRevision})}};
 }
 async function payload(request){if(Number(request.headers.get('content-length')||0)>2000)fail('payload_too_large',413);const raw=await request.text();if(raw.length>2000)fail('payload_too_large',413);try{const parsed=JSON.parse(raw||'{}');if(!parsed||Array.isArray(parsed)||typeof parsed!=='object')fail('invalid_payload');return parsed;}catch{fail('invalid_payload');}}
 export async function handleMailOpportunitiesRequest(request,env,context){
+ const editing=await handleMailOpportunityEditsRequest(request,env,context);if(editing)return editing;
  const url=new URL(request.url),match=/^\/api\/google\/mail-opportunities(?:\/(mop_[a-f0-9]{32})(?:\/(prepare|read))?)?$/.exec(url.pathname);if(!match)return null;
  try{
   if(!env.GOOGLE_DB)fail('google_storage_required',503);const {owner,account}=await ownedAccount(env,context);if(url.searchParams.has('profile')&&url.searchParams.get('profile')!=='arash')fail('profile_access_denied',403);if(request.method!=='GET'&&request.headers.has('Origin')&&request.headers.get('Origin')!==url.origin)fail('origin_rejected',403);
   const id=match[1],action=match[2];
   if(request.method==='GET'&&!id){const limit=Number(url.searchParams.get('limit')||25),offset=Number(url.searchParams.get('offset')||0);if(!Number.isInteger(limit)||limit<1||limit>50||!Number.isInteger(offset)||offset<0||offset>10000)fail('invalid_pagination');const rows=await all(env.GOOGLE_DB,'SELECT * FROM private_mail_opportunities WHERE owner_id=? AND google_sub=? ORDER BY received_at DESC,id LIMIT ? OFFSET ?',owner,account.google_sub,limit+1,offset);const counts=await first(env.GOOGLE_DB,"SELECT count(*) AS total,sum(read_at IS NULL AND status NOT IN ('source_removed','dismissed')) AS unread FROM private_mail_opportunities WHERE owner_id=? AND google_sub=?",owner,account.google_sub);return json({items:rows.slice(0,limit).map(view),more:rows.length>limit,nextOffset:rows.length>limit?offset+limit:null,unreadCount:Number(counts?.unread)||0,total:Number(counts?.total)||0,private:true,automaticSending:false});}
-  if(request.method==='GET'&&id&&!action){const row=await first(env.GOOGLE_DB,'SELECT * FROM private_mail_opportunities WHERE id=? AND owner_id=? AND google_sub=?',id,owner,account.google_sub);if(!row)fail('mail_opportunity_not_found',404);return json(view(row));}
+  if(request.method==='GET'&&id&&!action){
+   const row=await first(env.GOOGLE_DB,'SELECT * FROM private_mail_opportunities WHERE id=? AND owner_id=? AND google_sub=?',id,owner,account.google_sub);if(!row)fail('mail_opportunity_not_found',404);
+   const result=view(row);
+   if(UUID.test(result.draft?.cvVersionId||''))result.draft=await hydrateMailOpportunityEdit(env,context,{...result.draft,id:row.id,clinicName:row.clinic_name,googleSubject:account.google_sub,sender:account.email,provenance:parse(row.data_json).provenance});
+   return json(result);
+  }
   if(request.method==='POST'&&action==='read'){const input=await payload(request);if(Object.keys(input).length)fail('invalid_payload');const changed=await first(env.GOOGLE_DB,"UPDATE private_mail_opportunities SET read_at=?,status=CASE WHEN status='suggested' THEN 'reviewed' ELSE status END WHERE id=? AND owner_id=? AND google_sub=? RETURNING id",Date.now(),id,owner,account.google_sub);if(!changed)fail('mail_opportunity_not_found',404);return json({id,read:true});}
   if(request.method==='POST'&&action==='prepare'){const input=await payload(request);if(Object.keys(input).some(k=>k!=='cvVersionId'))fail('invalid_payload');return json(await prepareOwnedMailOpportunity(env,context,id,input));}
   return json({error:'method_not_allowed'},405);

@@ -163,7 +163,7 @@ async function prepare(env,context,payload,fetcher){
       const prior=await stmt(db,"SELECT id FROM google_send_queue WHERE owner_id IN (?,?) AND recipient=? AND json_extract(mail_opportunity_context,'$.applicationKey')=? AND status IN ('queued','sending','sent','delivery_unknown') LIMIT 1",rootOwner(context),rootOwner(context)+':secondary',email,await hash(mailOpportunity.applicationKey)).first();
       if(prior)throw new SendError(409,'mail_opportunity_already_prepared_or_sent');
     }
-    recipients.set(email,{id,email,subject,fingerprint,raw,existing,cvVersionId:payload.cvVersionId||null,attachmentName:attachment?.name||null,replyThreadId:reply?.threadId||null,followUpContext:followingUp?JSON.stringify({messageId:reply.messageId,threadId:reply.threadId,to:reply.to}):null,mailOpportunityContext:mailOpportunity?JSON.stringify({id:mailOpportunity.id,recipient:email,bodyHash:await hash(mailOpportunity.body),rootOwner:rootOwner(context),applicationKey:await hash(mailOpportunity.applicationKey)}):null});
+    recipients.set(email,{id,email,subject,fingerprint,raw,existing,cvVersionId:payload.cvVersionId||null,attachmentName:attachment?.name||null,replyThreadId:reply?.threadId||null,followUpContext:followingUp?JSON.stringify({messageId:reply.messageId,threadId:reply.threadId,to:reply.to}):null,mailOpportunityContext:mailOpportunity?JSON.stringify({id:mailOpportunity.id,recipient:email,bodyHash:await hash(mailOpportunity.body),rootOwner:rootOwner(context),applicationKey:await hash(mailOpportunity.applicationKey),editedDraftId:mailOpportunity.editedDraftId||null}):null});
   }
   const createdDay=now().slice(0,10);
   const reserved=Number((await stmt(db,'SELECT count(*) AS n FROM google_send_queue WHERE owner_id=? AND created_day=?',context.userId,createdDay).first()).n);
@@ -204,7 +204,7 @@ async function dispatch(env,context,payload,fetcher){
     if(row.mail_opportunity_context){
       try{
         const routing=JSON.parse(row.mail_opportunity_context);
-        const verified=await getOwnedMailOpportunityContext(env,context.userId,{id:routing.id,recipient:routing.recipient},fetcher);
+        const verified=await getOwnedMailOpportunityContext(env,context.userId,{id:routing.id,recipient:routing.recipient,editedDraftId:routing.editedDraftId||null},fetcher);
         if(!/^[a-f0-9]{64}$/.test(routing.bodyHash||'')||await hash(verified.body)!==routing.bodyHash)throw new SendError(409,'mail_opportunity_changed_review_required');
         if(routing.rootOwner!==rootOwner(context)||routing.applicationKey!==await hash(verified.applicationKey))throw new SendError(409,'mail_opportunity_source_changed');
         if(verified.googleSubject!==account.subject||verified.to!==row.recipient||verified.subject!==row.subject||verified.cvVersionId!==row.cv_version_id)throw new SendError(409,'mail_opportunity_changed_review_required');
@@ -237,8 +237,10 @@ async function dispatch(env,context,payload,fetcher){
     const scheduleArgs=hasSchedules&&scheduled?[context.scheduledApprovalId,rootOwner(context),context.profileId,context.mailbox,scheduleAt,scheduleAt,context.scheduledApprovalId]:[];
     // The public-source reader can change readiness while Gmail is awaited.
     // Pin the exact verified private source/draft in the transport claim itself.
-    const opportunitySQL=mailOpportunityGuard?` AND EXISTS(SELECT 1 FROM private_mail_opportunities o WHERE o.id=? AND o.owner_id=google_send_queue.owner_id AND o.google_sub=google_send_queue.google_subject AND o.profile_id='arash' AND o.status IN ('suggested','reviewed') AND o.updated_at=? AND o.data_json=? AND o.draft_json=? AND json_extract(o.draft_json,'$.status')='ready_for_review' AND (json_extract(o.data_json,'$.closesAt') IS NULL OR julianday(json_extract(o.data_json,'$.closesAt'))>julianday('now')))` : '';
-    const opportunityArgs=mailOpportunityGuard?[mailOpportunityGuard.id,mailOpportunityGuard.updatedAt,mailOpportunityGuard.dataJson,mailOpportunityGuard.draftJson]:[];
+    const revision=mailOpportunityGuard?.ownerEditRevision;
+    const editSQL=Number.isSafeInteger(revision)&&revision>=0?` AND coalesce((SELECT max(e.revision) FROM gp_letter_edits e WHERE e.owner_id=google_send_queue.owner_id AND e.opportunity_id=o.id AND json_extract(CASE WHEN json_valid(e.selection_json) THEN e.selection_json ELSE '{}' END,'$.kind')='private_mail_opportunity_v1' AND json_extract(CASE WHEN json_valid(e.selection_json) THEN e.selection_json ELSE '{}' END,'$.googleSubject')=google_send_queue.google_subject),0)=?`:'';
+    const opportunitySQL=mailOpportunityGuard?` AND EXISTS(SELECT 1 FROM private_mail_opportunities o WHERE o.id=? AND o.owner_id=google_send_queue.owner_id AND o.google_sub=google_send_queue.google_subject AND o.profile_id='arash' AND o.status IN ('suggested','reviewed') AND o.updated_at=? AND o.data_json=? AND o.draft_json=? AND json_extract(o.draft_json,'$.status')='ready_for_review' AND (json_extract(o.data_json,'$.closesAt') IS NULL OR julianday(json_extract(o.data_json,'$.closesAt'))>julianday('now'))${editSQL})` : '';
+    const opportunityArgs=mailOpportunityGuard?[mailOpportunityGuard.id,mailOpportunityGuard.updatedAt,mailOpportunityGuard.dataJson,mailOpportunityGuard.draftJson,...(editSQL?[revision]:[])]:[];
     const claim=await stmt(db,`UPDATE google_send_queue SET status='sending',attempted_at=?,attempt_day=? WHERE id=? AND owner_id=? AND status='queued' AND google_subject=?
       AND NOT EXISTS(SELECT 1 FROM google_send_suppressions WHERE owner_id=? AND email=google_send_queue.recipient)
       AND NOT EXISTS(SELECT 1 FROM mail_automation_suppressions WHERE owner_id=? AND email=google_send_queue.recipient)

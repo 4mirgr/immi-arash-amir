@@ -1,5 +1,7 @@
 # Resume this project with minimal context
 
+2026-11-19 private mail editor/CV selection: [current change and release receipt](MAIL-EDITOR-2026-11-19.fa.md). Own saved default or latest-owned fallback, per-card CV, letter-first inline editing and immutable `moedit_*` receipts. Check exact source/CV/mailbox binding, explicit null/no-edit transport pin and final journal revision CAS. No new DDL; own paginated backups include own secondary edit receipts.
+
 2026-11-19 continuous private research: [contract and release receipt](MAIL-MULTISOURCE-2026-11-19.fa.md). Mail/LinkedIn alerts are leads; own-bank matching, public employer/service/contact verification and optional free-plan Tavily discovery are separate from application approval. Dedicated research turns prevent alert failures starving the queue. Read the actual release receipt before claiming the two-minute schedule or search key is live.
 
 2026-11-19 writing/workspace update: [current report](ARASH-WRITING-WORKSPACE-2026-11-19.fa.md). Applicant-first clinic motivation, profession-level P3, private owner-reported strengths, source/CV-bound immutable manual edits/adaptive templates with opaque-only restoration, compact source/settings/tool menus, neon unread badges and mobile batch-selection repair. New private DDL `gp-letter-edits-schema.sql` includes `selection_json`. Gmail enqueue must use single JSON-table SELECT: actual D1 rejects six UNION terms although local SQLite accepts them. See deployment receipt and later multi-source research status before claiming runtime coverage.

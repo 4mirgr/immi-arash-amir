@@ -204,6 +204,10 @@ export async function dispatchMailOpportunityNotifications(env,{fetcher=fetch,no
    await stmt(db,"UPDATE private_mail_opportunities SET notification_eligible=0,draft_json=json_set(CASE WHEN json_valid(draft_json) THEN draft_json ELSE '{}' END,'$.status','needs_source_review','$.readyForReview',json('false'),'$.missing',json('[\"public_employer_verification_required\"]')),updated_at=max(updated_at,?) WHERE id=? AND owner_id=? AND google_sub=? AND updated_at=? AND draft_json IS ?",now,candidate.id,candidate.owner_id,candidate.google_sub,candidate.updated_at,candidate.draft_json).run();
    return {configured:true,attempted:0,status:'source_review_required',code};
   }
+  if(code==='mail_opportunity_edit_context_changed'){
+   await stmt(db,'UPDATE private_mail_opportunities SET notification_eligible=0 WHERE id=? AND owner_id=? AND google_sub=? AND updated_at=? AND draft_json IS ?',candidate.id,candidate.owner_id,candidate.google_sub,candidate.updated_at,candidate.draft_json).run();
+   return {configured:true,attempted:0,status:'needs_owner_edit_review',code};
+  }
   return {configured:true,attempted:0,status:'source_check_deferred',code};
  }
  const row=await stmt(db,"UPDATE telegram_accounts SET last_dispatch_at=? WHERE owner_id=? AND profile_id='arash' AND enabled=1 AND chat_id=? AND updated_at=? AND (last_dispatch_at IS NULL OR last_dispatch_at<=?) RETURNING *",now,candidate.root_owner_id,candidate.chat_id,candidate.telegram_updated_at,now-MAIL_ALERT_COOLDOWN).first();

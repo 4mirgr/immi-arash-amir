@@ -65,7 +65,7 @@ export function isMailEmploymentBoard(value){try{return isHost(host(value),BOARD
 export function mailEmployerPublicURL(value){const url=mailLeadPublicURL(value);return url&&!isMailEmploymentBoard(url)?url:null;}
 export function mailPublicEmployerHints(candidate,now=Date.now()){
  return (Array.isArray(candidate?.publicEmployerHints)?candidate.publicEmployerHints:[]).slice(0,4).flatMap(item=>{
-  const url=mailLeadPublicURL(item?.url);return url&&fresh(item.checkedAt,now)&&['connected_public_search','tavily_basic_search'].includes(item.discoveryMethod)?[{url,clinicName:clean(item.clinicName,180),method:item.discoveryMethod}]:[];
+  const url=mailLeadPublicURL(item?.url);return url&&fresh(item.checkedAt,now)&&['connected_public_search','tavily_basic_search','tavily_gp_attributes_search'].includes(item.discoveryMethod)?[{url,clinicName:clean(item.clinicName,180),method:item.discoveryMethod}]:[];
  });
 }
 export function mailPageNamesEmployer(page,name){
@@ -149,6 +149,13 @@ export function assessMailPublicEmployerEvidence(candidate,{now=Date.now(),requi
  return {verified:true,reason:null,officialSourceURL:official};
 }
 export function hasFreshMailPublicEmployerEvidence(candidate,options){return assessMailPublicEmployerEvidence(candidate,options).verified;}
+export function verifiedMailApplicationURL(candidate,{now=Date.now()}={}){
+ if(!hasFreshMailPublicEmployerEvidence(candidate,{now}))return null;
+ const url=mailLeadPublicURL(candidate?.canonicalApplicationURL),proof=candidate?.research?.applicationSource;
+ if(!url||new URL(url).pathname==='/'||proof?.kind!=='public_gp_position'||mailLeadPublicURL(proof.sourceURL)!==url||!fresh(proof.readAt,now))return null;
+ const pages=(Array.isArray(candidate.research.sourcePages)?candidate.research.sourcePages:[]).map((page,index)=>({...page,index})).filter(page=>mailLeadPublicURL(page.sourceURL||page.url)===url).sort((a,b)=>stamp(b.readAt)-stamp(a.readAt)||b.index-a.index);
+ return pages[0]&&readOK(pages[0])&&fresh(pages[0].readAt,now)&&stamp(pages[0].readAt)>=stamp(proof.readAt)?url:null;
+}
 
 /** Public-only refresh of this owner's canonical bank row. No private source
  * message, CV, candidate assessment, letter or claimed vacancy is copied. */

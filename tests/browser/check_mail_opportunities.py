@@ -22,6 +22,8 @@ first = "mop_" + "a" * 32
 second = "mop_" + "b" * 32
 foreign = "mop_" + "f" * 32
 cv = "11111111-1111-4111-8111-111111111111"
+cv_latest = "22222222-2222-4222-8222-222222222222"
+cv_foreign = "33333333-3333-4333-8333-333333333333"
 
 harness = """
 import React,{useState} from 'REPO/node_modules/react/index.js';
@@ -47,8 +49,30 @@ base = "http://127.0.0.1:" + str(server.server_port)
 scenario = "normal"
 research_reason = None
 writes, errors, pending = [], [], []
+saved_edits = {}
 owner = "ownerA"
 recipients = ["manager@synthetic-clinic.example.invalid", "recruitment@synthetic-clinic.example.invalid"]
+
+
+def letter_proposal(identifier, cv_id, mailbox="primary"):
+    label = "Coastal" if identifier == first else "Rural"
+    blocks = ["Dear Practice Manager,", "I am a general practitioner with verified experience and am seeking a supervised GP position.",
+              "I am drawn to the " + label + " Practice team and its published community care focus.",
+              "My verified clinical experience and collaborative approach would support your team. " + ("Latest CV." if cv_id == cv_latest else "Earlier CV."),
+              "Please let me know a convenient time to discuss how I can support your practice.",
+              "Synthetic Applicant\nEmail: applicant@example.invalid\nPhone: +61 000 000 000"]
+    proposal = {"readyForReview": True, "recipients": recipients, "subject": "Application to " + label + " Practice", "body": "\n\n".join(blocks), "cvVersionId": cv_id, "evidenceHash": "synthetic-current-source-" + identifier, "missing": []}
+    saved = saved_edits.get((owner, mailbox, identifier, cv_id))
+    if saved:
+        blocks[2], blocks[3] = saved["clinicParagraph"], saved["valueParagraph"]
+        proposal.update(saved, body="\n\n".join(blocks))
+    elif scenario == "inline_stale":
+        proposal.update(readyForReview=False, ownerEditNeedsReview=True, editStatus="saved_edit_needs_review", missing=["mail_opportunity_saved_edit_requires_review"], savedEdit={"id": "moedit_" + "e" * 32, "revision": 1, "cvVersionId": cv, "subject": proposal["subject"], "clinicParagraph": "Previous owner paragraph requiring current CV review.", "valueParagraph": "Previous owner contribution requiring source review."})
+    elif scenario == "inline_incomplete":
+        proposal.update(readyForReview=False, missing=["needs_contact"], recipients=[])
+    elif scenario == "inline_no_body":
+        proposal.update(readyForReview=False, missing=["mail_opportunity_public_evidence_required"], recipients=[], body="")
+    return proposal
 
 
 def item(identifier, mailbox="primary"):
@@ -57,7 +81,7 @@ def item(identifier, mailbox="primary"):
     research = {"status": "read" if researched else "queued", "verified": researched, "reason": None if researched else research_reason or "public_employer_verification_required", "checkedAt": "2026-11-18T02:00:00Z", "officialSourceUrl": "https://clinic.example.invalid/", "searchStatus": "search_not_configured", "sources": [{"url": "https://clinic.example.invalid/about", "kind": "root", "status": "read", "readAt": "2026-11-18T02:00:00Z"}, {"url": "https://www.linkedin.com/company/synthetic-practice", "kind": "public_social", "status": "discovered_not_read", "readAt": None}, {"url": "https://clinic.example.invalid/oauth/callback?code=PRIVATE_SHOULD_NOT_RENDER", "kind": "root", "status": "read", "readAt": "2026-11-18T02:00:00Z"}], "gaps": ["services_not_published", "training_not_published", "crisis_history_not_assessed", "INTERNAL_GAP_MUST_NOT_RENDER"]}
     if scenario == "source_restrictions":
         research["gaps"] = ["source_registration_restricted", "source_australian_residence_required", "source_level1_restricted", "source_sponsorship_restricted", "source_supervision_restricted", "source_img_restricted", "source_applications_closed", "source_deadline_expired"]
-    return {"id": identifier, "title": "General practitioner; supervision needs confirmation", "clinicName": name, "sourceUrl": "https://clinic.example.invalid/careers", "receivedAt": "2026-11-18T02:00:00Z", "mailbox": mailbox, "sourceKind": "linkedin_alert", "status": "suggested", "unread": True, "fit": {"priority": "high", "level1": "unknown", "sponsorship": "unknown", "pesci": "unknown"}, "draft": {"status": "not_prepared"}, "research": research, "provenance": {"gmailId": "syntheticMessage", "threadId": "syntheticThread"}}
+    return {"id": identifier, "title": "General practitioner; supervision needs confirmation", "clinicName": name, "sourceUrl": "https://clinic.example.invalid/careers", "receivedAt": "2026-11-18T02:00:00Z", "mailbox": mailbox, "sourceKind": "linkedin_alert", "status": "suggested", "unread": True, "fit": {"priority": "high", "level1": "unknown", "sponsorship": "unknown", "pesci": "unknown"}, "draft": letter_proposal(identifier, cv_latest, mailbox) if scenario == "inline_cached" else {"status": "not_prepared"}, "research": research, "provenance": {"gmailId": "syntheticMessage", "threadId": "syntheticThread"}}
 
 
 def route(request):
@@ -85,7 +109,7 @@ def route(request):
         request.fulfill(json={"items": [], "messages": [], "coverage": {}})
         return
     if path == "/api/cv/versions":
-        request.fulfill(json=[{"id": cv, "name": "Synthetic own GP CV", "isDefault": True}])
+        request.fulfill(json=[{"id": cv, "name": "Synthetic own GP CV", "version": 1, "profileId": "arash", "userId": owner, "isDefault": scenario == "inline_default"}, {"id": cv_latest, "name": "Synthetic latest GP CV", "version": 2, "profileId": "arash", "userId": owner}, {"id": cv_foreign, "name": "Foreign CV must never appear", "version": 9, "profileId": "amir", "userId": "another-owner"}] if scenario.startswith("inline") else [{"id": cv, "name": "Synthetic own GP CV", "isDefault": True}])
         return
     if method == "GET":
         if scenario == "offline":
@@ -107,7 +131,27 @@ def route(request):
     writes.append({"path": path, "mailbox": mailbox, "body": body})
     if path.endswith("/read"):
         request.fulfill(json={"read": True})
+    elif path.endswith("/edit"):
+        assert scenario.startswith("inline")
+        assert body["cvVersionId"] in [cv, cv_latest]
+        assert body["clinicParagraph"] and body["valueParagraph"]
+        assert "subject" not in body, "The private letter subject must remain stable"
+        if scenario == "inline_save_failure":
+            request.fulfill(status=409, json={"error": "mail_opportunity_edit_context_changed"})
+            return
+        identifier = path.split("/")[-2]
+        receipt = "moedit_" + format(len(writes), "032x")
+        saved_edits[(owner, mailbox, identifier, body["cvVersionId"])] = {"clinicParagraph": body["clinicParagraph"], "valueParagraph": body["valueParagraph"], "editedDraftId": receipt, "editRevision": len(writes), "editStatus": "owner_edited"}
+        request.fulfill(json=letter_proposal(identifier, body["cvVersionId"], mailbox))
     elif path.endswith("/prepare"):
+        if scenario.startswith("inline"):
+            assert body["cvVersionId"] in [cv, cv_latest]
+            data = letter_proposal(path.split("/")[-2], body["cvVersionId"], mailbox)
+            if scenario == "inline_cached":
+                pending.append((request, data))
+            else:
+                request.fulfill(json=data)
+            return
         assert body == {"cvVersionId": cv}
         if scenario == "research_blocked":
             request.fulfill(json={"readyForReview": False, "recipients": [], "missing": ["mail_opportunity_public_evidence_required"], "cvVersionId": cv})
@@ -116,9 +160,22 @@ def route(request):
         else:
             request.fulfill(json={"readyForReview": True, "recipients": recipients, "subject": "Synthetic tailored application", "body": "Synthetic clinic-specific letter.\n\nOwn verified clinical experience.\n\nPlease let me know a convenient time to discuss how I can support your practice.\n\nSynthetic Applicant\nEmail: applicant@example.invalid", "cvVersionId": cv})
     elif path.endswith("/preview"):
+        if scenario.startswith("inline"):
+            assert body["cvVersionId"] in [cv, cv_latest] and body["recipient"] in recipients
+            data = letter_proposal(path.split("/")[-2], body["cvVersionId"], mailbox)
+            assert body.get("editedDraftId") == data.get("editedDraftId"), "Fresh review must use the saved edit receipt"
+            request.fulfill(json={**data, "sender": owner + "-" + mailbox + "@example.invalid", "reviewHash": "synthetic-review-" + body["recipient"] + ":" + body.get("editedDraftId", "canonical")})
+            return
         assert body["cvVersionId"] == cv and body["recipient"] in recipients
         request.fulfill(json={"readyForReview": True, "sender": owner + "-" + mailbox + "@example.invalid", "recipients": [{"recipient": body["recipient"]}], "cvVersionId": cv, "reviewHash": "synthetic-review-" + body["recipient"], "subject": "Synthetic tailored application", "body": "Synthetic clinic-specific letter.\n\nOwn verified clinical experience.\n\nPlease let me know a convenient time to discuss how I can support your practice.\n\nSynthetic Applicant\nEmail: applicant@example.invalid"})
     elif path.endswith("/send"):
+        if scenario.startswith("inline"):
+            data = letter_proposal(path.split("/")[-2], body["cvVersionId"], mailbox)
+            assert body["cvVersionId"] in [cv, cv_latest] and body["confirmSend"] is True
+            assert body.get("editedDraftId") == data.get("editedDraftId")
+            assert body["reviewHash"] == "synthetic-review-" + body["recipient"] + ":" + body.get("editedDraftId", "canonical")
+            request.fulfill(json={"items": [{"status": "sent", "recipient": body["recipient"]}], "automaticRetry": False})
+            return
         assert body["confirmSend"] is True and body["reviewHash"] == "synthetic-review-" + body["recipient"] and body["cvVersionId"] == cv
         if scenario == "unknown":
             request.fulfill(status=503, json={"error": "delivery_unknown"})
@@ -291,6 +348,142 @@ with sync_playwright() as playwright:
     assert not errors, errors
     scenario = 'normal'
 
+    # No saved CV default exists in the reported case. The latest OWN version
+    # is selected locally, and the expanded card prepares a visible letter
+    # without another click. Neither choosing a CV nor typing sends mail.
+    scenario = "inline"
+    owner = "ownerA"
+    saved_edits.clear()
+    page.goto(base)
+    expect(panel.get_by_label("رزومهٔ فرصت‌های ایمیلی", exact=True)).to_have_value(cv_latest)
+    expect(panel.locator(".mail-opportunity-cv-fallback")).to_contain_text("جدیدترین نسخهٔ همین حساب")
+    assert not panel.get_by_text("Foreign CV must never appear", exact=False).count()
+    before = len(writes)
+    cards.first.get_by_role("button", name="بررسی و ارسال ایمیل", exact=True).click()
+    letter = cards.first.locator(".mail-opportunity-letter-workspace")
+    p2 = letter.get_by_label("ویرایش بند دوم فرصت ایمیلی", exact=True)
+    p3 = letter.get_by_label("ویرایش بند سوم فرصت ایمیلی", exact=True)
+    expect(p2).to_have_value(re.compile("Coastal Practice team"))
+    expect(p3).to_have_value(re.compile("Latest CV"))
+    expect(cards.first.get_by_label("رزومهٔ همین آگهی", exact=True)).to_have_value(cv_latest)
+    expect(cards.first.get_by_role("button", name="تأیید و ارسال ایمیل و رزومه", exact=True)).to_be_enabled()
+    assert cards.first.evaluate("node=>Boolean(node.querySelector('.mail-opportunity-letter-workspace').compareDocumentPosition(node.querySelector('.mail-opportunity-research')) & Node.DOCUMENT_POSITION_FOLLOWING)")
+    assert not [entry for entry in writes[before:] if entry["path"].endswith("/send")]
+    original_subject = letter.locator(".mail-opportunity-subject").inner_text()
+    p2.fill("I would welcome the opportunity to join your community-focused clinical team.")
+    p3.fill("I would bring careful clinical prioritisation, reliable follow-up and constructive teamwork.")
+    expect(cards.first.get_by_role("button", name="ابتدا ویرایش نامه را ذخیره کنید", exact=True)).to_be_disabled()
+    expect(panel.get_by_label("صندوق فرصت‌های ایمیلی", exact=True)).to_be_disabled()
+    expect(cards.first.get_by_label("رزومهٔ همین آگهی", exact=True)).to_be_disabled()
+    cards.nth(1).get_by_role("button", name="بازکردن جزئیات آگهی", exact=True).click()
+    expect(cards.first.locator(".mail-opportunity-detail")).to_be_visible()
+    expect(cards.nth(1).locator(".mail-opportunity-detail")).to_have_count(0)
+    expect(p2).to_have_value("I would welcome the opportunity to join your community-focused clinical team.")
+    cards.first.locator('header>input[type="checkbox"]').check()
+    dock = page.get_by_role("region", name="ارسال گروهی فرصت‌های ایمیلی", exact=True)
+    expect(dock.get_by_role("button", name="ابتدا ویرایش نامه‌ها را ذخیره کنید", exact=True)).to_be_disabled()
+    assert not [entry for entry in writes[before:] if entry["path"].endswith(("/send", "/edit"))]
+    letter.get_by_role("button", name="ذخیرهٔ ویرایش و بازبینی نامه", exact=True).click()
+    expect(cards.first.get_by_role("button", name="تأیید و ارسال ایمیل و رزومه", exact=True)).to_be_enabled()
+    expect(p2).to_have_value("I would welcome the opportunity to join your community-focused clinical team.")
+    expect(letter.locator(".mail-opportunity-subject")).to_have_text(original_subject)
+    saved = saved_edits[(owner, "primary", first, cv_latest)]
+    edited_previews = [entry for entry in writes[before:] if entry["path"].endswith("/preview") and entry["body"].get("editedDraftId")]
+    assert len(edited_previews) == 2 and all(entry["body"]["editedDraftId"] == saved["editedDraftId"] for entry in edited_previews)
+    cards.first.get_by_role("button", name="تأیید و ارسال ایمیل و رزومه", exact=True).click()
+    expect(cards.first.get_by_role("button", name="ارسال شد", exact=True)).to_be_disabled()
+    assert all(entry["body"].get("editedDraftId") == saved["editedDraftId"] for entry in writes[before:] if entry["path"].endswith("/send"))
+
+    # A persisted default wins over a newer version; an override belongs only
+    # to its card, including a batch with two different owned CV attachments.
+    scenario = "inline_default"
+    page.reload()
+    expect(panel.get_by_label("رزومهٔ فرصت‌های ایمیلی", exact=True)).to_have_value(cv)
+    expect(panel.locator(".mail-opportunity-cv-fallback")).to_have_count(0)
+    scenario = "inline"
+    page.reload()
+    cards.first.get_by_role("button", name="بررسی و ارسال ایمیل", exact=True).click()
+    expect(cards.first.get_by_role("button", name="تأیید و ارسال ایمیل و رزومه", exact=True)).to_be_enabled()
+    cards.first.get_by_label("رزومهٔ همین آگهی", exact=True).select_option(cv)
+    expect(cards.first.get_by_label("ویرایش بند سوم فرصت ایمیلی", exact=True)).to_have_value(re.compile("Earlier CV"))
+    expect(cards.first.get_by_role("button", name="تأیید و ارسال ایمیل و رزومه", exact=True)).to_be_enabled()
+    cards.first.locator('header>input[type="checkbox"]').check()
+    cards.nth(1).locator('header>input[type="checkbox"]').check()
+    dock.get_by_role("button", name="آماده‌کردن نامه برای ۲ آگهی", exact=True).click()
+    expect(dock.get_by_role("button", name="تأیید و ارسال برای ۲ آگهی", exact=True)).to_be_enabled()
+    summary = panel.get_by_role("region", name="بازبینی نهایی آگهی‌های انتخاب‌شده", exact=True)
+    expect(summary.locator("li").nth(0)).to_contain_text("Synthetic own GP CV")
+    expect(summary.locator("li").nth(1)).to_contain_text("Synthetic latest GP CV")
+    before = len(writes)
+    dock.get_by_role("button", name="تأیید و ارسال برای ۲ آگهی", exact=True).click()
+    expect(dock.get_by_role("button", name="ارسال شد", exact=True)).to_be_disabled()
+    delivered = [entry for entry in writes[before:] if entry["path"].endswith("/send")]
+    assert len(delivered) == 4
+    assert all(entry["body"]["cvVersionId"] == (cv if first in entry["path"] else cv_latest) for entry in delivered)
+
+    # An incomplete existing letter stays readable/editable. Missing facts do
+    # not become invented prose, and cached text is visible during preparation.
+    saved_edits.clear()
+    scenario = "inline_incomplete"
+    page.reload()
+    cards.first.get_by_role("button", name="بررسی و ارسال ایمیل", exact=True).click()
+    expect(cards.first.get_by_label("ویرایش بند دوم فرصت ایمیلی", exact=True)).to_be_visible()
+    expect(cards.first.locator(".letter-preview-incomplete")).to_be_visible()
+    expect(cards.first.get_by_role("button", name="تأیید و ارسال ایمیل و رزومه", exact=True)).to_have_count(0)
+    scenario = "inline_no_body"
+    page.reload()
+    cards.first.get_by_role("button", name="بررسی و ارسال ایمیل", exact=True).click()
+    expect(cards.first.locator(".mail-opportunity-letter-workspace")).to_contain_text("متن حدسی جایگزین نمی‌شود")
+    expect(cards.first.locator("textarea")).to_have_count(0)
+    scenario = "inline_cached"
+    page.reload()
+    cards.first.get_by_role("button", name="بررسی و ارسال ایمیل", exact=True).click()
+    expect(cards.first.get_by_label("ویرایش بند دوم فرصت ایمیلی", exact=True)).to_have_value(re.compile("Coastal Practice team"))
+    expect(cards.first.get_by_label("ویرایش بند دوم فرصت ایمیلی", exact=True)).to_be_disabled()
+    assert len(pending) == 1
+    for request, data in pending:
+        request.fulfill(json=data)
+    pending.clear()
+    expect(cards.first.get_by_role("button", name="تأیید و ارسال ایمیل و رزومه", exact=True)).to_be_enabled()
+
+    # Stale edits are reviewed explicitly against the newly selected CV. A
+    # failed save retains typed prose, invalidates old approval, and never sends.
+    scenario = "inline_stale"
+    page.reload()
+    cards.first.get_by_role("button", name="بررسی و ارسال ایمیل", exact=True).click()
+    p2 = cards.first.get_by_label("ویرایش بند دوم فرصت ایمیلی", exact=True)
+    expect(p2).to_have_value("Previous owner paragraph requiring current CV review.")
+    cards.first.get_by_role("button", name="جایگزینی این دو بند با پیشنهاد تازه", exact=True).click()
+    expect(p2).to_have_value(re.compile("Coastal Practice team"))
+    save_button = cards.first.get_by_role("button", name="ذخیرهٔ ویرایش و بازبینی نامه", exact=True)
+    expect(save_button).to_be_enabled()
+    before = len(writes)
+    save_button.click()
+    expect(cards.first.get_by_role("button", name="تأیید و ارسال ایمیل و رزومه", exact=True)).to_be_enabled()
+    rebase = next(entry for entry in writes[before:] if entry["path"].endswith("/edit"))
+    assert rebase["body"]["cvVersionId"] == cv_latest and "editedDraftId" not in rebase["body"]
+    scenario = "inline_save_failure"
+    p2.fill("My unsaved source-sensitive revision must remain visible after failure.")
+    cards.first.get_by_role("button", name="ذخیرهٔ ویرایش و بازبینی نامه", exact=True).click()
+    expect(cards.first.locator(".mail-opportunity-letter-workspace").get_by_role("alert")).to_contain_text("متن شما در همین صفحه حفظ شده")
+    expect(p2).to_have_value("My unsaved source-sensitive revision must remain visible after failure.")
+    expect(cards.first.get_by_role("button", name="ابتدا ویرایش نامه را ذخیره کنید", exact=True)).to_be_disabled()
+    assert not [entry for entry in writes[before:] if entry["path"].endswith("/send")]
+    scenario = "inline"
+    cards.first.get_by_role("button", name="ذخیرهٔ ویرایش و بازبینی نامه", exact=True).click()
+    expect(cards.first.get_by_role("button", name="تأیید و ارسال ایمیل و رزومه", exact=True)).to_be_enabled()
+
+    # Labels and edited content fit small phones at a large user-selected font;
+    # changing interface language does not replace the owner's draft text.
+    page.evaluate("document.documentElement.lang='en';document.documentElement.dataset.language='en';document.documentElement.dir='ltr';window.dispatchEvent(new Event('masir-language-change'))")
+    expect(cards.first.get_by_label("Edit email opportunity paragraph two", exact=True)).to_have_value("My unsaved source-sensitive revision must remain visible after failure.")
+    assert not re.search(r"[\u0600-\u06ff]", panel.inner_text()), panel.inner_text()
+    for width in [320, 390, 430, 1440]:
+        page.set_viewport_size({"width": width, "height": 900})
+        page.evaluate("document.documentElement.style.fontSize='150%'")
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), "Inline mail editor overflows at " + str(width)
+    assert not errors, errors
+
     # A Telegram link survives the real login gate. The exact secondary item
     # opens only after /me has verified its application owner.
     owner = "ownerA"
@@ -318,4 +511,4 @@ with sync_playwright() as playwright:
 
 server.shutdown()
 workspace.cleanup()
-print("PASS private mail opportunities: exact mailbox deep links, owner isolation, default-all recipients, frozen review, green single/batch send, pending/sent/unknown outcomes, English and mobile layout; synthetic transport only.")
+print("PASS private mail opportunities: owner/mailbox isolation, own default/latest CV and per-card mixed-CV batches, immediately visible editable letters, explicit saved receipts and fresh send review, stale-edit rebase, failed-save retention, green single/batch sends, English/mobile; synthetic transport only.")

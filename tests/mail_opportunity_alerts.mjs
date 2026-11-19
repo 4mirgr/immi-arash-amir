@@ -112,6 +112,14 @@ test('legacy ready flags without current public proof return to research without
  assert.deepEqual(JSON.parse(saved.draft_json).missing,['public_employer_verification_required']);assert.equal(f.db.prepare('SELECT count(*) n FROM telegram_notification_receipts').get().n,0);
 });
 
+test('a changed owner edit yields its private alert turn without removing the opportunity',async()=>{
+ const f=await fixture(),row=f.seed();
+ const result=await dispatch(f.env,{fetcher:f.fetcher,now:NOW,sourceValidator:async()=>{throw Object.assign(Error('changed edit'),{code:'mail_opportunity_edit_context_changed'});}});
+ assert.equal(result.status,'needs_owner_edit_review');assert.equal(f.calls.length,0);
+ const saved=f.db.prepare('SELECT notification_eligible,status,data_json,draft_json FROM private_mail_opportunities WHERE id=?').get(row.id);
+ assert.equal(saved.notification_eligible,0);assert.equal(saved.status,'suggested');assert.equal(saved.data_json,row.data_json);assert.equal(saved.draft_json,row.draft_json);
+});
+
 test('uncertain or redirected transport is terminal; no automatic replay and no token or provider body in result',async()=>{
  for(const redirect of [false,true]){
   const f=await fixture();f.seed();let sends=0;const failure=async(url,options)=>{if(url.includes('/rpc/immi_automation_owner_active'))return f.fetcher(url,options);sends++;assert.equal(options.redirect,'manual');if(redirect)return new Response(null,{status:302,headers:{Location:'https://attacker.invalid'}});throw Error('PRIVATE_PROVIDER_BODY');};
