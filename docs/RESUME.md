@@ -1,5 +1,7 @@
 # Resume this project with minimal context
 
+2026-11-19 information-first mail list and minimum first enquiry: [policy, checks and release receipt](MAIL-PRIORITY-2026-11-19.fa.md). Ready/information-first sorting applies before pagination; newest remains selectable. Fresh own-bank public readings can prepare a labelled initial enquiry without a confirmed vacancy or exact service overlap. Keep applicable restrictions, original observation timestamps, own CV/contact signature and explicit sending approval. Seven previously read Arash rows were reset to unread once; do not reset sending/notification history or repeat that action on every deployment.
+
 2026-11-19 private mail editor/CV selection: [current change and release receipt](MAIL-EDITOR-2026-11-19.fa.md). Own saved default or latest-owned fallback, per-card CV, letter-first inline editing and immutable `moedit_*` receipts. Check exact source/CV/mailbox binding, explicit null/no-edit transport pin and final journal revision CAS. No new DDL; own paginated backups include own secondary edit receipts.
 
 2026-11-19 continuous private research: [contract and release receipt](MAIL-MULTISOURCE-2026-11-19.fa.md). Mail/LinkedIn alerts are leads; own-bank matching, public employer/service/contact verification and optional free-plan Tavily discovery are separate from application approval. Dedicated research turns prevent alert failures starving the queue. Read the actual release receipt before claiming the two-minute schedule or search key is live.

@@ -1,3 +1,4 @@
+import {readClinicSourceRestrictions,mergeClinicSourceRestrictions} from './clinic-source-restrictions.mjs';
 // Imported URLs remain private leads. Public reading neither creates a vacancy
 // nor grants permission to contact anyone. Original spreadsheet contacts are not
 // promoted into source-published evidence or shared with another workspace.
@@ -140,6 +141,7 @@ export async function dispatchClinicBankReading(env,fetcher=fetch,at=Date.now(),
       // Pin fresh fetched pages to the same scheduler observation used by the
       // contact/service receipts. Failed root refreshes retain the old dossier.
       result.research=buildClinicResearchContext({rootURL:url,observedAt:now,pages:pages.map(page=>({...page,readAt:now}))});
+      result.sourceRestrictions=readClinicSourceRestrictions(pages,{now:at});
      }
     }
     const read=['read','read_partial'].includes(result.status),previousResult=parse(row.result_json),previousContacts=Array.isArray(previousResult.contacts)?previousResult.contacts:[];
@@ -155,7 +157,7 @@ export async function dispatchClinicBankReading(env,fetcher=fetch,at=Date.now(),
     const clinicalSource=read?clinicBankURL(result.finalUrl||row.url):null;
     const clinicalText=read&&clinicalSource&&new URL(clinicalSource).hostname.replace(/^www\./,'')===new URL(row.url).hostname.replace(/^www\./,'')?clinicBankClinicalExcerpt(result.text,result.title):'';
     const clinicalEvidence=read?{clinicalText,clinicalSourceURL:clinicalText?clinicalSource:null,clinicalReadAt:clinicalText?now:null,clinicalScope:'bounded_public_service_statements_not_full_page'}:{clinicalText:previousResult.clinicalText||'',clinicalSourceURL:previousResult.clinicalSourceURL||null,clinicalReadAt:previousResult.clinicalReadAt||null,clinicalScope:previousResult.clinicalScope||'not_recorded'};
-    const snapshot={sourceStatus:result.status,sourceURL:read?result.finalUrl||row.url:previousResult.sourceURL||row.url,title:read?clean(result.title,500):previousResult.title||'',contacts,contactsReadAt,...clinicalEvidence,...(read?{research:result.research}:previousResult.research?{research:previousResult.research}:{}),linkedReadings:read?result.linkedReadings||[]:previousResult.linkedReadings||[],limitations:result.limitations||[],lastAttempt:{readAt:now,status:result.status,sourceURL:result.finalUrl||row.url}};
+    const snapshot={sourceRestrictions:mergeClinicSourceRestrictions(previousResult.sourceRestrictions,previousResult.research?.sourceRestrictions,result.sourceRestrictions),sourceStatus:result.status,sourceURL:read?result.finalUrl||row.url:previousResult.sourceURL||row.url,title:read?clean(result.title,500):previousResult.title||'',contacts,contactsReadAt,...clinicalEvidence,...(read?{research:result.research}:previousResult.research?{research:previousResult.research}:{}),linkedReadings:read?result.linkedReadings||[]:previousResult.linkedReadings||[],limitations:result.limitations||[],lastAttempt:{readAt:now,status:result.status,sourceURL:result.finalUrl||row.url}};
     const stored=await db.prepare('UPDATE clinic_bank_leads SET status=?,attempts=?,available_at=?,lease_until=0,read_at=?,last_success_at=CASE WHEN ? THEN ? ELSE last_success_at END,result_json=?,new_email_count=?,updated_at=? WHERE id=? AND owner_id=? AND lease_until=?').bind(status,attempts,next,now,read?1:0,now,JSON.stringify(snapshot),newEmails,now,row.id,row.owner_id,at+CLINIC_BANK_LEASE_MS).run();
     if(Number(stored.meta?.changes)===0)return{id:row.id,status:'lease_lost'};
     return{id:row.id,status,newEmails};

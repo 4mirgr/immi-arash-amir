@@ -5,7 +5,7 @@ import {buildClinicResearchContext,selectClinicResearchLinks,extractClinicResear
 import {prepareMailOpportunityDraft} from './mail-opportunities.mjs';
 import {checkAutomationMembership} from './automation-membership.mjs';
 import {assessOpportunityFit} from './opportunity-fit.mjs';
-import {MAIL_LEAD_DISCOVERY_VERSION,mailLeadPublicURL,mailEmployerPublicURL,mailPublicEmployerHints,inferMailLeadEmployerName,mailPageNamesEmployer,mailEmployerIdentityEvidence,resolveOwnedMailClinicSource,selectMailEmployerLinks,discoverMailClinicSocialLinks,hasFreshMailPublicEmployerEvidence,upsertOwnedMailClinicEvidence} from './mail-lead-discovery.mjs';
+import {assessMailOutreachEvidence,MAIL_LEAD_DISCOVERY_VERSION,mailLeadPublicURL,mailEmployerPublicURL,mailPublicEmployerHints,inferMailLeadEmployerName,mailPageNamesEmployer,mailEmployerIdentityEvidence,resolveOwnedMailClinicSource,selectMailEmployerLinks,discoverMailClinicSocialLinks,hasFreshMailPublicEmployerEvidence,upsertOwnedMailClinicEvidence} from './mail-lead-discovery.mjs';
 import {discoverMailEmployerSearch,mailEmployerSearchName} from './mail-lead-search.mjs';
 import {isMailTrackingSourceURL,publishedGPEmployerName,publicGPHeadlineMatchesPage} from './mail-public-job-headline.mjs';
 
@@ -219,7 +219,7 @@ export async function dispatchMailOpportunityResearch(env,{fetcher=fetch,now=Dat
   }
   let writing={};if(typeof writingContextProvider==='function'){try{const found=await writingContextProvider(env,context,fetcher);if(found?.profile&&typeof found.cvText==='string')writing=found;}catch{code='own_writing_context_unavailable';}}
   const draft=await prepareMailOpportunityDraft(updated,writing,{now});
-  if(reviewRequired||!hasFreshMailPublicEmployerEvidence(updated,{now})){draft.status='needs_source_review';draft.readyForReview=false;draft.missing=[...new Set([...(draft.missing||[]),...(reviewRequired?['current_source_requires_review',...restrictions.map(item=>item.code)]:[]),...(!hasFreshMailPublicEmployerEvidence(updated,{now})?['public_employer_verification_required']:[])])];}
+  if(reviewRequired||!assessMailOutreachEvidence(updated,{now}).verified){draft.status='needs_source_review';draft.readyForReview=false;draft.missing=[...new Set([...(draft.missing||[]),...(reviewRequired?['current_source_requires_review',...restrictions.map(item=>item.code)]:[]),...(!assessMailOutreachEvidence(updated,{now}).verified?['public_employer_verification_required']:[])])];}
   prepared=draft.readyForReview===true;
   if((await membership(env,context.rootUserId,'arash',fetcher))?.active!==true){finalStatus='blocked';code='membership_unavailable';await finish(now+3600000);return {attempted:1,status:finalStatus,code,publicRequests:PUBLIC_PAGE_REQUEST_LIMIT-budget.remaining,draftReady:false};}
   const allSuppressed=allEmails.length>0&&!contacts.length;

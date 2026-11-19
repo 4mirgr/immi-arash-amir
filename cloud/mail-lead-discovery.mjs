@@ -2,6 +2,7 @@
 // accept only bounded, actually-read public evidence; no provider credentials,
 // search-result snippets or private correspondence enter the clinic snapshot.
 import {clinicBankURL} from './clinic-bank.mjs';
+import {mergeClinicSourceRestrictions} from './clinic-source-restrictions.mjs';
 
 export const MAIL_LEAD_DISCOVERY_VERSION=2;
 export const MAIL_PUBLIC_EVIDENCE_MAX_AGE=7*86400000;
@@ -125,7 +126,7 @@ export function discoverMailClinicSocialLinks(pages,officialSourceURL){
 }
 
 /** Pure, fail-closed gate shared by discovery, draft preparation and sending. */
-export function assessMailPublicEmployerEvidence(candidate,{now=Date.now(),requireContact=true}={}){
+export function assessMailPublicEmployerEvidence(candidate,{now=Date.now(),requireContact=true,requireJobSource=true}={}){
  const research=candidate?.research,proof=research?.verification,official=mailEmployerPublicURL(proof?.officialSourceURL),fail=reason=>({verified:false,reason,officialSourceURL:official});
  if(!Number.isSafeInteger(now)||now<0)return fail('invalid_evidence_time');
  if(research?.publicEmployerVerified!==true||proof?.version!==MAIL_LEAD_DISCOVERY_VERSION||!official||!fresh(proof.checkedAt,now))return fail('public_employer_verification_required');
@@ -139,16 +140,28 @@ export function assessMailPublicEmployerEvidence(candidate,{now=Date.now(),requi
  if(!goodSource(official,proof.checkedAt))return fail('latest_public_employer_read_required');
  const name=normalizeMailClinicName(candidate.clinicName);
  if(!isSpecificMailClinicName(name)||!Array.isArray(proof.identityEvidence)||!proof.identityEvidence.some(item=>item&&['structured_self_organization','visible_brand_heading','self_brand_title'].includes(item.authority)&&goodSource(item.sourceURL,item.readAt)&&!UNTRUSTED.test(item.quote||'')&&(' '+normalizeMailClinicName(item.quote)+' ').includes(' '+name+' ')))return fail('published_employer_name_required');
- if(!Array.isArray(research.facts)||!research.facts.some(fact=>fact&&['services','team','training','recruitment'].includes(fact.category)&&typeof fact.text==='string'&&fact.text.length>=25&&!UNTRUSTED.test(fact.text)&&goodSource(fact.sourceURL,fact.readAt)))return fail('published_clinic_context_required');
- if(!requireContact)return {verified:true,reason:null,officialSourceURL:official};
- if(candidate.applicationSourceVerified===false)return fail('public_job_source_required');
+ const clinicFacts=(Array.isArray(research.facts)?research.facts:[]).filter(fact=>fact&&['services','team','training','recruitment'].includes(fact.category)&&typeof fact.text==='string'&&fact.text.length>=25&&!UNTRUSTED.test(fact.text)&&goodSource(fact.sourceURL,fact.readAt));
+ if(!clinicFacts.length)return fail('published_clinic_context_required');
+ if(!requireContact)return {verified:true,reason:null,officialSourceURL:official,clinicFacts};
+ if(requireJobSource&&candidate.applicationSourceVerified===false)return fail('public_job_source_required');
  const contacts=(Array.isArray(research.contactEvidence)?research.contactEvidence:[]).filter(contact=>contact?.type==='email'&&mailPublishedEmail(contact.value)&&typeof contact.quote==='string'&&!UNTRUSTED.test(contact.quote)&&contact.quote.toLowerCase().includes(contact.value.toLowerCase())&&goodSource(contact.sourceURL||contact.sourceUrl,contact.readAt));
  if(!contacts.length)return fail('published_recruitment_contact_required');
  const recipients=Array.isArray(candidate.recipients)?candidate.recipients:[candidate.recipient].filter(Boolean);
  if(!recipients.length||recipients.some(email=>!contacts.some(contact=>contact.value.toLowerCase()===String(email).toLowerCase())))return fail('published_recipient_required');
- return {verified:true,reason:null,officialSourceURL:official};
+ return {verified:true,reason:null,officialSourceURL:official,clinicFacts};
 }
 export function hasFreshMailPublicEmployerEvidence(candidate,options){return assessMailPublicEmployerEvidence(candidate,options).verified;}
+// An unconfirmed advertisement may support a clearly labelled first enquiry,
+// never a claim that a vacancy, Level 1 supervision or sponsorship is available.
+export const mailOutreachMode=candidate=>candidate?.applicationSourceVerified===true?'job_application':'initial_enquiry';
+export function assessMailOutreachEvidence(candidate,options={}){
+ const outreachMode=mailOutreachMode(candidate);
+ return {...assessMailPublicEmployerEvidence(candidate,{...options,requireJobSource:outreachMode==='job_application'}),outreachMode};
+}
+export function mailInitialEnquiryKey(candidate,{now=Date.now()}={}){
+ const evidence=assessMailOutreachEvidence(candidate,{now});
+ return evidence.verified&&evidence.outreachMode==='initial_enquiry'?'clinic-enquiry:'+new URL(evidence.officialSourceURL).origin+'/'+encodeURIComponent(normalizeMailClinicName(candidate.clinicName)):null;
+}
 export function verifiedMailApplicationURL(candidate,{now=Date.now()}={}){
  if(!hasFreshMailPublicEmployerEvidence(candidate,{now}))return null;
  const url=mailLeadPublicURL(candidate?.canonicalApplicationURL),proof=candidate?.research?.applicationSource;
@@ -167,10 +180,10 @@ export async function upsertOwnedMailClinicEvidence(db,context,candidate,{now=Da
  let url=clinicBankURL(candidate.research.matchedOwnBankURL);if(!url||host(url)!==host(official))url=root.href;
  const exists=await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='clinic_bank_leads'").bind().first();if(!exists)return {updated:false,reason:'clinic_bank_storage_required'};
  const id='bank_'+[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(context.rootUserId+'\n'+url)))].map(byte=>byte.toString(16).padStart(2,'0')).join('').slice(0,32),at=new Date(now).toISOString();
- const research=candidate.research,snapshot={sourceStatus:'read',sourceURL:official,title:candidate.clinicName,contacts:research.publicContactEvidence||research.contactEvidence,contactsReadAt:at,clinicalText:research.facts.filter(fact=>fact.category==='services').map(fact=>fact.text).slice(0,12).join('\n'),clinicalSourceURL:candidate.clinicalSourceUrl||official,clinicalReadAt:at,clinicalScope:'bounded_public_service_statements_not_full_page',research:{version:research.version,observedAt:research.observedAt,sourcePages:research.sourcePages,facts:research.facts,people:research.people||[],organizations:research.organizations||[],gaps:research.gaps||[],scope:research.scope,publicEmployerVerified:true,verification:research.verification,socialSources:research.socialSources||[]},linkedReadings:research.sourcePages.filter(page=>page.sourceURL!==official),limitations:['A public clinic record is not a live vacancy, supervision approval or permission to send.'],lastAttempt:{readAt:at,status:'read',sourceURL:official}};
+ const research=candidate.research,snapshot={sourceRestrictions:mergeClinicSourceRestrictions(candidate.sourceRestrictions,research.sourceRestrictions,research.sourceAssessment?.restrictions),sourceStatus:'read',sourceURL:official,title:candidate.clinicName,contacts:research.publicContactEvidence||research.contactEvidence,contactsReadAt:at,clinicalText:research.facts.filter(fact=>fact.category==='services').map(fact=>fact.text).slice(0,12).join('\n'),clinicalSourceURL:candidate.clinicalSourceUrl||official,clinicalReadAt:at,clinicalScope:'bounded_public_service_statements_not_full_page',research:{version:research.version,observedAt:research.observedAt,sourcePages:research.sourcePages,facts:research.facts,people:research.people||[],organizations:research.organizations||[],gaps:research.gaps||[],scope:research.scope,publicEmployerVerified:true,verification:research.verification,socialSources:research.socialSources||[]},linkedReadings:research.sourcePages.filter(page=>page.sourceURL!==official),limitations:['A public clinic record is not a live vacancy, supervision approval or permission to send.'],lastAttempt:{readAt:at,status:'read',sourceURL:official}};
  const result=await db.prepare(`INSERT INTO clinic_bank_leads(id,owner_id,profile_id,url,name,provenance_json,status,attempts,available_at,lease_until,read_at,last_success_at,result_json,new_email_count,created_at,updated_at)
   SELECT ?,?,'arash',?,?,?,?,0,?,0,?,?,?,0,?,? WHERE EXISTS(SELECT 1 FROM private_mail_opportunities o JOIN google_accounts g ON g.owner_id=o.owner_id AND g.google_sub=o.google_sub AND g.profile_id='arash' AND g.status='connected' WHERE o.id=? AND o.owner_id=? AND o.root_owner_id=? AND o.google_sub=? AND o.updated_at=? AND o.status IN ('suggested','reviewed'))
-  ON CONFLICT(owner_id,url) DO UPDATE SET name=excluded.name,status=excluded.status,available_at=excluded.available_at,read_at=excluded.read_at,last_success_at=excluded.last_success_at,result_json=excluded.result_json,updated_at=excluded.updated_at
+  ON CONFLICT(owner_id,url) DO UPDATE SET name=excluded.name,status=excluded.status,available_at=excluded.available_at,read_at=excluded.read_at,last_success_at=excluded.last_success_at,result_json=json_set(excluded.result_json,'$.sourceRestrictions',json((SELECT json_group_array(json(value)) FROM (SELECT value,max(json_extract(value,'$.checkedAt')) AS latest FROM (SELECT value FROM json_each(CASE WHEN json_valid(clinic_bank_leads.result_json) THEN coalesce(json_extract(clinic_bank_leads.result_json,'$.sourceRestrictions'),'[]') ELSE '[]' END) UNION ALL SELECT value FROM json_each(excluded.result_json,'$.sourceRestrictions')) GROUP BY json_extract(value,'$.code'),json_extract(value,'$.sourceURL'),json_extract(value,'$.quote') ORDER BY latest DESC LIMIT 48)))),updated_at=excluded.updated_at
   WHERE clinic_bank_leads.profile_id='arash' AND (trim(clinic_bank_leads.name)='' OR lower(trim(clinic_bank_leads.name))=lower(trim(excluded.name))) AND clinic_bank_leads.lease_until<=? AND coalesce(clinic_bank_leads.last_success_at,'')<=excluded.last_success_at`).bind(id,context.rootUserId,url,clean(candidate.clinicName,180),JSON.stringify({kind:'verified_public_employer_read',sourceURL:official}),research.contactEvidence.length?'public_contacts_found':'public_page_read',now+MAIL_PUBLIC_EVIDENCE_MAX_AGE,at,at,JSON.stringify(snapshot),at,at,opportunityId,context.userId,context.rootUserId,context.googleSubject,sourceVersion,now).run();
  return {updated:Boolean(result.meta?.changes),reason:result.meta?.changes?null:'source_changed_or_bank_leased'};
 }

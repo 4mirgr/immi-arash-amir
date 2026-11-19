@@ -16,7 +16,7 @@ function own(context){
  return context.userId;
 }
 function wrapper(proposal){
- const name=proposal.clinicName||String(proposal.subject||'').replace(/^GP application\s*[—–-]\s*/, '');
+ const name=proposal.clinicName||String(proposal.subject||'').replace(/^GP (?:application|enquiry)\s*[—–-]\s*/, '');
  return {...proposal,opportunityId:proposal.id,subjects:[proposal.subject,proposal.subject,proposal.subject],dossier:{name:{value:name}}};
 }
 function apply(proposal,row){
@@ -25,7 +25,7 @@ function apply(proposal,row){
 }
 export async function mailOpportunityEditContextHash(proposal){
  if(!ID.test(proposal?.id||'')||!UUID.test(proposal.cvVersionId||'')||!proposal.googleSubject||!proposal.sender)fail('mail_opportunity_edit_context_required',409);
- const bytes=new TextEncoder().encode(JSON.stringify([VERSION,proposal.id,proposal.googleSubject,proposal.sender.toLowerCase(),proposal.cvVersionId,proposal.subject,proposal.body,proposal.paragraphs,proposal.evidenceHash,proposal.recipients,proposal.provenance,proposal.writingQuality?.version]));
+ const bytes=new TextEncoder().encode(JSON.stringify([VERSION,proposal.id,proposal.googleSubject,proposal.sender.toLowerCase(),proposal.cvVersionId,proposal.subject,proposal.body,proposal.paragraphs,proposal.evidenceHash,proposal.recipients,proposal.provenance,proposal.writingQuality?.version,proposal.outreachMode]));
  return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(value=>value.toString(16).padStart(2,'0')).join('');
 }
 /** One read. Never writes over source research or the canonical draft cache. */
@@ -67,6 +67,7 @@ export async function handleMailOpportunityEditsRequest(request,env,context){
   const proposal=await prepareOwnedMailOpportunity(env,context,match[1],{cvVersionId:selected.cvVersionId},{skipOwnerEdit:true,includeSourceState:true});
   if(!proposal.readyForReview)fail('mail_opportunity_evidence_required',409);
   const validated=validateManualLetterEdit(wrapper(proposal),{...selected,subjectIndex:0}),hash=await mailOpportunityEditContextHash(proposal);
+  if(proposal.outreachMode==='initial_enquiry'&&!/\b(?:enquiry|inquiry)\b/i.test(validated.subject))fail('initial_enquiry_subject_required',409);
   if(selected.editedDraftId){
    const previous=await stmt(env.GOOGLE_DB,"SELECT id,revision,base_hash,cv_version_id,selection_json,(SELECT max(h.revision) FROM gp_letter_edits h WHERE h.owner_id=gp_letter_edits.owner_id AND h.opportunity_id=gp_letter_edits.opportunity_id AND json_extract(h.selection_json,'$.kind')='private_mail_opportunity_v1' AND json_extract(h.selection_json,'$.googleSubject')=json_extract(gp_letter_edits.selection_json,'$.googleSubject')) AS head_revision FROM gp_letter_edits WHERE id=? AND owner_id=? AND opportunity_id=? AND profile_id='arash'",selected.editedDraftId,owner,match[1]).first();
    const identity=parse(previous?.selection_json);

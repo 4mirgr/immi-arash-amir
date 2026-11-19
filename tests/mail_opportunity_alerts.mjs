@@ -48,6 +48,13 @@ test('one clear personalized alert links the exact private opportunity and expos
  assert.equal(f.db.prepare('SELECT status FROM telegram_notification_receipts').get().status,'sent');assert.equal(f.db.prepare('SELECT notification_sent_at FROM private_mail_opportunities WHERE id=?').get(row.id).notification_sent_at,NOW);assert(!JSON.stringify(result).includes('23456'));assert(!JSON.stringify(result).includes(f.env.TELEGRAM_BOT_TOKEN));assert(f.counters.queries+f.counters.http<=12);
 });
 
+test('an initial-enquiry alert distinguishes a clinic prospect from a confirmed vacancy',async()=>{
+ const f=await fixture(),row=f.seed(),draft=JSON.parse(row.draft_json);draft.outreachMode='initial_enquiry';
+ const result=mailOpportunityAlertText({...row,draft_json:JSON.stringify(draft),fit_json:JSON.stringify({priority:'high',level1:'supported',sponsorship:'supported'})});
+ assert(result.text.includes('پرس‌وجوی همکاری'));assert(result.text.includes('وجود جای خالی فعلی'));assert(!result.text.includes('موقعیت:'));assert(!result.text.includes('در متن ایمیل مطرح شده'));
+ assert.equal(mailOpportunityAlertText({...row,fit_json:JSON.stringify({priority:'high',registration:'restricted'})}),null);
+});
+
 test('both own Google slots use the same own private chat with a root cooldown and edition deduplication',async()=>{
  const f=await fixture();f.seed(1,{owner_id:'arash-owner:secondary',google_sub:'arash-second-sub'});f.seed(2);
  assert.equal((await dispatch(f.env,{fetcher:f.fetcher,now:NOW})).attempted,1);assert.equal(new URL(JSON.parse(f.calls[0].options.body).reply_markup.inline_keyboard[0][0].url).searchParams.get('mailbox'),'secondary');

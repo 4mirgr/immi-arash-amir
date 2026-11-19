@@ -49,6 +49,7 @@ base = "http://127.0.0.1:" + str(server.server_port)
 scenario = "normal"
 research_reason = None
 writes, errors, pending = [], [], []
+list_reads = []
 saved_edits = {}
 owner = "ownerA"
 recipients = ["manager@synthetic-clinic.example.invalid", "recruitment@synthetic-clinic.example.invalid"]
@@ -61,7 +62,7 @@ def letter_proposal(identifier, cv_id, mailbox="primary"):
               "My verified clinical experience and collaborative approach would support your team. " + ("Latest CV." if cv_id == cv_latest else "Earlier CV."),
               "Please let me know a convenient time to discuss how I can support your practice.",
               "Synthetic Applicant\nEmail: applicant@example.invalid\nPhone: +61 000 000 000"]
-    proposal = {"readyForReview": True, "recipients": recipients, "subject": "Application to " + label + " Practice", "body": "\n\n".join(blocks), "cvVersionId": cv_id, "evidenceHash": "synthetic-current-source-" + identifier, "missing": []}
+    proposal = {"readyForReview": True, "recipients": recipients, "subject": "Application to " + label + " Practice", "body": "\n\n".join(blocks), "cvVersionId": cv_id, "evidenceHash": "synthetic-current-source-" + identifier, "missing": [], "outreachMode": "initial_enquiry" if identifier == second else "job_application"}
     saved = saved_edits.get((owner, mailbox, identifier, cv_id))
     if saved:
         blocks[2], blocks[3] = saved["clinicParagraph"], saved["valueParagraph"]
@@ -70,7 +71,7 @@ def letter_proposal(identifier, cv_id, mailbox="primary"):
         proposal.update(readyForReview=False, ownerEditNeedsReview=True, editStatus="saved_edit_needs_review", missing=["mail_opportunity_saved_edit_requires_review"], savedEdit={"id": "moedit_" + "e" * 32, "revision": 1, "cvVersionId": cv, "subject": proposal["subject"], "clinicParagraph": "Previous owner paragraph requiring current CV review.", "valueParagraph": "Previous owner contribution requiring source review."})
     elif scenario == "inline_incomplete":
         proposal.update(readyForReview=False, missing=["needs_contact"], recipients=[])
-    elif scenario == "inline_no_body":
+    elif scenario == "inline_no_body" or scenario == "inline_order" and identifier == first:
         proposal.update(readyForReview=False, missing=["mail_opportunity_public_evidence_required"], recipients=[], body="")
     return proposal
 
@@ -81,7 +82,7 @@ def item(identifier, mailbox="primary"):
     research = {"status": "read" if researched else "queued", "verified": researched, "reason": None if researched else research_reason or "public_employer_verification_required", "checkedAt": "2026-11-18T02:00:00Z", "officialSourceUrl": "https://clinic.example.invalid/", "searchStatus": "search_not_configured", "sources": [{"url": "https://clinic.example.invalid/about", "kind": "root", "status": "read", "readAt": "2026-11-18T02:00:00Z"}, {"url": "https://www.linkedin.com/company/synthetic-practice", "kind": "public_social", "status": "discovered_not_read", "readAt": None}, {"url": "https://clinic.example.invalid/oauth/callback?code=PRIVATE_SHOULD_NOT_RENDER", "kind": "root", "status": "read", "readAt": "2026-11-18T02:00:00Z"}], "gaps": ["services_not_published", "training_not_published", "crisis_history_not_assessed", "INTERNAL_GAP_MUST_NOT_RENDER"]}
     if scenario == "source_restrictions":
         research["gaps"] = ["source_registration_restricted", "source_australian_residence_required", "source_level1_restricted", "source_sponsorship_restricted", "source_supervision_restricted", "source_img_restricted", "source_applications_closed", "source_deadline_expired"]
-    return {"id": identifier, "title": "General practitioner; supervision needs confirmation", "clinicName": name, "sourceUrl": "https://clinic.example.invalid/careers", "receivedAt": "2026-11-18T02:00:00Z", "mailbox": mailbox, "sourceKind": "linkedin_alert", "status": "suggested", "unread": True, "fit": {"priority": "high", "level1": "unknown", "sponsorship": "unknown", "pesci": "unknown"}, "draft": letter_proposal(identifier, cv_latest, mailbox) if scenario == "inline_cached" else {"status": "not_prepared"}, "research": research, "provenance": {"gmailId": "syntheticMessage", "threadId": "syntheticThread"}}
+    return {"id": identifier, "title": "General practitioner; supervision needs confirmation", "clinicName": name, "sourceUrl": "https://clinic.example.invalid/careers", "receivedAt": "2026-11-18T02:00:00Z", "mailbox": mailbox, "sourceKind": "linkedin_alert", "status": "suggested", "unread": True, "fit": {"priority": "high", "level1": "unknown", "sponsorship": "unknown", "pesci": "unknown"}, "draft": letter_proposal(identifier, cv_latest, mailbox) if scenario in ["inline_cached", "inline_order"] else {"status": "not_prepared"}, "research": research, "outreachMode": "initial_enquiry" if scenario.startswith("inline") and identifier == second else "job_application" if scenario.startswith("inline") else None, "provenance": {"gmailId": "syntheticMessage", "threadId": "syntheticThread"}}
 
 
 def route(request):
@@ -90,6 +91,8 @@ def route(request):
     mailbox = query.get("mailbox", ["primary"])[0]
     path = parsed.path
     method = request.request.method
+    if method == "GET" and path == "/api/google/mail-opportunities":
+        list_reads.append({"sort": query.get("sort", [None])[0], "offset": query.get("offset", ["0"])[0], "mailbox": mailbox})
     if path == "/api/public-config":
         request.fulfill(json={"authRequired": True, "supabaseUrl": "https://auth.example.invalid", "publishableKey": "sb_publishable_synthetic"})
         return
@@ -124,6 +127,9 @@ def route(request):
             offset = int(query.get("offset", ["0"])[0])
             if scenario == "pages":
                 request.fulfill(json={"items": [item(first if offset == 0 else second, mailbox)], "unreadCount": 2, "more": offset == 0, "nextOffset": 25 if offset == 0 else None})
+            elif scenario == "inline_order":
+                identifiers = [second, first] if query.get("sort", ["ready"])[0] == "ready" else [first]
+                request.fulfill(json={"items": [item(identifier, mailbox) for identifier in identifiers], "unreadCount": 2, "more": len(identifiers) == 1, "nextOffset": 25 if len(identifiers) == 1 else None})
             else:
                 request.fulfill(json={"items": [item(first, mailbox), item(second, mailbox)], "unreadCount": 2, "more": False})
         return
@@ -484,6 +490,48 @@ with sync_playwright() as playwright:
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), "Inline mail editor overflows at " + str(width)
     assert not errors, errors
 
+    # Readiness ordering is requested BEFORE server pagination, rather than
+    # sorting only the current 25 results. Changing order keeps the open letter,
+    # selected CV and existing review; unsaved text cannot be hidden by sorting.
+    scenario = "inline_order"
+    saved_edits.clear()
+    page.goto(base)
+    order = panel.get_by_label("ترتیب فرصت‌های ایمیلی", exact=True)
+    expect(order).to_have_value("ready")
+    expect(cards.first).to_have_attribute("id", "mail-opportunity-" + second)
+    assert list_reads[-1]["sort"] == "ready"
+    initial = page.locator("#mail-opportunity-" + second)
+    initial.get_by_role("button", name="بررسی و ارسال ایمیل", exact=True).click()
+    expect(initial.locator(".mail-opportunity-mode")).to_have_text("استعلام اولیهٔ همکاری")
+    expect(initial.locator(".mail-opportunity-enquiry-help")).to_contain_text("وجود آگهی باز یا ظرفیت سوپروایزر هنوز تأیید نشده")
+    expect(initial.get_by_role("button", name="تأیید و ارسال ایمیل و رزومه", exact=True)).to_be_enabled()
+    before = len(writes)
+    initial.get_by_label("ویرایش بند دوم فرصت ایمیلی", exact=True).fill("Keep my enquiry visible while I review the selected practice.")
+    expect(order).to_be_disabled()
+    initial.get_by_role("button", name="کنار گذاشتن تغییرات", exact=True).click()
+    expect(order).to_be_enabled()
+    order.select_option("newest")
+    expect(cards.first).to_have_attribute("id", "mail-opportunity-" + first)
+    expect(initial.locator(".mail-opportunity-detail")).to_be_visible()
+    expect(initial.get_by_label("رزومهٔ همین آگهی", exact=True)).to_have_value(cv_latest)
+    expect(initial.get_by_role("button", name="تأیید و ارسال ایمیل و رزومه", exact=True)).to_be_enabled()
+    assert list_reads[-1]["sort"] == "newest" and list_reads[-1]["offset"] == "0"
+    assert not [entry for entry in writes[before:] if entry["path"].endswith(("/prepare", "/preview", "/send", "/edit"))], "Sorting recreated or sent a prepared letter"
+    order.select_option("ready")
+    expect(cards.first).to_have_attribute("id", "mail-opportunity-" + second)
+    expect(initial.locator(".mail-opportunity-detail")).to_be_visible()
+    page.evaluate("document.documentElement.lang='en';document.documentElement.dataset.language='en';document.documentElement.dir='ltr';window.dispatchEvent(new Event('masir-language-change'))")
+    expect(panel.get_by_label("Email opportunity order", exact=True)).to_have_value("ready")
+    expect(initial.locator(".mail-opportunity-mode")).to_have_text("Initial employment enquiry")
+    expect(initial.locator(".mail-opportunity-enquiry-help")).to_contain_text("has not been confirmed")
+    expect(page.locator("#mail-opportunity-" + first).locator(".mail-opportunity-mode")).to_have_text("Job application")
+    assert not re.search(r"[\u0600-\u06ff]", panel.inner_text()), panel.inner_text()
+    for width in [320, 390, 1440]:
+        page.set_viewport_size({"width": width, "height": 900})
+        page.evaluate("document.documentElement.style.fontSize='150%'")
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), "Sorted mail opportunities overflow at " + str(width)
+    assert not errors, errors
+
     # A Telegram link survives the real login gate. The exact secondary item
     # opens only after /me has verified its application owner.
     owner = "ownerA"
@@ -511,4 +559,4 @@ with sync_playwright() as playwright:
 
 server.shutdown()
 workspace.cleanup()
-print("PASS private mail opportunities: owner/mailbox isolation, own default/latest CV and per-card mixed-CV batches, immediately visible editable letters, explicit saved receipts and fresh send review, stale-edit rebase, failed-save retention, green single/batch sends, English/mobile; synthetic transport only.")
+print("PASS private mail opportunities: owner/mailbox isolation, own default/latest CV and per-card mixed-CV batches, visible editable letters, source-bound saved receipts, stale-edit rebase, failed-save retention, ready/newest server ordering without losing open letters, initial enquiry labels, green sends, English/mobile; synthetic transport only.")

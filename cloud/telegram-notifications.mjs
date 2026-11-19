@@ -150,15 +150,15 @@ function privateMailLink(row){
 export function mailOpportunityAlertText(row){
  let fit={},data={},draft=null;
  try{fit=JSON.parse(row.fit_json||'{}');data=JSON.parse(row.data_json||'{}');draft=row.draft_json?JSON.parse(row.draft_json):null;}catch{return null;}
- if(!fit||typeof fit!=='object'||Array.isArray(fit)||!['high','review'].includes(fit.priority)||['restricted','negative'].includes(fit.level1)||['restricted','negative'].includes(fit.sponsorship))return null;
+ if(!fit||typeof fit!=='object'||Array.isArray(fit)||!['high','review'].includes(fit.priority)||['restricted','negative'].includes(fit.level1)||['restricted','negative'].includes(fit.sponsorship)||['restricted','negative'].includes(fit.registration))return null;
  const url=privateMailLink(row),title=alertField(row.title),clinic=alertField(row.clinic_name,120),state=alertField(data.state||data.region,50);
  if(!url||!title||draft?.status!=='ready_for_review'||draft.readyForReview!==true||!MAIL_CV_ID.test(draft.cvVersionId||'')||typeof draft.subject!=='string'||!draft.subject.trim()||typeof draft.body!=='string'||draft.body.trim().length<100||!Array.isArray(draft.recipients)||!draft.recipients.length||draft.recipients.some(email=>typeof email!=='string'||!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)))return null;
- const supported=value=>['supported','positive'].includes(value);
- const lines=[fit.priority==='high'?'یک موقعیت مرتبط با مسیر GP شما پیدا شده که در اولویت بررسی است.':'یک موقعیت مرتبط با مسیر GP شما پیدا شده که ارزش بررسی دارد.',clinic?'مرکز: '+clinic:null,'موقعیت: '+title,state?'ایالت یا منطقه: '+state:null,
-  supported(fit.level1)?'نظارت Level 1 در متن ایمیل مطرح شده؛ ظرفیت فعلی را از مرکز تأیید می‌کنیم.':'امکان نظارت Level 1 هنوز در اطلاعات دریافتی روشن نیست.',
-  supported(fit.sponsorship)?'حمایت کارفرما برای ویزای کار در متن مطرح شده؛ شرایط آن نیاز به تأیید دارد.':'اسپانسرشیپ ویزای کار هنوز باید از کارفرما پرسیده شود.',
+ const supported=value=>['supported','positive'].includes(value),enquiry=draft.outreachMode==='initial_enquiry';
+ const lines=[enquiry?'برای این مرکز، یک ایمیل اولیهٔ پرس‌وجوی همکاری آماده شده است.':fit.priority==='high'?'یک موقعیت مرتبط با مسیر GP شما پیدا شده که در اولویت بررسی است.':'یک موقعیت مرتبط با مسیر GP شما پیدا شده که ارزش بررسی دارد.',clinic?'مرکز: '+clinic:null,enquiry?'وجود جای خالی فعلی در این مرکز هنوز تأیید نشده است.':'موقعیت: '+title,state?'ایالت یا منطقه: '+state:null,
+  !enquiry&&supported(fit.level1)?'نظارت Level 1 در متن ایمیل مطرح شده؛ ظرفیت فعلی را از مرکز تأیید می‌کنیم.':'امکان نظارت Level 1 هنوز در اطلاعات دریافتی روشن نیست.',
+  !enquiry&&supported(fit.sponsorship)?'حمایت کارفرما برای ویزای کار در متن مطرح شده؛ شرایط آن نیاز به تأیید دارد.':'اسپانسرشیپ ویزای کار هنوز باید از کارفرما پرسیده شود.',
   'پیش‌نویس اختصاصی این مورد در پنل آمادهٔ بازبینی است.',
-  'وارد پنل شوید و همین موقعیت را باز کنید. پس از بررسی متن، گیرنده و رزومه، «تأیید و ارسال» را بزنید.',url];
+  enquiry?'وارد پنل شوید و کارت این مرکز را باز کنید. پس از بررسی متن، گیرنده و رزومه، «تأیید و ارسال» را بزنید.':'وارد پنل شوید و همین موقعیت را باز کنید. پس از بررسی متن، گیرنده و رزومه، «تأیید و ارسال» را بزنید.',url];
  return {text:lines.filter(Boolean).join('\n').slice(0,3200),url};
 }
 

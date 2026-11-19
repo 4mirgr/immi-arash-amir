@@ -3,7 +3,7 @@
 .mail-opportunities-heading>div{min-width:0;flex:1}
 .mail-opportunities-heading h3{display:flex;gap:.55rem;align-items:center;line-height:1.65;margin:.1rem 0 .35rem;flex-wrap:wrap}
 .mail-opportunity-count,.mail-opportunity-new{background:#19b77e24;border:1px solid #25d59a70;border-radius:2rem;color:var(--text,#e8f3ff);font-size:.75rem;padding:.15rem .55rem;white-space:nowrap}
-.mail-opportunities-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.8rem;margin-block:1rem}
+.mail-opportunities-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.8rem;margin-block:1rem}
 .mail-opportunities-controls label{display:flex;flex-direction:column;gap:.35rem;min-width:0;font-size:.84rem}
 .mail-opportunities-controls select{margin:0;width:100%;min-width:0;min-height:2.8rem}
 .mail-opportunities-selection{display:flex;justify-content:space-between;gap:.75rem;align-items:center;flex-wrap:wrap;margin-block:.8rem;font-size:.84rem}
@@ -85,4 +85,6 @@
 .mail-opportunity-inline-letter textarea{box-sizing:border-box;margin:0;padding:.7rem;width:100%;min-width:0;max-width:100%;min-height:6.5rem;resize:vertical;font-family:Arial,sans-serif;text-align:left;font-size:.86rem;line-height:1.85;overflow-wrap:break-word;background:color-mix(in srgb,var(--panel,#122236) 96%,#3bbfa0);border:1px solid #3bbfa04d;border-radius:.55rem;color:inherit}
 .mail-opportunity-edit-actions{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;margin-top:.8rem}.mail-opportunity-edit-actions>p{flex-basis:100%;font-size:.79rem;line-height:1.8;color:var(--muted,#b1c3da);margin:.2rem 0}.mail-opportunity-edit-actions>button{white-space:normal;max-width:100%}
 .mail-opportunity-cv-fallback{font-size:.78rem;max-width:none;line-height:1.85;margin-block:-.3rem .8rem}
+.mail-opportunity-mode{display:inline-flex;align-items:center;padding:.1rem .5rem;border:1px solid #60bfea65;border-radius:1rem;line-height:1.8;color:var(--text,#e8f3ff);background:#60bfea0a}.mail-opportunity-mode.mode-job_application{border-color:#46d7b568;background:#46d7b50e}.mail-opportunity-enquiry-help{padding-inline-start:.6rem;border-inline-start:2px solid #60bfea75;max-width:none;line-height:1.9}
+@media(min-width:701px) and (max-width:1100px){.mail-opportunities-controls{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.mail-opportunity-card-cv{grid-template-columns:1fr;gap:.4rem}.mail-opportunity-letter-workspace{padding:.65rem}.mail-opportunity-inline-letter{padding:.65rem;gap:.9rem}.mail-opportunity-edit-actions>button{width:100%;flex-basis:100%}.mail-opportunity-inline-letter textarea{font-size:.85rem}}

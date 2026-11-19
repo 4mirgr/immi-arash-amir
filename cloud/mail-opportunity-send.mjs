@@ -43,8 +43,8 @@ export async function handleMailOpportunitySendRequest(request,env,context,fetch
   }
   const identity=await env.GOOGLE_DB.prepare('SELECT google_sub,email,status FROM google_accounts WHERE owner_id=? AND profile_id=?').bind(context.userId,'arash').first();
   if(identity?.status!=='connected'||preview&&identity.email.toLowerCase()!==preview.sender?.toLowerCase())fail('mail_opportunity_account_changed',409);
-  const reviewHash=await digest({owner:root,slot:context.userId,googleSubject:identity.google_sub,sender:identity.email.toLowerCase(),id:match[1],recipient,subject:proposal.subject,body:proposal.body,cvVersionId:selected.cvVersionId,cvText:cvs[0].text,cvVersion:cvs[0].version,evidenceHash:proposal.evidenceHash,editedDraftId:proposal.editedDraftId||null});
-  const details={...preview,id:match[1],availableRecipients,recipient,mailbox:context.mailbox||'primary',subject:proposal.subject,body:proposal.body,message:{subject:proposal.subject,body:proposal.body},cvVersionId:selected.cvVersionId,editedDraftId:proposal.editedDraftId||null,editRevision:proposal.editRevision||null,reviewHash,readyForReview:preview?.recipients?.length===1,automaticSending:false};
+  const reviewHash=await digest({owner:root,slot:context.userId,googleSubject:identity.google_sub,sender:identity.email.toLowerCase(),id:match[1],recipient,subject:proposal.subject,body:proposal.body,cvVersionId:selected.cvVersionId,cvText:cvs[0].text,cvVersion:cvs[0].version,evidenceHash:proposal.evidenceHash,editedDraftId:proposal.editedDraftId||null,outreachMode:proposal.outreachMode});
+  const details={...preview,id:match[1],outreachMode:proposal.outreachMode,availableRecipients,recipient,mailbox:context.mailbox||'primary',subject:proposal.subject,body:proposal.body,message:{subject:proposal.subject,body:proposal.body},cvVersionId:selected.cvVersionId,editedDraftId:proposal.editedDraftId||null,editRevision:proposal.editRevision||null,reviewHash,readyForReview:preview?.recipients?.length===1,automaticSending:false};
   if(match[2]==='preview')return json({...details,sent:false});
   if(selected.reviewHash!==reviewHash)fail('mail_opportunity_changed_review_required',409);
   // Do not perform another discarded preview during Send. The hash above
@@ -61,6 +61,6 @@ export async function handleMailOpportunitySendRequest(request,env,context,fetch
    if(!dispatched.ok)return json({...delivered,id:match[1],automaticRetry:false},dispatched.status);
   }
   const result=delivered.items?.find(item=>item.id===queue.id),status=result?.status||'delivery_unknown';
-  return json({...delivered,id:match[1],recipient,status,sent:status==='sent',automaticRetry:false});
+  return json({...delivered,id:match[1],outreachMode:proposal.outreachMode,recipient,status,sent:status==='sent',automaticRetry:false});
  }catch(error){return json({error:/^[a-z_]{3,80}$/.test(error?.code||error?.message||'')?(error.code||error.message):'mail_opportunity_send_unavailable',automaticRetry:false},Number.isInteger(error?.status)?error.status:503);}
 }
