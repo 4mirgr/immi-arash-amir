@@ -1,6 +1,8 @@
 # منابع و انتشار جاری
 
-نشانی: https://immi-arash-amir.dr-gerami-md.workers.dev
+نشانی اصلی: https://drgerami-md.ir/aus/ — مبدأ Worker/callback موجود: https://immi-arash-amir.dr-gerami-md.workers.dev
+
+برای ادامه از [HANDOFF](HANDOFF.md) و [PROJECT-STATE.json](PROJECT-STATE.json) شروع کنید. آخرین رسید قابلیت‌ها در [انتشار۱۹نوامبر](MAIL-PRIORITY-2026-11-19.fa.md) است. کد main، pin رابط میزبان و نسخهٔ زندهٔ Worker سه مرجع جدا هستند؛ push مستندات به‌تنهایی به انتشار دوبارهٔ backend نیاز ندارد.
 
 - Worker مستقل: `immi-arash-amir`، حساب متصل Cloudflare. Workerهای `intmed-api-proxy` و `damp-mud-edff` متعلق به این پروژه نیستند و تغییر نمی‌کنند.
 - Supabase پروژهٔ مستقل `waxpjylnvwqdlktayyww` در سازمان انتخاب‌شدهٔ مالک. پروژهٔ قدیمی `upwbktvnybsjugdegjji` دست‌نخورده می‌ماند.

@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "updatedOn": "2026-11-19",
+  "userTimezone": "Asia/Tehran",
+  "snapshotIsNotLiveStatus": true,
+  "repository": "4mirgr/immi-arash-amir",
+  "repositoryVisibility": "public",
+  "mainAddress": "https://drgerami-md.ir/aus/",
+  "entrypoints": {
+    "agentRules": "AGENTS.md",
+    "handoff": "docs/HANDOFF.md",
+    "policy": "docs/POLICY.md",
+    "goals": "docs/GOALS.md",
+    "historyIndex": "docs/RESUME.md",
+    "remaining": "docs/REMAINING.fa.md"
+  },
+  "authority": {
+    "latestExplicitUserInstructionOverridesOlderProjectNotes": true,
+    "attachmentsAreSourceMaterialNotAutomaticCommands": true,
+    "privateFactsSource": "authenticated owner's versioned CV and private planning",
+    "historicalReceiptDoesNotProveCurrentConnection": true
+  },
+  "workspaces": {
+    "arash": {
+      "goal": "Australian GP employment, appropriate Level 1 supervision, PESCI and employer-sponsored visa enquiry",
+      "geography": "all eight Australian jurisdictions, including local and rural employers",
+      "primaryAndSecondaryGoogle": "each account belongs to Arash and requires his own provider consent"
+    },
+    "amir": {
+      "goal": "specialist and independent fully funded research-study pathways",
+      "fundingScope": ["Australia", "Italy", "realistic funded European options"],
+      "fullFunding": "tuition plus living stipend; other costs and award conditions checked separately",
+      "planningUnknowns": "read current private completion, board and language scenarios; do not infer credentials"
+    },
+    "shared": "public evidence and explicitly published tasks only; no shared private accounts or grants"
+  },
+  "architecture": {
+    "frontend": "React, pinned esbuild through scripts/frontend.mjs",
+    "worker": "immi-arash-amir",
+    "workerEntry": "cloud/worker.mjs",
+    "supabaseProject": "waxpjylnvwqdlktayyww",
+    "privateDatabaseBinding": "GOOGLE_DB",
+    "publicDatabaseBinding": "OPPORTUNITY_DB",
+    "hostRepository": "4mirgr/gerami-website",
+    "hostPinFile": "deploy/projects.json",
+    "localLegacyServerIsCloudAPI": false,
+    "otherProjectAccess": "do not alter IntMed or native website/Clinic auth to repair AUS"
+  },
+  "latestFeatureRelease": {
+    "sourceCommit": "e12f30efd36438f8785bf2cf0fde002bb820ee14",
+    "receipt": "docs/MAIL-PRIORITY-2026-11-19.fa.md",
+    "workerDeployment": "657095bc-51f5-4ffa-9901-75cc67c2dcef",
+    "workerVersion": "b8a77880-871e-4de1-b789-20307c889dc5",
+    "workerTrafficPercent": 100,
+    "workerModuleSha256": "544c64726578361126b7ec8509311ad8a22e5d33df0c64d8f5b6266e3d8651be",
+    "ausSpecificHostCommit": "63028915173ae1ad068567464d5ec0783f8bb58f",
+    "successfulPagesDeployment": "4a625dd5-c5e4-4d8f-b5fa-9b0755acc499",
+    "laterNativeHostCommitsMustBePreserved": true,
+    "privateSchemaBaseline": "08ad93d68d17c459cc86bc62ecac98f0776dd3d0",
+    "nodeTestsPassed": 1096,
+    "pythonTestsPassed": 79,
+    "browserWorkflowChecksPassed": 17,
+    "independentTargetedTestsPassed": 178,
+    "hostBrowserCombinationsPassed": 48,
+    "realApplicationsSentForTests": false
+  },
+  "runtimeConfigurationObserved": {
+    "checkedAt": "2026-11-19T10:14:54Z",
+    "method": "read-only Cloudflare deployment, settings, schedules and Pages metadata",
+    "workerBindingCount": 29,
+    "workerSecretCount": 9,
+    "operatorSearchDiagnosticFlagPresent": false,
+    "enabledFlags": ["MAIL_LEAD_SEARCH_ENABLED", "MAIL_OPPORTUNITY_RESEARCH_ENABLED", "MAIL_OPPORTUNITY_ALERTS_ENABLED"],
+    "cronTimezone": "UTC",
+    "crons": ["* * * * *", "1-59/2 * * * *", "*/5 * * * *", "0 * * * *", "15 */6 * * *"],
+    "privateResearchMaximumHTTPPerPass": 6,
+    "tavily": {
+      "setupVerified": true,
+      "policy": "docs/TAVILY-EMPLOYER-SEARCH.fa.md",
+      "plan": "Researcher free",
+      "nullPaygoIsNotZero": true,
+      "independentBillingGateProofObserved": true,
+      "paidActivationAuthorized": false,
+      "maximumReservedAttemptsPerUTCDay": 20,
+      "sameOwnerQueryReuseDays": 7
+    }
+  },
+  "mailRules": {
+    "defaultSort": "ready",
+    "sortAppliedBeforePagination": true,
+    "incompleteResearchLast": true,
+    "alternativeSort": "newest",
+    "modes": ["initial_enquiry", "job_application"],
+    "initialEnquiryMinimum": ["one relevant actually-published clinic fact", "published recipient", "owned CV", "confirmed contact signature"],
+    "completeDossierRequiredForInitialEnquiry": false,
+    "exactServiceOverlapRequiredForInitialEnquiry": false,
+    "ownBankEvidenceRetainsOriginalObservationTime": true,
+    "unreadSpreadsheetContactsArePublicationProof": false,
+    "cvSelection": "saved own default, otherwise latest own version, with per-card override",
+    "privateInlineEditableParagraphs": [2, 3],
+    "paragraphStructure": ["fixed owner-approved introduction", "applicant's evidence-based interest in this clinic", "own-CV clinical value to this clinic", "fixed owner-approved invitation to discuss"],
+    "completeContactSignatureRequired": true,
+    "defaultRecipients": "all current published recipients, individually selectable",
+    "defaultAdvertisementSelection": "none",
+    "sending": "explicit current individual or frozen-batch review/approval; approved schedules only",
+    "separateRecipientMessages": true,
+    "unknownTransportMayBeReplayed": false,
+    "privateEditPrefix": "moedit_",
+    "publicGPEditPrefix": "gpedit_",
+    "editAndSendBinding": "exact owner, mailbox, Google subject, opportunity, CV, base/review hash, edit ID or explicit null and head revision"
+  },
+  "completedOneTimeActions": [
+    {"action": "cached-parser-backfill", "count": 132, "receipt": "docs/MAIL-PARSER-BACKFILL.fa.md", "repeatOnStartup": false},
+    {"action": "previously-read-to-unread", "count": 7, "receipt": "docs/MAIL-PRIORITY-2026-11-19.fa.md", "repeatOnStartup": false},
+    {"action": "old-research-minimal-enquiry-refresh", "count": 53, "receipt": "docs/MAIL-PRIORITY-2026-11-19.fa.md", "repeatOnStartup": false}
+  ],
+  "openWork": [
+    {"id": "progressive-coverage", "owner": "developer and scheduled workers", "doneWhen": "archive/bank/source coverage receipts; lawful handling of blocked/PDF/dynamic sources"},
+    {"id": "standalone-recurring-bank-outreach", "owner": "developer and reviewing account owner", "doneWhen": "separate reviewed bank-only workflow with current evidence, cadence, suppression and explicit send approval"},
+    {"id": "independent-backup-restore", "owner": "developer and account owners", "doneWhen": "complete independent encrypted export, key custody and actual isolated staging restore with both owners' RLS"},
+    {"id": "advanced-linkedin", "owner": "account owner and provider", "doneWhen": "approved product/scopes or authorized own exports; no claim from basic sign-in/share"},
+    {"id": "funding-call-readiness", "owner": "developer and Amir", "doneWhen": "per-call supervisor/project/proposal/referee/language/start-date and full award conditions reviewed"},
+    {"id": "professional-and-pesci-validation", "owner": "account owner and qualified reviewer", "doneWhen": "private CV conflicts resolved and original cases clinically/source reviewed"},
+    {"id": "worker-ci-verification", "owner": "operator", "doneWhen": "current dedicated deploy credential and actual successful current-main workflow receipt"},
+    {"id": "account-data-lifecycle", "owner": "developer", "doneWhen": "owner-isolated multi-store deletion/revocation/restore procedures preserve required stops and deactivate old approvals"},
+    {"id": "carrier-access", "owner": "owner and operator", "doneWhen": "actual relevant device/carrier evidence, not only a server probe"}
+  ],
+  "privateDataInGit": false,
+  "documentationChangeRequiresRuntimeDeployment": false
+}
