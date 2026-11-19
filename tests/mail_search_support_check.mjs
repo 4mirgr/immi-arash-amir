@@ -10,7 +10,7 @@ function fixture(){
  db.prepare('INSERT INTO google_accounts VALUES(?,?,?,?,?,?,?,?,?)').run(owner,'arash','synthetic-sub','synthetic@example.invalid','[]','NOT_A_TOKEN',0,'connected',now);
  const binding={prepare(sql){let args=[];return {bind(...values){args=values;return this;},async first(){return db.prepare(sql).get(...args)||null;},async all(){return {results:db.prepare(sql).all(...args)};},async run(){return {meta:db.prepare(sql).run(...args)};}};}};
  const env={GOOGLE_DB:binding,MAIL_SEARCH_SUPPORT_CHECK:MAIL_SEARCH_SUPPORT_VERSION};let calls=0;
- const options={now,membership:async()=>({active:true}),checker:async(_env,{budget})=>{calls++;assert.equal(budget.remaining,1);return {allowed:false,reason:'paygo_limit_not_confirmed',plan:'Researcher',planLimit:1000,planUsage:0,paygoLimit:null,paygoUsage:0,keyLimit:1000,keyUsage:0,fieldTypes:{paygoLimit:'null'},api_key:'NEVER_STORE_THIS',raw:'NEVER_STORE_PROVIDER_BODY'};}};
+ const options={now,membership:async()=>({active:true}),checker:async(_env,{budget})=>{calls++;assert.equal(budget.remaining,2);return {allowed:false,reason:'paygo_limit_not_confirmed',plan:'Researcher',planLimit:1000,planUsage:0,paygoLimit:null,paygoUsage:0,keyLimit:1000,keyUsage:0,fieldTypes:{paygoLimit:'null'},api_key:'NEVER_STORE_THIS',raw:'NEVER_STORE_PROVIDER_BODY'};}};
  return {db,env,options,calls:()=>calls};
 }
 test('operator plan diagnosis touches nothing without its exact flag',async()=>{
@@ -36,4 +36,9 @@ test('inactive membership, missing owner and ambiguous owners never call the pro
 test('unexpected provider failures store a fixed diagnostic rather than exception contents',async()=>{
  const f=fixture();await runMailSearchSupportCheck(f.env,{...f.options,checker:async()=>{throw Error('SECRET_AND_PRIVATE_PROVIDER_BODY');}});
  const row=f.db.prepare('SELECT result_json,error_code FROM private_mail_lead_searches').get();assert.equal(row.error_code,'plan_check_temporarily_unavailable');assert(!row.result_json.includes('SECRET'));
+});
+test('only bounded billing entitlement proof is retained, never logs or provider detail',async()=>{
+ const f=fixture();await runMailSearchSupportCheck(f.env,{...f.options,checker:async()=>({allowed:true,reason:'free_plan_confirmed_by_billing_gate',plan:'researcher',billingGate:{proof:'free_no_paygo',httpStatus:403,source:'NEVER_STORE_UNTRUSTED_SOURCE',logs:'NEVER_STORE_LOGS'}})});
+ const row=f.db.prepare('SELECT result_json,error_code FROM private_mail_lead_searches').get();assert.equal(row.error_code,null);
+ assert.deepEqual(JSON.parse(row.result_json)[0].billingGate,{proof:'free_no_paygo',httpStatus:403,source:'https://docs.tavily.com/documentation/api-reference/endpoint/logs'});assert(!row.result_json.includes('NEVER_STORE'));
 });

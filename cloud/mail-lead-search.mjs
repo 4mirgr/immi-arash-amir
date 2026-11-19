@@ -6,7 +6,10 @@ import {normalizeMailPublicJobLead,publicGPAttributeSearchQuery} from './mail-pu
 
 const DAY=86400000,CACHE_MS=7*DAY,HTTP_TIMEOUT=8000,MAX_JSON_BYTES=256000;
 export const MAIL_LEAD_SEARCH_DAILY_LIMIT=20;
+export const MAIL_SEARCH_BILLING_PROOF_PROTOCOL='billing-proof-v2';
 const ROOT=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const BILLING_GATE_SOURCE='https://docs.tavily.com/documentation/api-reference/endpoint/logs';
+const FREE_LOG_DENIAL='Access denied. Usage logs are only available to paying customers. Please upgrade your plan to access this feature.';
 const clean=(value,max=300)=>typeof value==='string'?value.replace(/[\x00-\x1f<>]/g,' ').replace(/\s+/g,' ').trim().slice(0,max):'';
 const parseArray=value=>{try{const out=JSON.parse(value);return Array.isArray(out)?out:[];}catch{return [];}};
 const hash=async value=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(byte=>byte.toString(16).padStart(2,'0')).join('');
@@ -53,12 +56,44 @@ async function providerJSON(fetcher,url,init,budget){
   return JSON.parse(new TextDecoder().decode(merged));
  }finally{clearTimeout(timer);}
 }
-/** Internal operator preflight only. Fixed /usage GET; no search, storage,
- * account identifiers, raw provider errors or credential values are returned. */
-export async function checkConfiguredTavilyPlan(env,{fetcher=fetch,budget}={}){
+/** Internal preflight. Fixed /usage GET plus the documented read-only paid
+ * entitlement gate for the null case; no search, storage or logs returned. */
+function nullLimitNeedsIndependentProof(usage,summary){
+ const account=usage?.account,key=usage?.key;
+ return Boolean(['researcher','free'].includes(summary.plan)&&account?.paygo_limit===null&&account.paygo_usage===0&&Number.isSafeInteger(account.plan_limit)&&account.plan_limit>0&&account.plan_limit<=1000&&Number.isSafeInteger(account.plan_usage)&&account.plan_usage>=0&&account.plan_usage<account.plan_limit&&Number.isSafeInteger(key?.usage)&&key.usage>=0&&(key.limit===null||Number.isSafeInteger(key.limit)&&key.limit>0&&key.limit<=1000&&key.usage<key.limit));
+}
+async function nonpayingBillingGate(env,{fetcher,budget}={}){
+ const proof=(value,httpStatus=null)=>({proof:value,httpStatus,source:BILLING_GATE_SOURCE});
+ if(budget&&budget.remaining<1)return proof('unconfirmed');
+ if(budget)budget.remaining--;
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),HTTP_TIMEOUT);
+ try{
+  const response=await fetcher('https://api.tavily.com/logs',{method:'POST',headers:{Authorization:'Bearer '+env.TAVILY_API_KEY,Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({limit:1,filter_by_api_key:true}),redirect:'manual',signal:controller.signal});
+  const discard=async()=>{try{await response.body?.cancel();}catch{}};
+  if(response.status===200){await discard();return proof('paid_or_paygo',200);}
+  if(response.status!==403||!/application\/json/i.test(response.headers.get('content-type')||'')){await discard();return proof('unconfirmed',Number.isInteger(response.status)?response.status:null);}
+  // Inspect only a small documented error response. A successful logs body is
+  // never read: it may contain masked keys and account-wide request metadata.
+  const reader=response.body?.getReader();if(!reader)return proof('unconfirmed',403);
+  const parts=[];let size=0;
+  while(true){const next=await reader.read();if(next.done)break;size+=next.value.byteLength;if(size>4096){await reader.cancel();return proof('unconfirmed',403);}parts.push(next.value);}
+  const bytes=new Uint8Array(size);let offset=0;for(const part of parts){bytes.set(part,offset);offset+=part.byteLength;}
+  let error;try{error=JSON.parse(new TextDecoder().decode(bytes))?.detail?.error;}catch{return proof('unconfirmed',403);}
+  return typeof error==='string'&&error.replace(/\s+/g,' ').trim()===FREE_LOG_DENIAL?proof('free_no_paygo',403):proof('unconfirmed',403);
+ }catch{return proof('unconfirmed');}finally{clearTimeout(timer);}
+}
+export async function checkConfiguredTavilyPlan(env,{fetcher=fetch,budget,reserveAfterCheck=0}={}){
  const unavailable=reason=>({...inspectTavilyFreePlan(null),reason});
  if(typeof env.TAVILY_API_KEY!=='string'||env.TAVILY_API_KEY.length<12||env.TAVILY_API_KEY.length>300)return unavailable('search_not_configured');
- try{return inspectTavilyFreePlan(await providerJSON(fetcher,'https://api.tavily.com/usage',{method:'GET',headers:{Authorization:'Bearer '+env.TAVILY_API_KEY,Accept:'application/json'}},budget));}
+ try{
+  const usage=await providerJSON(fetcher,'https://api.tavily.com/usage',{method:'GET',headers:{Authorization:'Bearer '+env.TAVILY_API_KEY,Accept:'application/json'}},budget),summary=inspectTavilyFreePlan(usage);
+  if(summary.allowed||!nullLimitNeedsIndependentProof(usage,summary))return summary;
+  // A search needs its own request plus two actual public-document requests
+  // after this check. Operator preflight reserves zero and needs budget two.
+  if(budget&&budget.remaining<1+Math.max(0,reserveAfterCheck))return {...summary,reason:'billing_probe_request_budget_exhausted',billingGate:{proof:'unconfirmed',httpStatus:null,source:BILLING_GATE_SOURCE}};
+  const billingGate=await nonpayingBillingGate(env,{fetcher,budget});
+  return {...summary,allowed:billingGate.proof==='free_no_paygo',reason:billingGate.proof==='free_no_paygo'?'free_plan_confirmed_by_billing_gate':summary.reason,billingGate};
+ }
  catch(error){return unavailable(/^[a-z_]{3,80}$/.test(error?.code||'')?error.code:'search_provider_unavailable');}
 }
 function searchCandidates(payload,name,now,jobLead=null){
@@ -84,7 +119,10 @@ export async function discoverMailEmployerSearch(env,context,candidate,{fetcher=
  const queryHash=await hash(query),cached=await db.prepare("SELECT result_json FROM private_mail_lead_searches WHERE owner_id=? AND query_hash=? AND status='searched' AND requested_at>=? AND requested_at<=? ORDER BY requested_at DESC LIMIT 1").bind(context.rootUserId,queryHash,now-CACHE_MS,now).first();
  if(cached)return {status:'cached_search_hints',candidates:parseArray(cached.result_json),searchRequests:0,mode:contextQuery.mode};
  if(budget&&budget.remaining<4)return empty('search_request_budget_exhausted');
- const day=Math.floor(now/DAY)*DAY,id='mls_'+(await hash(context.rootUserId+'\n'+queryHash+'\n'+day)).slice(0,32);
+ // A fixed protocol revision permits one retry of a pre-proof blocked query;
+ // old receipts still consume the same global daily allowance. Cache identity
+ // deliberately stays unchanged, so successful old searches are never charged.
+ const day=Math.floor(now/DAY)*DAY,id='mls_'+(await hash(context.rootUserId+'\n'+queryHash+'\n'+day+'\n'+MAIL_SEARCH_BILLING_PROOF_PROTOCOL)).slice(0,32);
  const reserved=await db.prepare(`INSERT INTO private_mail_lead_searches(id,owner_id,query_hash,requested_at)
   SELECT ?,?,?,? WHERE (SELECT count(*) FROM private_mail_lead_searches WHERE requested_at>=? AND requested_at<?)<?
   AND EXISTS(SELECT 1 FROM google_accounts g WHERE g.owner_id=? AND g.google_sub=? AND g.profile_id='arash' AND g.status='connected') ON CONFLICT(id) DO NOTHING RETURNING id`).bind(id,context.rootUserId,queryHash,now,day,day+DAY,MAIL_LEAD_SEARCH_DAILY_LIMIT,context.userId,context.googleSubject).first();
@@ -92,14 +130,15 @@ export async function discoverMailEmployerSearch(env,context,candidate,{fetcher=
  let status='failed',code=null,candidates=[],searchRequests=0,planDiagnostic=null;
  try{
   const headers={Authorization:'Bearer '+env.TAVILY_API_KEY,'Accept':'application/json'};
-  const usage=await providerJSON(fetcher,'https://api.tavily.com/usage',{method:'GET',headers},budget);
-  if(!tavilyFreeSearchAllowed(usage)){status='blocked';code='free_plan_without_paygo_required';planDiagnostic=inspectTavilyFreePlan(usage);}
+  const plan=await checkConfiguredTavilyPlan(env,{fetcher,budget,reserveAfterCheck:3});
+  if(plan.billingGate)planDiagnostic=plan;
+  if(!plan.allowed){status='blocked';code=plan.reason==='billing_probe_request_budget_exhausted'?'search_request_budget_exhausted':/^(?:search_|request_budget_exhausted)/.test(plan.reason||'')?plan.reason:'free_plan_without_paygo_required';planDiagnostic=plan;}
   else{
    searchRequests=1;
    const result=await providerJSON(fetcher,'https://api.tavily.com/search',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({query,topic:'general',search_depth:'basic',auto_parameters:false,max_results:5,include_answer:false,include_raw_content:false,include_images:false,exclude_domains:['linkedin.com','facebook.com','instagram.com','x.com','twitter.com']})},budget);
    candidates=searchCandidates(result,contextQuery.name,now,contextQuery.jobLead);status='searched';
   }
  }catch(error){code=/^[a-z_]{3,80}$/.test(error?.code||'')?error.code:'search_provider_unavailable';}
- await db.prepare('UPDATE private_mail_lead_searches SET completed_at=?,status=?,result_json=?,error_code=? WHERE id=? AND owner_id=? AND status=\'reserved\'').bind(now,status,JSON.stringify(planDiagnostic?{planDiagnostic}:candidates),code,id,context.rootUserId).run();
+ await db.prepare('UPDATE private_mail_lead_searches SET completed_at=?,status=?,result_json=?,error_code=? WHERE id=? AND owner_id=? AND status=\'reserved\'').bind(now,status,JSON.stringify(status==='searched'?candidates:planDiagnostic?{planDiagnostic}:candidates),code,id,context.rootUserId).run();
  return {status:code||status,candidates,searchRequests,mode:contextQuery.mode,...(planDiagnostic?{planDiagnostic}:{})};
 }
