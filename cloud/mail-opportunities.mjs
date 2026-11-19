@@ -4,7 +4,7 @@ import {getGoogleAccess} from './google-oauth.mjs';
 import {extractEmails,normalizeMessage,readGoogleMailJson,rankMessage} from './google-mail.mjs';
 import {correspondenceReplyText} from './clinic-correspondence.mjs';
 import {assessOpportunityFit} from './opportunity-fit.mjs';
-import {composeClinicParagraphs,readGpWritingProfile,suggestEvidencePair} from './gp-letter-composer.mjs';
+import {composeClinicParagraphs,readGpWritingProfile,suggestEvidencePair,cvEvidencePriority} from './gp-letter-composer.mjs';
 
 const DAY=86400000,MAX_AGE=14*DAY,MAX_INPUTS=8,MAX_CANDIDATES=3;
 const ID=/^mop_[a-f0-9]{32}$/;
@@ -22,9 +22,33 @@ const json=(value,status=200)=>new Response(JSON.stringify(value),{status,header
 const fail=(code,status=400)=>{throw Object.assign(Error(code),{code,status});};
 const text=(value,max=32768)=>typeof value==='string'?value.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g,'').trim().slice(0,max):'';
 const parse=(value,fallback={})=>{try{return JSON.parse(value||'{}');}catch{return fallback;}};
-const first=(db,sql,...args)=>db.prepare(sql).bind(...args).first();
-const all=async(db,sql,...args)=>(await db.prepare(sql).bind(...args).all()).results||[];
-const run=(db,sql,...args)=>db.prepare(sql).bind(...args).run();
+function privateStorageStage(sql){
+ if(/^INSERT INTO private_mail_opportunity_inputs\b/.test(sql))return 'mail_opportunity_input_enqueue_failed';
+ if(/^UPDATE private_mail_opportunity_inputs SET status='processing'/.test(sql))return 'mail_opportunity_input_claim_failed';
+ if(/^UPDATE private_mail_opportunity_inputs\b/.test(sql))return 'mail_opportunity_input_finalize_failed';
+ if(/^INSERT INTO private_mail_opportunities\b/.test(sql))return 'mail_opportunity_finding_write_failed';
+ if(/\bFROM clinic_bank_leads\b/.test(sql))return 'mail_opportunity_bank_read_failed';
+ return 'mail_opportunity_storage_unavailable';
+}
+async function privateStage(code,operation){
+ try{return await operation();}
+ catch(error){
+  if(/^[a-z_]{3,80}$/.test(error?.code||''))throw error;
+  // Inspect only to select a predefined family. Neither SQL text nor any
+  // parameter/provider/message contents are retained in a returned error.
+  const detail=[error?.message,error?.cause?.message].filter(value=>typeof value==='string').join(' ');
+  const family=/too many sql variables|too many (?:bound |bind |sql )?parameters|(?:maximum|max) (?:number of )?(?:bound )?parameters[^.]{0,30}exceed/i.test(detail)?'_parameter_limit':
+   /D1_TYPE_ERROR|unsupported (?:type|value)|(?:type|value)[^.]{0,40}not supported|undefined|wrong number of (?:parameter|binding)|number of bindings[^.]{0,30}(?:incorrect|mismatch)/i.test(detail)?'_binding':
+   /too many subrequests|too many (?:sql |d1 )?queries|too many terms in compound select|query (?:count|quota)[^.]{0,30}(?:limit|exceed)|quota[^.]{0,30}exceed|(?:query|statement) limit exceeded|D1_[A-Z_]*LIMIT/i.test(detail)?'_limit':
+   /no such table|no such column|has no column named|unknown column/i.test(detail)?'_schema':
+   /constraint|SQLITE_CONSTRAINT/i.test(detail)?'_constraint':
+   /malformed json|invalid json|json[^.]{0,25}(?:invalid|malformed)/i.test(detail)?'_json':'';
+  const safe=code+family;throw Object.assign(new Error(safe,{cause:error}),{code:safe,status:503});
+ }
+}
+const first=(db,sql,...args)=>privateStage(privateStorageStage(sql),()=>db.prepare(sql).bind(...args).first());
+const all=async(db,sql,...args)=>(await privateStage(privateStorageStage(sql),()=>db.prepare(sql).bind(...args).all())).results||[];
+const run=(db,sql,...args)=>privateStage(privateStorageStage(sql),()=>db.prepare(sql).bind(...args).run());
 const hash=async value=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(value))))].map(v=>v.toString(16).padStart(2,'0')).join('');
 function scope(context){
  const user=context?.userId,root=user?.replace(/:secondary$/,'');
@@ -58,7 +82,7 @@ function clinicName(message,label=''){
  return '';
 }
 function clinicalFacts(value){return text(value,18000).split(/\n+|(?<=[.!?])\s+/).map(s=>s.replace(/\s+/g,' ').trim()).filter(s=>s.length>=25&&s.length<=600&&!INSTRUCTION.test(s)&&!/\b(?:no|not|without|cannot|can't|unable|testimonial|case report|patient story|DOB|Mr|Mrs)\b/i.test(s)&&/\b(?:provides?|offers?|delivers?|manages?|supports?|includes?|experience|chronic|wound|suturing|emergency|acute|preventive|teaching|multidisciplinary)\b/i.test(s)&&/\b(?:general practice|family medicine|patient|chronic|preventive|diabetes|wound|emergency|acute|community|clinical|teaching)\b/i.test(s)).slice(0,24);}
-function cvFacts(value){return text(value,150000).split(/\n+|(?<=[.!?])\s+/).map(s=>s.replace(/\s+/g,' ').trim()).filter(s=>s.length>=25&&s.length<=600&&!INSTRUCTION.test(s)&&!/^(?:phone|email|address|referee|references|contact)\s*:/i.test(s)&&/\b(?:clinical|general practice|patient|chronic|preventive|diabetes|wound|suturing|emergency|acute|community|medical director)\b/i.test(s)).slice(0,40);}
+function cvFacts(value){return text(value,150000).split(/\n+|(?<=[.!?])\s+/).map(s=>s.replace(/\s+/g,' ').trim()).filter(s=>s.length>=25&&s.length<=600&&!INSTRUCTION.test(s)&&!/^(?:phone|email|address|referee|references|contact)\s*:/i.test(s)&&/\b(?:clinical|general practi(?:ce|tioner)|patient|chronic|preventive|diabetes|wound|suturing|emergency|acute|community|medical director|technical manager|multidisciplinary|teamwork|collaborat\w*|coordinat\w*|referrals?|triage|reassessment|teaching|professional development|continuing education)\b/i.test(s)).sort((a,b)=>cvEvidencePriority(b)-cvEvidencePriority(a)).slice(0,40);}
 function fitSignals(value){
  const assessed=assessOpportunityFit({title:'General practitioner opportunity',country:'AU',opportunityType:'job',fullText:text(value).replace(/\bno\s+(?:work\s+visa|visa|employer)\s+sponsorship\s+(?:is\s+)?required\b/ig,'')},'arash'),map=signal=>signal?.status==='supported'?'supported':signal?.status==='restricted'?'restricted':'unknown';
  const level1=map(assessed.signals.level1),sponsorship=map(assessed.signals.sponsorship),pesci=map(assessed.signals.pesci),registration=map(assessed.signals.registration);
@@ -94,7 +118,7 @@ async function fingerprint(message){return hash([text(message.from,2000),text(me
 async function bankMatches(db,root,candidates,now){
  const domains=[...new Set(candidates.flatMap(c=>c.candidateHosts||[]))].filter(d=>d&&!/linkedin\.com$/.test(d)).slice(0,8);if(!domains.length)return [];
  const patterns=domains.flatMap(domain=>['https://'+domain+'/%','https://www.'+domain+'/%']);
- let rows;try{rows=await all(db,"SELECT id,url,name,status,read_at,last_success_at,result_json FROM clinic_bank_leads WHERE owner_id=? AND status IN ('public_contacts_found','public_page_read') AND ("+patterns.map(()=>"url LIKE ?").join(' OR ')+') LIMIT 20',root,...patterns);}catch(error){if(/no such table:? (?:main\.)?clinic_bank_leads/i.test(error.message||''))return [];throw error;}
+ let rows;try{rows=await all(db,"SELECT id,url,name,status,read_at,last_success_at,result_json FROM clinic_bank_leads WHERE owner_id=? AND status IN ('public_contacts_found','public_page_read') AND ("+patterns.map(()=>"url LIKE ?").join(' OR ')+') LIMIT 20',root,...patterns);}catch(error){if(/no such table:? (?:main\.)?clinic_bank_leads/i.test(error.cause?.message||error.message||''))return [];throw error;}
  return rows.filter(row=>domains.includes(host(row.url))&&Number.isFinite(Date.parse(row.last_success_at||row.read_at||''))&&now-Date.parse(row.last_success_at||row.read_at)<=7*DAY).map(row=>({...row,result:parse(row.result_json)}));
 }
 function applyBank(candidate,matches){
@@ -110,7 +134,7 @@ export async function prepareMailOpportunityDraft(candidate,writingContext={}){
  const writing=readGpWritingProfile(writingContext.profile||{}),ownFacts=cvFacts(writingContext.cvText||''),pair=suggestEvidencePair((candidate.clinicalFacts||[]).map(value=>({text:value})),ownFacts.map(value=>({text:value}))),clinicQuote=pair?.clinic?.text||pair?.clinicQuote||'',cvQuote=pair?.cv?.text||pair?.cvQuote||'';
  const missing=[];if(candidate.sourceUnavailable)missing.push('source_unavailable_requires_review');if(candidate.sourceReviewRequired||candidate.publicationClosed||(Array.isArray(candidate.sourceRestrictions)&&candidate.sourceRestrictions.length))missing.push('source_restrictions_require_review');if(candidate.sourceIncomplete)missing.push('mail_source_incomplete');if(candidate.notificationEligible===false)missing.push('source_freshness_or_fit_review_required');if(pair&&pair.evidenceMatch?.cvScope!=='clinical_self_report')missing.push('clinical_cv_evidence_required');if(pair&&!pair.evidenceMatch?.sharedServices?.length)missing.push('specific_service_overlap_required');if(!writing.confirmed)missing.push('owner_writing_profile_required');if(!writing.signatureStatus.complete)missing.push(...writing.missingSignatureFields);if(!UUID.test(writingContext.cvVersionId||''))missing.push('cv_version_required');if(!candidate.clinicName)missing.push('clinic_name_required');if(!clinicQuote)missing.push('clinic_evidence_required');if(!cvQuote)missing.push('cv_evidence_required');
  const recipients=[...new Set((candidate.recipients||[candidate.recipient]).filter(value=>validContact(value)))];if(!recipients.length)missing.push('recruitment_contact_required');
- const composed=composeClinicParagraphs({clinicName:candidate.clinicName,clinicQuote,cvQuote,confirmed:Boolean(cvQuote),clinicSourceURL:candidate.clinicalSourceUrl||candidate.sourceUrl,clinicReadAt:candidate.overlap?.readAt||new Date(candidate.receivedAt||Date.now()).toISOString()});
+ const composed=composeClinicParagraphs({clinicName:candidate.clinicName,clinicQuote,cvQuote,confirmed:Boolean(cvQuote),professionalStrengths:writing.clinicalStrengths,clinicSourceURL:candidate.clinicalSourceUrl||candidate.sourceUrl,clinicReadAt:candidate.overlap?.readAt||new Date(candidate.receivedAt||Date.now()).toISOString()});
  const subject='GP application — '+(candidate.clinicName||'practice enquiry');
  const body=writing.confirmed&&writing.signatureStatus.complete&&clinicQuote&&cvQuote&&candidate.clinicName?['Dear Practice Manager,',writing.opening,composed.clinicReason,composed.candidateValue,writing.closing,'Kind regards,\n'+writing.signatureName+'\nPhone: '+writing.signaturePhone+'\nEmail: '+writing.signatureEmail].join('\n\n'):'';
  const evidenceHash=await hash([candidate.gmailId,candidate.sourceUrl,candidate.contactBasis,clinicQuote,cvQuote,writingContext.cvVersionId,body]);
@@ -151,7 +175,9 @@ export async function ingestMailOpportunities(env,context,messages,identity,opti
  const now=Number.isFinite(options.now)?options.now:Date.now(),observedAt=Number.isFinite(identity.observedAt)?identity.observedAt:now,hidden=messages.filter(message=>(message?.labels||[]).some(label=>['SPAM','TRASH','DRAFT'].includes(label))).map(message=>message.id).filter(id=>GMAIL.test(id));
  if(hidden.length)await invalidateMailOpportunities(env,context,hidden,identity);
  const valid=messages.filter(message=>GMAIL.test(message?.id||'')&&message.id!==GAP_ID&&isMailOpportunityMessage(message));
- if(valid.length)await run(env.GOOGLE_DB,'INSERT INTO private_mail_opportunity_inputs(owner_id,root_owner_id,profile_id,google_sub,gmail_id,payload_json,created_at,updated_at) '+valid.map(()=>"SELECT ?,?,'arash',?,?,?,?,? WHERE ?>=coalesce((SELECT created_at FROM private_mail_opportunity_inputs WHERE owner_id=? AND google_sub=? AND gmail_id='__history_gap__'),0)").join(' UNION ALL ')+" ON CONFLICT(owner_id,google_sub,gmail_id) DO UPDATE SET payload_json=excluded.payload_json,status='queued',candidate_offset=0,lease_until=0,created_at=excluded.created_at,updated_at=excluded.updated_at WHERE private_mail_opportunity_inputs.status<>'source_removed' AND excluded.created_at>private_mail_opportunity_inputs.created_at",...valid.flatMap(message=>[owner,root,identity.subject,message.id,JSON.stringify(message),observedAt,now,observedAt,owner,identity.subject]));
+ // D1's compound-SELECT limit is lower than native SQLite's. One SELECT over
+ // a bounded JSON batch preserves every input without adding per-message SQL.
+ if(valid.length)await run(env.GOOGLE_DB,"INSERT INTO private_mail_opportunity_inputs(owner_id,root_owner_id,profile_id,google_sub,gmail_id,payload_json,created_at,updated_at) SELECT ?,?,'arash',?,json_extract(j.value,'$.id'),j.value,?,? FROM json_each(?) j WHERE ?>=coalesce((SELECT created_at FROM private_mail_opportunity_inputs WHERE owner_id=? AND google_sub=? AND gmail_id='__history_gap__'),0) ON CONFLICT(owner_id,google_sub,gmail_id) DO UPDATE SET payload_json=excluded.payload_json,status='queued',candidate_offset=0,lease_until=0,created_at=excluded.created_at,updated_at=excluded.updated_at WHERE private_mail_opportunity_inputs.status<>'source_removed' AND excluded.created_at>private_mail_opportunity_inputs.created_at",owner,root,identity.subject,observedAt,now,JSON.stringify(valid),observedAt,owner,identity.subject);
  if(hidden.length)return {queued:valid.length,processed:0,more:true,deferred:'label_invalidation'};
  const processed=await processMailOpportunityInputs(env,context,identity,options);return {queued:valid.length,...processed};
 }

@@ -3,7 +3,7 @@
 import {enrichReadPages} from './opportunity-store.mjs';
 import {publishedRecipients} from './mail-automation.mjs';
 import {gpOpportunitySignals} from './gp-opportunity-signals.mjs';
-import {composeClinicParagraphs,readGpWritingProfile,suggestEvidencePair,cvEvidenceScope} from './gp-letter-composer.mjs';
+import {composeClinicParagraphs,readGpWritingProfile,suggestEvidencePair,cvEvidenceScope,cvEvidencePriority} from './gp-letter-composer.mjs';
 import {readClinicConnections} from './gp-clinic-connections.mjs';
 import {publishedApplicationContact} from './gp-contact-discovery.mjs';
 const ID=/^opp_[a-f0-9]{32}$/;
@@ -12,7 +12,7 @@ const PAGE_ID=/^page_[a-f0-9]{32}$/;
 const VARIANTS=['A','B','C'];
 const EMAIL=/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 const NETWORKS=['IPN','ForHealth','Sonic HealthPlus','Ochre Health','Partnered Health','Healius','NCN Health'];
-const CLINICAL=/\b(?:general practice|family (?:medicine|practice)|patient|chronic|preventive|prevention|diabetes|wound|suturing|emergency|acute|community|multidisciplinary|supervision|teaching|clinic|medical centre|medical center)\b/i;
+const CLINICAL=/\b(?:general practi(?:ce|tioner)|family (?:medicine|practice)|patient|clinical|chronic|preventive|prevention|diabetes|wound|suturing|emergency|acute|community|multidisciplinary|teamwork|collaborat\w*|coordinat\w*|referrals?|triage|reassessment|supervision|teaching|training|professional development|continuing education|medical director|technical manager|clinic|medical centre|medical center)\b/i;
 const INSTRUCTION=/ignore.{0,50}instructions?|system prompt|api[ _-]?key|password|credit.?card|send.{0,40}(?:token|secret)|javascript:|<script/i;
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const fail=(code,status=400)=>{throw Object.assign(Error(code),{status});};
@@ -29,9 +29,9 @@ function sentences(value,{cv=false}={}){
   if(line.length<12||line.length>600||INSTRUCTION.test(line)||/[\[\]{}]|\*\*/.test(line)||!CLINICAL.test(line)||seen.has(line))continue;
   // Do not promote a header, personal address or contact line as a capability.
   if(cv&&(/^(?:email|phone|address|referee|references|contact)\s*:/i.test(line)||/:$/.test(line)))continue;
-  seen.add(line);out.push(line);if(out.length>=40)break;
+  seen.add(line);out.push(line);if(!cv&&out.length>=40)break;
  }
- return out;
+ return cv?out.sort((a,b)=>cvEvidencePriority(b)-cvEvidencePriority(a)).slice(0,80):out;
 }
 function linkedClinicCandidates(opportunity,verifiedClinicEvidence,now){
  const root=safeURL(opportunity.url),reading=opportunity.reading,rootAt=Date.parse(reading?.readAt||''),maxAge=7*86400000;
@@ -94,7 +94,7 @@ export function buildGpApplicationPackage({opportunity={},profile={},cvText='',c
  if(!writing.confirmed)missingFields.push('writing_profile_confirmation_required');
  missingFields.push(...writing.missingSignatureFields);
  if(selectedConnection&&confirmConnection!==true)missingFields.push('connection_confirmation_required');
- const composed=composeClinicParagraphs({clinicName:name,clinicQuote:selectedClinic,cvQuote:selectedCv,confirmed:confirmCvQuote===true,selectedConnection,confirmConnection,clinicSourceURL:selectedClinicFact?.sourceUrl||sourceURL,clinicReadAt:selectedClinicFact?.readAt||opportunity.lastSeenAt||opportunity.last_seen_at});
+ const composed=composeClinicParagraphs({clinicName:name,clinicQuote:selectedClinic,cvQuote:selectedCv,confirmed:confirmCvQuote===true,selectedConnection,confirmConnection,professionalStrengths:writing.clinicalStrengths,clinicSourceURL:selectedClinicFact?.sourceUrl||sourceURL,clinicReadAt:selectedClinicFact?.readAt||opportunity.lastSeenAt||opportunity.last_seen_at});
  const clinicParagraph=composed.clinicReason,cvParagraph=composed.candidateValue;
  const paragraphs={opening:writing.opening,clinic:clinicParagraph,value:cvParagraph,closing:writing.closing};
  const suggestedSelection=suggestEvidencePair(clinicEvidenceCandidates,cvEvidenceCandidates);
@@ -106,7 +106,7 @@ export function buildGpApplicationPackage({opportunity={},profile={},cvText='',c
  let previewBody=null,previewParagraphs=null;
  if(writing.confirmed&&suggestedSelection){
   const suggestedFact=clinicEvidenceCandidates.find(item=>item.text===suggestedSelection.clinicQuote);
-  const proposed=composeClinicParagraphs({clinicName:name,clinicQuote:suggestedSelection.clinicQuote,cvQuote:suggestedSelection.cvQuote,confirmed:true,clinicSourceURL:suggestedFact?.sourceUrl||sourceURL,clinicReadAt:suggestedFact?.readAt||opportunity.lastSeenAt||opportunity.last_seen_at});
+  const proposed=composeClinicParagraphs({clinicName:name,clinicQuote:suggestedSelection.clinicQuote,cvQuote:suggestedSelection.cvQuote,confirmed:true,professionalStrengths:writing.clinicalStrengths,clinicSourceURL:suggestedFact?.sourceUrl||sourceURL,clinicReadAt:suggestedFact?.readAt||opportunity.lastSeenAt||opportunity.last_seen_at});
   previewParagraphs={opening:writing.opening,clinic:proposed.clinicReason,value:proposed.candidateValue,closing:writing.closing};
   const proposedSubstitutions={...substitutions,clinicEvidence:proposed.clinicReason,cvEvidence:proposed.candidateValue};
   previewBody=template.body.replace(/\{\{(clinicName|practiceManager|doctorName|openingParagraph|closingParagraph|clinicEvidence|cvEvidence)\}\}/g,(match,key)=>proposedSubstitutions[key]??match)+'\n'+signature;

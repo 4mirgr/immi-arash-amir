@@ -67,7 +67,7 @@ test('validated linked clinic facts retain their own source receipt and raw oppo
  assert.throws(()=>build({...input,opportunity:{...opportunity,reading:{...opportunity.reading,pageId:'unrelated'}}}),/clinic_quote_not_in_current_source/);
 });
 test('confirmed source/CV package remains plain source-bound text and own CV confirmation is not credential verification',()=>{
- const result=build({...base,...confirmed});assert.equal(result.readyForReview,true);assert(!result.body.includes('{{'));assert(result.body.includes('chronic disease care and minor procedures at Synthetic Family Practice'));assert(result.body.includes('wound care and chronic disease management'));assert.equal(result.cvVersionId,cvId);assert.equal(result.templateName,GP_APPLICATION_TEMPLATES[1].name);assert.equal(result.provenance.at(-1).status,'owner_confirmed_self_report_not_credential_verification');assert.deepEqual(result.recipients,['manager@clinic.example.invalid']);assert.equal(result.paragraphs.opening,writing.openingParagraph);assert.equal(result.paragraphs.closing,writing.closingParagraph);assert.equal(result.writingStatus.paragraphCount,4);assert(result.body.includes('Email: '+writing.signatureEmail));assert(result.body.includes('Phone: '+writing.signaturePhone));assert.equal(result.body.includes('Your published information states'),false);assert.equal(result.body.includes('My CV records'),false);assert(!result.body.includes('**'));
+ const result=build({...base,...confirmed});assert.equal(result.readyForReview,true);assert(!result.body.includes('{{'));assert(result.paragraphs.clinic.startsWith('I am particularly interested in joining Synthetic Family Practice'));assert(result.paragraphs.clinic.includes('chronic disease care'));assert(result.paragraphs.value.includes('chronic disease management'));assert(!/wound care|IV cannul|catheter|epistaxis/i.test(result.paragraphs.value));assert.equal(result.cvVersionId,cvId);assert.equal(result.templateName,GP_APPLICATION_TEMPLATES[1].name);assert.equal(result.provenance.at(-1).status,'owner_confirmed_self_report_not_credential_verification');assert.deepEqual(result.recipients,['manager@clinic.example.invalid']);assert.equal(result.paragraphs.opening,writing.openingParagraph);assert.equal(result.paragraphs.closing,writing.closingParagraph);assert.equal(result.writingStatus.paragraphCount,4);assert(result.body.includes('Email: '+writing.signatureEmail));assert(result.body.includes('Phone: '+writing.signaturePhone));assert.equal(result.body.includes('Your published information states'),false);assert.equal(result.body.includes('My CV records'),false);assert(!result.body.includes('**'));
  assert.equal(result.signatureStatus.complete,true);assert.equal(result.writingQuality.method,'deterministic_evidence_composer');assert.equal(result.evidenceMatch.status,'direct_service_overlap');assert.equal(result.factBasis.cv[0].text,cvQuote);assert.equal(result.factBasis.clinic[0].text,clinic);assert.equal(result.factBasis.clinic[0].sourceURL,source.url);
  const unconfirmed=build({...base,...confirmed,confirmCvQuote:false});assert.equal(unconfirmed.readyForReview,false);assert(!unconfirmed.body.includes(cvQuote));
 });
@@ -142,4 +142,25 @@ test('contact mentions require a current same-clinic owner contact and explicit 
  const approved=await getGpApplicationPackage(f.env,f.context,id,{...confirmed,connectionId:contactId,confirmConnection:true});assert.equal(approved.readyForReview,true);assert(approved.body.includes('speak with Synthetic Contact'));assert.equal(approved.commonConnections.relationshipVerified,false);assert.equal(approved.provenance.at(-1).status,'owner_confirmed_connection_not_independently_verified');
  await assert.rejects(()=>getGpApplicationPackage(f.env,f.context,id,{...confirmed,connectionId:foreignId,confirmConnection:true}),e=>e.status===409);
  const invalid=await route(request('POST',{...confirmed,confirmConnection:true}),f.env,f.context);assert.equal(invalid.status,400);
+});
+
+
+test('broad clinical judgment and team evidence late in the owned CV are considered before the display limit',()=>{
+ const late='My clinical work combines acute patient assessment, clinical judgement and multidisciplinary teamwork.';
+ const procedures=Array.from({length:50},(_,index)=>'Performed wound care and suturing for patients in clinical setting '+index+'.');
+ const result=build({...base,cvText:procedures.join('\n')+'\n'+late});
+ assert(result.cvEvidenceCandidates.some(item=>item.text===late));
+ assert.equal(result.cvEvidenceCandidates[0].text,late);
+ assert(result.cvEvidenceCandidates.every(item=>item.source==='own_cv_self_reported'));
+});
+
+test('owner-reported professional strengths enrich the current letter without becoming verified CV facts',()=>{
+ const strength='I coordinate patient reassessment with the clinical team and seek advice when appropriate.';
+ const result=build({...base,...confirmed,profile:{...profile,planning:{gpApplicationWriting:{...writing,clinicalStrengths:[strength]}}}});
+ assert.equal(result.readyForReview,true);
+ assert(result.factBasis.professionalStrengths.some(item=>item.text===strength&&item.status==='owner_reported_professional_strength'));
+ assert.equal(result.factBasis.cv[0].text,cvQuote);
+ assert.equal(result.paragraphs.opening,writing.openingParagraph);
+ assert.equal(result.paragraphs.closing,writing.closingParagraph);
+ assert(!/reduced (?:mortality|morbidity)|independent practice|verified credential/i.test(result.body));
 });

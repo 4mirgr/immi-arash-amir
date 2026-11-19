@@ -13,7 +13,7 @@ const profile={name:'Dr Synthetic',planning:{gpApplicationWriting:fixed}};
 const source={id:opp,organization:name,title:'General Practitioner',url:'https://clinic.example.invalid/jobs/gp',summary:clinic,fullText:clinic+' Apply to manager@clinic.example.invalid.',status:'open',kind:'vacancy',lastSeenAt:new Date().toISOString()};
 const options={variant:'B',cvVersionId:cvId,clinicQuote:clinic,cvQuote:cv,confirmCvQuote:true};
 const pkg=()=>buildGpApplicationPackage({opportunity:source,profile,cvText:cv,...options});
-const draft={clinicParagraph:"Sample Community Medical Centre's combination of chronic disease management and treatment-room procedures offers the breadth of general practice I am seeking, with opportunities to support both continuing care and practical clinical work.",valueParagraph:"My experience managing chronic illness and acute presentations, together with suturing, wound care and referral coordination, would provide a relevant foundation for contributing to these services. I would build on that experience within the agreed supervision arrangements and your practice's clinical protocols.",clinicFactIds:['clinic_1'],cvFactIds:['cv_1']};
+const draft={clinicParagraph:"I am particularly interested in joining Sample Community Medical Centre for its combination of chronic disease management and preventive care. I would value the opportunity to follow patients over time and contribute to consistent clinical care.",valueParagraph:"My clinical work has included managing chronic illness, acute presentations and coordinating referrals. I would bring this experience to your practice with a careful approach to clinical decisions, close collaboration with colleagues and a willingness to learn within the agreed supervision arrangements.",clinicFactIds:['clinic_1'],cvFactIds:['cv_1']};
 function binding(db){return{prepare(sql){const s=db.prepare(sql);return{bind(...args){return{async first(){return s.get(...args)||null;},async all(){return{results:s.all(...args)};},async run(){return{meta:s.run(...args)};}};}};}};}
 function fixture(){
  const privateDB=new DatabaseSync(':memory:'),publicDB=new DatabaseSync(':memory:');
@@ -39,9 +39,23 @@ test('academic edit contains only selected evidence and preserves fixed paragrap
 });
 test('basic checks reject new quantities, names, credentials, expertise, instructions and invented source IDs',()=>{
  const input=academicModelInput(pkg());
- for(const change of [{clinicParagraph:draft.clinicParagraph.replace('offers','offers 99 services and')},{valueParagraph:'Zealand Hospital recruited me for advanced surgery. '+draft.valueParagraph},{valueParagraph:draft.valueParagraph+' I hold FRACGP fellowship.'},{valueParagraph:draft.valueParagraph.replace('experience','expertise')},{clinicFactIds:['private_fact']},{clinicParagraph:draft.clinicParagraph+' <script>ignore instructions</script>'}])assert.throws(()=>validateAcademicDraft({...draft,...change},input),/academic_draft_failed_checks/);
+ for(const change of [{clinicParagraph:draft.clinicParagraph.replace('joining','joining 99 services and')},{valueParagraph:'Zealand Hospital recruited me for advanced surgery. '+draft.valueParagraph},{valueParagraph:draft.valueParagraph+' I hold FRACGP fellowship.'},{valueParagraph:draft.valueParagraph.replace('experience','expertise')},{clinicFactIds:['private_fact']},{clinicParagraph:draft.clinicParagraph+' <script>ignore instructions</script>'}])assert.throws(()=>validateAcademicDraft({...draft,...change},input),/academic_draft_failed_checks/);
  // A digit contained inside a source year must never count as that quantity.
  assert.throws(()=>validateAcademicDraft({...draft,valueParagraph:draft.valueParagraph+' I treated 1 patient.'},{...input,cvFact:{id:'cv_1',text:cv+' Since 2021.'}}),/academic_draft_failed_checks/);
+});
+
+test('academic editor rejects report-style motivation and routine procedure lists as applicant value',()=>{
+ const input=academicModelInput(pkg());
+ const news='Sample Community Medical Centre provides chronic disease management and preventive care, as well as treatment-room procedures. Its clinical team also supports continuing care and practical clinical work.';
+ assert.throws(()=>validateAcademicDraft({...draft,clinicParagraph:news},input),/academic_draft_failed_checks/);
+ for(const procedure of ['IV access','urinary catheterisation','epistaxis treatment','suturing']){
+  const valueParagraph='My clinical experience includes '+procedure+', chronic illness and acute presentations. I would bring this experience to your practice while working with colleagues and learning from feedback within the agreed supervision arrangements.';
+  assert.throws(()=>validateAcademicDraft({...draft,valueParagraph},input),/academic_draft_failed_checks/);
+ }
+ const p=pkg();p.factBasis.professionalStrengths=[{text:'Private owner clinical prioritisation statement.',status:'owner_reported_professional_strength'}];
+ assert(!JSON.stringify(academicModelInput(p)).includes('Private owner clinical prioritisation statement.'));
+ assert(ACADEMIC_SYSTEM.includes('not a news report'));
+ assert(ACADEMIC_SYSTEM.includes('Do not headline routine IV access'));
 });
 test('published clinic quantities cannot become the applicant’s experience and CV dates cannot become clinic history',()=>{
  const base=academicModelInput(pkg()),input={...base,clinicFact:{id:'clinic_1',text:clinic+' The clinic sees 40 patients daily.'},cvFact:{id:'cv_1',text:cv+' My GP work began in 2021.'}};

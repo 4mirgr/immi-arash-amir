@@ -4,11 +4,18 @@ import {readCheckpoint,writeCheckpoint} from '../src/workspace-checkpoint.mjs';
 const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222',opp='opp_'+'a'.repeat(32),cv='33333333-3333-4333-8333-333333333333';
 const storage=()=>{const data=new Map();return {data,getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v),removeItem:k=>data.delete(k)};};
 test('same verified owner can resume only UI selections, never mail content or send approval',()=>{
- const s=storage();writeCheckpoint(a,'arash','opportunities',{state:'NSW',sort:'fit',page:2,openOpportunityId:opp,cvVersionId:cv,variant:'B',subjectIndex:1,step:'mail',body:'private letter',recipient:'private@example.invalid',reviewHash:'secret',confirmSend:true,access_token:'token'},s);
+ const s=storage();writeCheckpoint(a,'arash','opportunities',{state:'NSW',sort:'fit',page:2,openOpportunityId:opp,cvVersionId:cv,editedDraftId:'gpedit_'+'b'.repeat(32),variant:'B',subjectIndex:1,step:'mail',body:'private letter',recipient:'private@example.invalid',reviewHash:'secret',confirmSend:true,access_token:'token'},s);
  const restored=readCheckpoint(a,'arash','opportunities',s);
  assert.ok(restored,'UI checkpoint was discarded');assert.equal(restored.openOpportunityId,opp);assert.equal(restored.cvVersionId,cv);assert.equal(restored.subjectIndex,1);assert.equal(restored.page,2);
+ assert.equal(restored.editedDraftId,'gpedit_'+'b'.repeat(32));
  const raw=[...s.data.values()].join('');for(const privateValue of ['private letter','private@example.invalid','secret','token','confirmSend'])assert.equal(raw.includes(privateValue),false);
  assert.equal(readCheckpoint(b,'arash','opportunities',s),null);assert.equal(readCheckpoint(a,'amir','opportunities',s),null);
+});
+test('edited letter coordinates need the Arash owner workspace and a valid opportunity, and never carry text',()=>{
+ const s=storage(),editedDraftId='gpedit_'+'c'.repeat(32);
+ writeCheckpoint(a,'amir','opportunities',{openOpportunityId:opp,editedDraftId},s);assert.equal(readCheckpoint(a,'amir','opportunities',s)?.editedDraftId,undefined);
+ writeCheckpoint(a,'arash','opportunities',{state:'NSW',editedDraftId},s);assert.equal(readCheckpoint(a,'arash','opportunities',s)?.editedDraftId,undefined);
+ writeCheckpoint(a,'arash','opportunities',{openOpportunityId:opp,editedDraftId:'malformed'},s);assert.equal(readCheckpoint(a,'arash','opportunities',s)?.editedDraftId,undefined);
 });
 test('invalid identity, manipulated navigation and expired UI snapshots cannot restore a workspace',()=>{
  const s=storage();writeCheckpoint('', 'arash','navigation',{tab:'mail'},s);assert.equal(s.data.size,0);

@@ -34,6 +34,7 @@ import {handleOpportunityMailRequest} from './opportunity-mail.mjs';
 import {handleTelegramWebhook,handleTelegramRequest,dispatchTelegramNotifications} from './telegram-notifications.mjs';
 import {handleGpApplicationPackageRequest} from './gp-application-package.mjs';
 import {handleAcademicWritingRequest} from './gp-academic-writing.mjs';
+import {handleGpLetterEditsRequest} from './gp-letter-edits.mjs';
 import {handleGpWorkflowRequest} from './gp-workflow.mjs';
 import {handleOwnerBackupRequest} from './owner-backup.mjs';
 import {handleBackupDriveRequest} from './backup-drive.mjs';
@@ -110,7 +111,7 @@ export function createHandler(fetcher = fetch) {
       if(url.pathname.startsWith('/api/clinic-bank/'))return await handleClinicBankRequest(request,env,{userId:user.id,profileId})||json({error:'Not found'},404);
       if(url.pathname==='/api/research/pages')return await handlePublicPagesRequest(request,env,{userId:user.id,profileId})||json({error:'Not found'},404);
       if(url.pathname==='/api/discovery/universities')return await handleUniversityCatalogueRequest(request,env,{userId:user.id,profileId})||json({error:'Not found'},404);
-      if(url.pathname.startsWith('/api/gp-writing/'))return await handleAcademicWritingRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
+      if(url.pathname.startsWith('/api/gp-writing/'))return await handleGpLetterEditsRequest(request,env,{userId:user.id,profileId,rest})||await handleAcademicWritingRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
       if(url.pathname.startsWith('/api/gp-applications/'))return await handleGpApplicationPackageRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
       if(url.pathname.startsWith('/api/gp-workflow/'))return await handleGpWorkflowRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);
       if(url.pathname.startsWith('/api/operations/'))return await handleOperationsRequest(request,env,{userId:user.id,profileId,rest})||json({error:'Not found'},404);

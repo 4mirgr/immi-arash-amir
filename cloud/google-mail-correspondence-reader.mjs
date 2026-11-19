@@ -70,7 +70,7 @@ export async function syncClinicCorrespondence(env,context,fetcher=fetch,options
  const readerEnv={...env,GOOGLE_DB:db},accessProvider=options.accessProvider||getGoogleAccess,access=await accessProvider(readerEnv,owner,fetcher);
  if(access.subject!==account.google_sub)fail(409,'connection_changed');if(!access.accessToken)fail(401,'reconnect_required');if(!hasReadScope(access))fail(403,'gmail_read_scope_required');
  const now=Number.isFinite(options.now)?options.now:Date.now(),subject=access.subject,lock=crypto.randomUUID();
- let providerReads=0,synced=0,scannedThisRun=0,matchedThisRun=0,readThreads=0,lane='archive';
+ let providerReads=0,synced=0,scannedThisRun=0,matchedThisRun=0,readThreads=0,lane='archive',laneStarted=false;
  const limit=Number.isInteger(options.maxProviderReads)&&options.maxProviderReads>0?Math.min(MAX_PROVIDER_READS,options.maxProviderReads):MAX_PROVIDER_READS;
  const recovery={env:readerEnv,owner,access,accessProvider,refreshed:false};
  const boundedFetch=async(url,init)=>{if(String(url).startsWith('https://gmail.googleapis.com/')){if(providerReads>=limit)fail(409,'correspondence_read_budget');providerReads++;}return fetcher(url,init);};
@@ -80,7 +80,17 @@ export async function syncClinicCorrespondence(env,context,fetcher=fetch,options
  let state;
  const save=async()=>run(db,'UPDATE google_mail_full_scan SET '+stateFields.map(name=>name+'=?').join(',')+' WHERE owner_id=? AND google_sub=? AND lock_token=?',...stateFields.map(name=>state[name]??null),owner,subject,lock);
  const identity=source=>({subject,email:access.email||null,mailbox,source,observedAt:source==='thread'&&state?.pending_checked_at?state.pending_checked_at:now});
- const call=async(name,values,source)=>{if(typeof options[name]==='function')await options[name](values,context,identity(source));};
+ const call=async(name,values,source)=>{
+  if(typeof options[name]!=='function')return;
+  try{await options[name](values,context,identity(source));}
+  catch(error){
+   if(/^[a-z_]{3,80}$/.test(error?.code||''))throw error;
+   // Keep diagnostic categories safe; exception messages can contain private
+   // message content, SQL parameters or provider responses.
+   const wrapped=new CorrespondenceReaderError(503,name==='onDeleted'?'correspondence_deletion_analysis_failed':'correspondence_message_analysis_failed');
+   wrapped.cause=error;throw wrapped;
+  }
+ };
  const cache=async(messages,observedAt=now)=>{if(!messages.length)return;if(messages.length>MAX_BATCH)fail(409,'correspondence_write_budget');await run(db,'INSERT INTO google_mail_messages(owner_id,google_sub,gmail_id,thread_id,message_date,priority,data,updated_at) VALUES '+messages.map(()=>'(?,?,?,?,?,?,?,?)').join(',')+' ON CONFLICT(owner_id,google_sub,gmail_id) DO UPDATE SET thread_id=excluded.thread_id,message_date=excluded.message_date,priority=excluded.priority,data=excluded.data,updated_at=excluded.updated_at WHERE google_mail_messages.updated_at<=excluded.updated_at',...messages.flatMap(message=>[owner,subject,message.id,message.threadId,message.dateTimestamp,message.priority,JSON.stringify(message),observedAt]));synced+=messages.length;};
  async function recordReadLimits(messages,source,unreadable=[]){
   const hadLimits=!!state.has_analysis_limits,limited=[...unreadable,...messages.filter(message=>message.bodyTruncated||message.linksTruncated).map(message=>({id:message.id,code:message.bodyTruncated?'mail_body_analysis_limited':'mail_link_analysis_limited'}))];
@@ -126,6 +136,7 @@ export async function syncClinicCorrespondence(env,context,fetcher=fetch,options
   let thread=null;
   if(lane==='thread'){thread=state.pending_thread_id?{thread_id:state.pending_thread_id}:await first(db,'SELECT thread_id FROM google_mail_correspondence_threads WHERE owner_id=? AND google_sub=? AND (last_checked_at IS NULL OR last_checked_at<=?) ORDER BY coalesce(last_checked_at,0),discovered_at,thread_id LIMIT 1',owner,subject,now-REVISIT_MS);if(!thread)lane=state.archive_complete&&!state.history_gap_since?'history':'archive';}
   if(lane==='archive'&&state.archive_complete&&state.history_gap_since&&!state.gap_rescan_active){state.archive_complete=0;state.archive_page_token=null;state.archive_pending_ids='[]';state.archive_started_at=now;state.gap_rescan_active=1;}
+  laneStarted=true;
   if(lane==='archive'){
    let ids=idList(state.archive_pending_ids,MAX_PAGE),pageRead=ids.length>0;
    if(!ids.length&&providerReads<limit){const list=await get('messages?includeSpamTrash=true&maxResults='+MAX_PAGE+'&q='+encodeURIComponent('-in:drafts')+(state.archive_page_token?'&pageToken='+encodeURIComponent(state.archive_page_token):''));if(list.messages!==undefined&&(!Array.isArray(list.messages)||list.messages.length>MAX_PAGE||(list.messages||[]).some(message=>!validId(message?.id))))fail(502,'invalid_gmail_response');ids=[...new Set((list.messages||[]).map(message=>message.id))];state.archive_page_token=pageToken(list.nextPageToken);state.archive_pending_ids=JSON.stringify(ids);pageRead=true;await save();}
@@ -161,7 +172,13 @@ export async function syncClinicCorrespondence(env,context,fetcher=fetch,options
    state.next_lane=0;
   }
   state.last_synced_at=now;state.last_error=null;await save();
- }catch(error){if(state){state.last_error=safeCode(error);await save();}throw error;}
+ }catch(error){if(state){
+  // A failed classifier or storage write must keep its exact pending batch,
+  // while allowing the independent new-mail/history lane to run next time.
+  // Otherwise one old archive message can indefinitely starve fresh replies.
+  if(laneStarted)state.next_lane=lane==='archive'?1:lane==='history'?2:0;
+  state.last_error=safeCode(error);await save();
+ }throw error;}
  finally{await run(db,'UPDATE google_mail_full_scan SET lock_token=NULL,lock_until=0 WHERE owner_id=? AND google_sub=? AND lock_token=?',owner,subject,lock);}
  const result=await coverage(db,owner,subject,mailbox,state);return {...result,synced,providerReads,readerQueries,readThreads,scannedThisRun,matchedThisRun,lane};
 }

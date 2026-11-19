@@ -102,6 +102,30 @@ test('a failed deletion callback does not advance the history watermark or disca
  const onDeleted=async()=>{if(fail){fail=false;throw Error('temporary failure');}};await assert.rejects(f.sync(fetcher,context,{onDeleted}));assert.equal(f.state().history_id,'100');assert.deepEqual(JSON.parse(f.state().history_deleted_ids),['gone']);
  f.lane(1);await f.sync(fetcher,context,{onDeleted});assert.equal(f.state().history_id,'900');assert.equal(historyReads,1);
 });
+test('a poisoned saved archive batch cannot starve fresh history and remains available for a lossless retry',async()=>{
+ const f=fixture(),old=Array.from({length:9},(_,index)=>raw('pending'+index));
+ // Reproduce the live cursor shape without using any private provider IDs.
+ await f.sync(provider([]));
+ f.db.prepare("UPDATE google_mail_full_scan SET archive_complete=0,archive_scanned_count=91,archive_pending_ids=?,archive_page_token='next-archive-page',next_lane=0,last_error='correspondence_sync_failed' WHERE owner_id=?").run(JSON.stringify(old.map(message=>message.id)),context.userId);
+ const incoming=raw('new-reply','Please arrange a call about this GP position.',{labels:['INBOX']}),seen=[];
+ const onMessages=async(messages,owner,identity)=>{
+  if(identity.source==='archive')throw Error('PRIVATE exception content must never be retained');
+  seen.push(...messages.map(message=>message.id));
+ };
+ await assert.rejects(f.sync(provider(old),context,{maxProviderReads:6,onMessages}),error=>error.code==='correspondence_message_analysis_failed');
+ const failed=f.state();assert.equal(failed.next_lane,1);assert.equal(failed.archive_scanned_count,91);assert.deepEqual(JSON.parse(failed.archive_pending_ids),old.map(message=>message.id));assert.equal(failed.lock_until,0);assert.equal(failed.last_error,'correspondence_message_analysis_failed');assert(!JSON.stringify(failed).includes('PRIVATE'));
+ const history={historyId:'200',history:[{messagesAdded:[{message:{id:incoming.id}}]}]};
+ const result=await f.sync(provider([incoming],{history}),context,{maxProviderReads:6,onMessages});
+ assert.equal(result.lane,'history');assert.equal(result.historyCaughtUp,true);assert.equal(f.state().history_id,'200');assert.deepEqual(seen,[incoming.id]);assert.deepEqual(JSON.parse(f.state().archive_pending_ids),old.map(message=>message.id));
+ f.lane(0);const resumed=await f.sync(provider(old),context,{maxProviderReads:6});
+ assert.equal(resumed.scannedThisRun,6);assert.equal(resumed.scannedMessageCount,97);assert.deepEqual(JSON.parse(f.state().archive_pending_ids),old.slice(6).map(message=>message.id));
+});
+test('deletion callback failure rotates to another lane without losing its safe category or tombstone',async()=>{
+ const f=fixture();await f.sync(provider([]));
+ const history={historyId:'300',history:[{messagesDeleted:[{message:{id:'gone'}}]}]};
+ await assert.rejects(f.sync(provider([],{history}),context,{onDeleted:async()=>{throw Error('private provider details');}}),error=>error.code==='correspondence_deletion_analysis_failed');
+ assert.equal(f.state().next_lane,2);assert.equal(f.state().history_id,'100');assert.deepEqual(JSON.parse(f.state().history_deleted_ids),['gone']);assert.equal(f.state().lock_until,0);
+});
 test('provider failures save earlier successfully classified IDs without skipping the failed ID',async()=>{
  const f=fixture(),messages=[raw('m1'),raw('m2'),raw('m3')];let failed=true;const counts={};
  const fetcher=async(url,init)=>{const id=new URL(url).pathname.split('/').at(-1);counts[id]=(counts[id]||0)+1;if(id==='m2'&&failed){failed=false;return Response.json({}, {status:503});}return provider(messages)(url,init);};

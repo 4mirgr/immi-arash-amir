@@ -39,6 +39,51 @@ test('ingestion is idempotent, owner/subject scoped, bounded, and never writes t
  await ingestMailOpportunities(f.env,f.primary,[m],f.identity,{writingContext:writing});assert.equal(f.db.prepare('SELECT count(*) n FROM private_mail_opportunities').get().n,1);
  await ingestMailOpportunities(f.env,f.secondary,[m],{...f.identity,subject:'sub2'},{writingContext:writing});assert.equal(f.db.prepare('SELECT count(*) n FROM private_mail_opportunities').get().n,2);
 });
+test('private input storage failures retain a safe stage and never expose database details',async()=>{
+ const f=fixture(),prepare=f.env.GOOGLE_DB.prepare.bind(f.env.GOOGLE_DB),original=Error('private message and SQL parameter details');
+ f.env.GOOGLE_DB.prepare=sql=>{if(sql.startsWith('INSERT INTO private_mail_opportunity_inputs'))throw original;return prepare(sql);};
+ await assert.rejects(ingestMailOpportunities(f.env,f.primary,[message('storage-failure')],f.identity,{writingContext:writing}),error=>error.code==='mail_opportunity_input_enqueue_failed'&&error.status===503&&error.cause===original&&!error.message.includes('private message'));
+});
+test('database diagnostics disclose only a predefined error family, never private exception text',async()=>{
+ for(const [detail,suffix]of [
+  ['too many SQL variables','_parameter_limit'],
+  ['Too many bound parameters','_parameter_limit'],
+  ['D1_TYPE_ERROR: Type undefined not supported','_binding'],
+  ['Too many subrequests','_limit'],
+  ['too many terms in compound SELECT: SQLITE_ERROR','_limit'],
+  ['Query count limit exceeded','_limit'],
+  ['no such table: private_table','_schema'],
+  ['table private_table has no column named private_field','_schema'],
+  ['NOT NULL constraint failed: private_field','_constraint'],
+  ['malformed JSON','_json'],
+  ['unknown transport failure',''],
+ ]){
+  const f=fixture(),prepare=f.env.GOOGLE_DB.prepare.bind(f.env.GOOGLE_DB),original=Error('PRIVATE_CANARY '+detail);
+  f.env.GOOGLE_DB.prepare=sql=>{if(sql.startsWith('INSERT INTO private_mail_opportunity_inputs'))throw original;return prepare(sql);};
+  await assert.rejects(ingestMailOpportunities(f.env,f.primary,[message('family-check')],f.identity,{writingContext:writing}),error=>error.code==='mail_opportunity_input_enqueue_failed'+suffix&&error.message===error.code&&error.code.length<=80&&!error.message.includes('PRIVATE_CANARY')&&error.cause===original);
+ }
+});
+test('an eight-message Gmail batch is lossless under D1 compound-SELECT limits and uses one input insert',async()=>{
+ const f=fixture(),prepare=f.env.GOOGLE_DB.prepare.bind(f.env.GOOGLE_DB),inserts=[];
+ f.env.GOOGLE_DB.prepare=sql=>{
+  // Native SQLite allows more compound terms than production D1. Exercise
+  // that runtime boundary explicitly rather than depending on local defaults.
+  const terms=1+(sql.match(/\bUNION(?:\s+ALL)?\b/gi)||[]).length;
+  if(terms>5)throw Error('too many terms in compound SELECT: SQLITE_ERROR');
+  if(sql.startsWith('INSERT INTO private_mail_opportunity_inputs'))inserts.push(sql);
+  return prepare(sql);
+ };
+ const batch=Array.from({length:8},(_,index)=>message('bounded-batch-'+index));
+ f.resetQueries();const result=await ingestMailOpportunities(f.env,f.primary,batch,f.identity,{now,writingContext:writing});
+ assert.equal(result.queued,8);assert.equal(inserts.length,1);assert(!inserts[0].includes('UNION'));assert(f.queries()<=5);
+ const inputs=f.db.prepare('SELECT owner_id,root_owner_id,google_sub,gmail_id,status,payload_json FROM private_mail_opportunity_inputs ORDER BY gmail_id').all();
+ assert.equal(inputs.length,8);assert.deepEqual(inputs.map(row=>row.gmail_id),batch.map(item=>item.id).sort());
+ assert(inputs.every(row=>row.owner_id===owner&&row.root_owner_id===owner&&row.google_sub===f.identity.subject));
+ assert.equal(inputs.filter(row=>row.status==='completed').length,1);
+ assert(inputs.filter(row=>row.status==='queued').every(row=>JSON.parse(row.payload_json).id===row.gmail_id));
+ for(let index=0;index<7;index++)await processMailOpportunityInputs(f.env,f.primary,f.identity,{now:now+index+1,writingContext:writing});
+ assert.equal(f.db.prepare("SELECT count(*) n FROM private_mail_opportunity_inputs WHERE status<>'completed'").get().n,0);
+});
 test('large job digests retain every candidate in a durable cursor rather than dropping links after a fixed first subset',async()=>{
  const f=fixture(),m=message('large',{from:'jobs@linkedin.com',subject:'General Practitioner jobs in Australia',body:'General Practitioner positions available in Australia.'});m.links=Array.from({length:11},(_,i)=>({url:'https://www.linkedin.com/jobs/view/'+(10000+i)+'/',label:'General Practitioner — Harbour Medical Centre'}));
  const first=await ingestMailOpportunities(f.env,f.primary,[m],f.identity,{writingContext:writing});assert.equal(first.processed,3);assert.equal(first.more,true);

@@ -32,6 +32,7 @@ import {
   BriefcaseBusiness,
   BookOpen,
   CheckCircle2,
+  TriangleAlert,
   Bell,
   Globe,
   Command,
@@ -59,7 +60,9 @@ import {AmirHome,AmirNavigation,AMIR_TONES} from "./amir-workspace";
 import {LanguageControl} from "./language-control";
 import {WorkspaceGuidance} from "./workspace-guidance";
 import {SourceMonitor} from "./source-monitor";
+import {ToolsSection,ToolsWorkspace,openToolSection} from "./tools-workspace";
 import {MobileWorkspaceNavigation} from "./mobile-workspace-nav";
+import "./neon-notifications.css";
 
 function deferredPanel(load,name){const Component=React.lazy(()=>load().then(module=>({default:module[name]})));return function DeferredPanel(props){return <React.Suspense fallback={<section className="panel" role="status">در حال آماده‌سازی این بخش…</section>}><Component {...props}/></React.Suspense>;};}
 const AutomationHub=deferredPanel(()=>import("./automation-hub"),"AutomationHub");
@@ -99,6 +102,7 @@ const fallbackStation = {
 };
 function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignOut }) {
   const interfaceLanguage=useInterfaceLanguage();
+  const t=(fa,en)=>interfaceLanguage==="en"?en:fa;
   const [tab, setTab] = useState(() => {if(readMailOpportunityDeepLink(globalThis.location?.href).id)return "mail";const saved=readCheckpoint(workspaceOwnerId,initialPerson,"navigation")?.tab;return nav.some(item=>item[0]===saved)?saved:initialPerson === "arash" ? "opportunities" : "overview";}),
     [person, setPerson] = useState(initialPerson),
     [data, setData] = useState({ clinics: [], profiles: [], stations: [] }),
@@ -907,45 +911,31 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
           {tab === "funding" && person === "amir" && <ResearchFundingPanel key={person} person={person} notify={notify}/>}
           {tab === "team" && <TeamBoard key={person} person={person} notify={notify}/>}
           {tab === "linkedin" && <LinkedInWorkspace person={person} notify={notify}/> }
-          {tab === "sources" && <><ExtractedEvidence person={person} section="all" country="AU"/>{person==="amir"&&<ExtractedEvidence person={person} section="all" country="IT"/>}</>}
           {tab === "cv" && <ExtractedEvidence person={person} section="development" country="AU"/>}
           {tab === "roadmap" && <><RoadmapPanel key={person+":pathways"} person={person} category="pathways" notify={notify} cloud={cloud} /><ExtractedEvidence person={person} section="pathway" country="AU"/>{person==="amir"&&<ExtractedEvidence person={person} section="pathway" country="IT"/>}</>}
           {tab === "study" && person === "amir" && <><RoadmapPanel key={person+":study"} person={person} category="study" notify={notify} cloud={cloud} /><ExtractedEvidence person={person} section="study" country="IT"/><ExtractedEvidence person={person} section="study" country="AU"/></>}
           {tab === "development" && <><RoadmapPanel key={person+":development"} person={person} category="development" notify={notify} cloud={cloud} /><ExtractedEvidence person={person} section="development" country="AU"/>{person==="amir"&&<ExtractedEvidence person={person} section="development" country="IT"/>}</>}
-          {tab === "sources" && (
-            <>
-              <div className="notice">
-                اطلاعات مسیر مهاجرت و ثبت پزشکی باید در زمان اقدام از مرجع رسمی
-                بررسی شود. این فهرست نقطهٔ شروع است.
-                <button className="text-button" onClick={()=>setTab("roadmap")}>مطالعهٔ تحلیل منابع و برنامهٔ شخصی</button>
-              </div>
-              <div className="source-grid">
-                {sourceLinks.map(([a, b, url]) => (
-                  <a
-                    className="panel source-card"
-                    key={a}
-                    href={url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <Globe size={27} />
-                    <h3 dir="ltr">{a}</h3>
-                    <p>{b}</p>
-                    <span>
-                      مشاهدهٔ مرجع رسمی <ExternalLink size={15} />
-                    </span>
-                  </a>
-                ))}
-              </div>
-              <SourceMonitor key={person} person={person} onOpportunities={()=>setTab("opportunities")}/>
-            </>
-          )}
+          {tab === "sources" && <ToolsWorkspace key={person+":sources"} title={t("منابع و شواهد","Sources and evidence")} hint={t("وضعیت دریافت آگهی، نتیجهٔ خواندن منابع و مراجع رسمی را جدا باز کنید.","Open collection status, extracted evidence or official references when you need them.")} actions={<button type="button" className="secondary" onClick={()=>setTab("opportunities")}><Search size={16}/>{t("دیدن فرصت‌ها","View opportunities")}</button>}>
+            <ToolsSection id="source-monitor" title={t("وضعیت جست‌وجوی منابع","Source collection status")} hint={t("ببینید هر منبع چه زمانی خوانده شده و دریافت آن موفق بوده یا نیاز به بررسی دارد.","See when each source was read and whether collection succeeded or needs attention.")} icon={Activity}><SourceMonitor key={person} person={person} onOpportunities={()=>setTab("opportunities")}/></ToolsSection>
+            <ToolsSection id="source-evidence-au" title={t("اطلاعات استخراج‌شدهٔ استرالیا","Australian source findings")} hint={t("متن‌های خوانده‌شده، نکته‌های مرتبط با شما و تاریخ بررسی هر شاهد.","Read source findings, their relevance to your plan and the date each was checked.")} icon={FileText}><ExtractedEvidence person={person} section="all" country="AU"/></ToolsSection>
+            {person==="amir"&&<ToolsSection id="source-evidence-it" title={t("اطلاعات استخراج‌شدهٔ ایتالیا","Italian source findings")} hint={t("شرایط دانشگاه‌ها و فرصت‌های تحصیلی مربوط به برنامهٔ شما.","University requirements and study opportunities relevant to your plan.")} icon={GraduationCap}><ExtractedEvidence person={person} section="all" country="IT"/></ToolsSection>}
+            <ToolsSection id="source-official" title={t("مراجع رسمی ثبت پزشکی و مهاجرت","Official reference links")} hint={t("برای بررسی شرایط جاری، مرجع رسمی مرتبط را انتخاب کنید.","Choose the relevant official authority to check its current requirements.")} icon={Globe}>
+              <p className="section-help">{t("شرایط را هنگام اقدام دوباره از مرجع رسمی بررسی کنید. تحلیل متناسب با پروندهٔ شما در بخش مسیر و برنامه قرار دارد.","Recheck official requirements when applying. Your personalised analysis is in the pathway and planning section.")} <button className="text-button" onClick={()=>setTab("roadmap")}>{t("دیدن تحلیل مسیر من","View my pathway analysis")}</button></p>
+              <div className="source-grid">{sourceLinks.map(([a,b,url])=><a className="panel source-card" key={a} href={url} target="_blank" rel="noreferrer"><Globe size={23}/><h3 dir="ltr">{a}</h3><p>{b}</p><span>{t("مشاهدهٔ مرجع رسمی","Open official reference")} <ExternalLink size={15}/></span></a>)}</div>
+            </ToolsSection>
+          </ToolsWorkspace>}
           {tab === "automation" && <AutomationHub key={person+":"+automationTab} person={person} initialTab={automationTab} onNavigate={setTab} notify={notify}/>}
-          {tab === "settings" && (
-            <div className="settings-workspace">
-              <nav className="settings-shortcuts" aria-label="بخش‌های تنظیمات"><a href="#email-templates">قالب‌های ایمیل</a><a href="#cv-defaults">رزومهٔ پیش‌فرض</a><a href="#service-connections">اتصال حساب‌ها</a><a href="#calendar-documents">تقویم و مدارک</a></nav>
-              <div id="email-templates"><EmailTemplateSettings key={person} person={person} notify={notify}/></div>
-              <div className="settings-secondary-grid"><div id="cv-defaults"><CVVersions key={person} person={person} notify={notify}/></div>
+          {tab === "settings" && <ToolsWorkspace key={person+":settings"} className="settings-workspace" title={t("اتصال‌ها و تنظیمات من","My connections and settings")} hint={t("وضعیت اصلی اینجاست؛ برای تغییر هر مورد، بخش مربوط را باز کنید.","Your main connection status is shown here. Open a section only when you want to change it.")}>
+            <div className="tools-connection-summary" aria-label={t("خلاصهٔ اتصال‌های همین حساب","This account’s connection summary")}>
+              {[["primary",googleConnection],["secondary",secondaryGoogleConnection]].map(([slot,connection])=>{const state=connection.state||{},attention=state.status==="reconnect_required"||slot==="primary"&&!state.loading&&!state.connected;return <button type="button" key={slot} className={"tools-account-summary"+(attention?" needs-attention":"")} onClick={()=>openToolSection("service-connections")}><Mail size={21}/><span><strong><bdi>{state.email?googleAccountLabel(person,slot,state.email):slot==="primary"?t("حساب Google اصلی","Primary Google account"):t("حساب Google دیگر من","My other Google account")}</bdi></strong><small>{state.loading?t("در حال بررسی وضعیت…","Checking status…"):state.stale?t("وضعیت تازه دریافت نشد؛ جزئیات را باز کنید.","The latest status is unavailable; open the details."):state.status==="reconnect_required"?t("نیاز به تأیید دوبارهٔ Google","Google permission needs renewal"):state.connected?t("مجوز ثبت شده؛ برای بررسی جزئیات باز کنید.","Permission is saved; open to check the details."):slot==="secondary"?t("اختیاری؛ برای افزودن حساب خودتان باز کنید.","Optional; open to add another account of your own."):t("برای اتصال یا بررسی مجوز باز کنید.","Open to connect or check permission.")}</small></span><ChevronLeft size={16}/></button>;})}
+              <button type="button" className="tools-account-summary" onClick={()=>{setAutomationTab("telegram");setTab("automation");}}><Bell size={21}/><span><strong>{t("اعلان‌های تلگرام","Telegram notifications")}</strong><small>{data.integrations?.telegram?.connected?(data.integrations.telegram.enabled?t("اتصال ثبت شده؛ اعلان روشن","Connection saved; notifications on"):t("اتصال ثبت شده؛ اعلان خاموش","Connection saved; notifications off")):t("برای دیدن وضعیت و تنظیم اعلان باز کنید.","Open to check status and set up notifications.")}</small></span><ChevronLeft size={16}/></button>
+            </div>
+            {[googleConnection,secondaryGoogleConnection].some(connection=>connection.state?.status==="reconnect_required")&&<div className="tools-attention" role="status"><TriangleAlert size={19}/><span>{t("یکی از حساب‌های Google به تأیید دوباره نیاز دارد. بخش حساب‌ها را باز کنید و همان حساب را دوباره متصل کنید.","A Google account needs renewed permission. Open accounts and reconnect that same account.")}</span><button type="button" className="secondary" onClick={()=>openToolSection("service-connections")}>{t("بررسی حساب‌ها","Review accounts")}</button></div>}
+            <nav className="tools-shortcuts settings-shortcuts" aria-label={t("دسترسی سریع تنظیمات","Settings shortcuts")}><button type="button" className="secondary" onClick={()=>openToolSection("service-connections")}>{t("حساب‌های Google","Google accounts")}</button><button type="button" className="secondary" onClick={()=>openToolSection("email-templates")}>{t("قالب‌های ایمیل","Email templates")}</button><button type="button" className="secondary" onClick={()=>openToolSection("cv-defaults")}>{t("رزومهٔ پیش‌فرض","Default CV")}</button><button type="button" className="secondary" onClick={()=>openToolSection("calendar-documents")}>{t("تقویم و فایل‌ها","Calendar and files")}</button></nav>
+            <ToolsSection id="service-connections" title={t("حساب‌های Google","Google accounts")} hint={t("اتصال یا بررسی Gmail، تقویم و Drive هر یک از حساب‌های خودتان.","Connect or check Gmail, Calendar and Drive for each of your own accounts.")} icon={Mail}><div className="settings-connection-grid"><GoogleConnection person={person} connection={googleConnection} notify={notify}/><GoogleConnection person={person} mailbox="secondary" connection={secondaryGoogleConnection} notify={notify}/></div></ToolsSection>
+            <ToolsSection id="email-templates" title={t("قالب‌های ایمیل","Email templates")} hint={t("ساخت، ویرایش و انتخاب قالب پیش‌فرض برای نامه‌های همین حساب.","Create, edit and choose this account’s default email template.")} icon={FileText}><EmailTemplateSettings key={person} person={person} notify={notify}/></ToolsSection>
+            <ToolsSection id="cv-defaults" title={t("نسخه‌های رزومه و انتخاب پیش‌فرض","CV versions and default")} hint={t("نسخه‌های ذخیره‌شده را ببینید و رزومهٔ مناسب ارسال را انتخاب کنید.","Review saved versions and choose the CV to use for applications.")} icon={GraduationCap}><CVVersions key={person} person={person} notify={notify}/></ToolsSection>
+            <ToolsSection id="correspondence-policy" title={t("ترجیح ارسال ایمیل","Email sending preference")} hint={t("روش پیشنهادی مکاتبه؛ هر ارسال همچنان به شرایط و تأیید مربوط به خودش نیاز دارد.","Your preferred workflow; every send still needs its own checks and approval.")} icon={ShieldCheck}>
               <section className="panel">
                 <h3>سیاست مکاتبات</h3>
                 <label className="policy">
@@ -1005,22 +995,10 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
                     : "تعویض پروفایل در نسخهٔ محلی، احراز هویت نیست. پیش از انتشار داده‌های خصوصی، ورود امن و کنترل دسترسی باید فعال شود."}
                 </div>
               </section>
-              </div>
-              <section id="service-connections" className="panel settings-connections">
-                <div className="section-head"><div><h3>اتصال حساب‌ها و سرویس‌ها</h3><p className="muted">هر اتصال فقط متعلق به همین کاربر است.</p></div></div>
-                <div className="settings-connection-grid">
-                  <GoogleConnection person={person} connection={googleConnection} notify={notify}/>
-                  <GoogleConnection person={person} mailbox="secondary" connection={secondaryGoogleConnection} notify={notify}/>
-                  <div className="settings-system-services">{[
-                    ["تلگرام", "فرصت‌های تازه و یادآوری پیگیری‌ها را در تلگرام خودتان دریافت کنید.", "telegram"],
-                    ["پایش منابع", "سرور منابع کاری و دانشگاهی را دوره‌ای بررسی و آگهی‌های تازه را ثبت می‌کند. فیلترهای نمایش را در بخش فرصت‌ها انتخاب کنید.", "crawler"],
-                    ["هوش مصنوعی", "برای بررسی متن آگهی یا بهترکردن پیش‌نویس، موضوع و متن را خودتان انتخاب کنید. خروجی پیشنهادی است؛ چیزی ارسال نمی‌شود.", "ai"],
-                  ].map(([a,b,key])=><div className="integration" key={a}><span className="clinic-icon"><Globe size={20}/></span><div><strong>{a}</strong><small>{b}</small></div><span className={"status "+(data.integrations?.[key]?.connected?"":"amber")}>{data.integrations?.[key]?.connected?(key==="telegram"&&!data.integrations.telegram.enabled?"متصل؛ اعلان خاموش":"آماده"):"نیازمند راه‌اندازی"}</span></div>)}<div className="settings-tool-actions"><button className="secondary" onClick={()=>{setAutomationTab("telegram");setTab("automation");}}>اتصال تلگرام من</button><button className="secondary" onClick={()=>{setAutomationTab("operations");setTab("automation");}}>وضعیت منابع و جست‌وجو</button><button className="secondary" onClick={()=>{setAutomationTab("ai");setTab("automation");}}>کمک برای بررسی و نوشتن</button><button className="text-button" onClick={()=>{setAutomationTab("backup");setTab("automation");}}>پشتیبان اطلاعات من</button></div></div>
-                </div>
-              </section>
-              <div id="calendar-documents" className="settings-calendar-wide"><CalendarDriveTools key={person+":"+Boolean(googleConnection.state.connected)+":"+(googleConnection.state.email||"")} person={person} notify={notify}/></div>
-            </div>
-          )}
+            </ToolsSection>
+            <ToolsSection id="calendar-documents" title={t("تقویم، دوره‌ها و فایل‌های من","My calendar and files")} hint={t("برنامه‌های حساب‌های خودتان، مدارک شخصی و ابزارهای Google را مدیریت کنید.","Manage your own calendars, personal documents and Google tools.")} icon={Calendar}><div className="settings-calendar-wide"><CalendarDriveTools key={person+":"+Boolean(googleConnection.state.connected)+":"+(googleConnection.state.email||"")} person={person} notify={notify}/></div></ToolsSection>
+            <ToolsSection id="other-account-tools" title={t("تلگرام، جست‌وجو و ابزارهای کمکی","Other account tools")} hint={t("دسترسی به تنظیم اعلان، وضعیت منابع، کمک نگارشی و پشتیبان خصوصی.","Open notification settings, collection status, writing help and private backups.")} icon={Settings}><div className="settings-tool-actions"><button className="secondary" onClick={()=>{setAutomationTab("telegram");setTab("automation");}}>{t("تنظیم اعلان تلگرام","Telegram notification settings")}</button><button className="secondary" onClick={()=>setTab("sources")}>{t("وضعیت و جزئیات منابع","Source status and details")}</button><button className="secondary" onClick={()=>{setAutomationTab("ai");setTab("automation");}}>{t("کمک برای تحلیل و نوشتن","Help with analysis and writing")}</button><button className="secondary" onClick={()=>{setAutomationTab("backup");setTab("automation");}}>{t("پشتیبان اطلاعات من","Back up my information")}</button></div></ToolsSection>
+          </ToolsWorkspace>}
           <footer>
             <span>مسیر · فضای یکپارچهٔ مهاجرت پزشکی</span>
             <span>
@@ -1031,7 +1009,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
       </main>
       {toast && (
         <div className={"toast "+(/oauth_|خطا|ناموفق|انجام نشد|متصل نشد|failed|required|unavailable|rejected/i.test(String(toast))?"toast-error":"")} role="status">
-          <CheckCircle2 size={19} />
+          {/oauth_|خطا|ناموفق|انجام نشد|متصل نشد|failed|required|unavailable|rejected/i.test(String(toast))?<TriangleAlert size={19}/>:<CheckCircle2 size={19}/>}
           {toast}
           <button onClick={() => setToast("")} aria-label="بستن">
             <X size={16} />

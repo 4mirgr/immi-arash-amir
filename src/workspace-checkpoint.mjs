@@ -2,6 +2,7 @@
 // source quotes, review hashes, recipients or permission to send.
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const OPP=/^opp_[a-f0-9]{32}$/;
+const EDIT=/^gpedit_[a-f0-9]{32}$/;
 const TABS=['overview','opportunities','mail','cv','pesci','linkedin','roadmap','funding','team','study','development','sources','automation','settings'];
 const TTL=7*86400000;
 function key(owner,profile,section){return UUID.test(owner||'')&&['arash','amir'].includes(profile)&&['navigation','opportunities'].includes(section)?`masir-ui:v1:${owner}:${profile}:${section}`:null;}
@@ -18,6 +19,7 @@ function sanitize(section,value,profile){
   if(Number.isInteger(value.page)&&value.page>=0&&value.page<=10000)out.page=value.page;
   if(value.openOpportunityId===null||OPP.test(value.openOpportunityId||''))out.openOpportunityId=value.openOpportunityId;
   if(UUID.test(value.cvVersionId||''))out.cvVersionId=value.cvVersionId;
+  if(profile==='arash'&&OPP.test(value.openOpportunityId||'')&&EDIT.test(value.editedDraftId||''))out.editedDraftId=value.editedDraftId;
   one('variant',['auto','A','B','C']);one('step',['letter','mail']);
   if(Number.isInteger(value.subjectIndex)&&value.subjectIndex>=0&&value.subjectIndex<3)out.subjectIndex=value.subjectIndex;
  }

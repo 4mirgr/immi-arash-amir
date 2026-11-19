@@ -86,7 +86,7 @@ export async function handleClinicEnquiryRequest(request,env,context,at=Date.now
   const helper=buildGpApplicationPackage({profile,cvText,cvVersionId:cv?.id||null,opportunity:{url:root,kind:'employment_register',opportunityType:'lead',title:'GP enquiry',organization:clinicName||'',lastSeenAt:fresh?new Date(stamp).toISOString():null},now:at});
   const pair=suggestEvidencePair(quotes,helper.cvEvidenceCandidates),cvQuote=pair?.cvQuote||helper.cvEvidenceCandidates[0]?.text||null;
   const selectedClinic=pair?quotes.find(item=>item.text===pair.clinicQuote):null;
-  const composed=composeClinicParagraphs({clinicName,clinicQuote:pair?.clinicQuote,cvQuote,confirmed:true,clinicSourceURL:selectedClinic?.sourceUrl,clinicReadAt:selectedClinic?.readAt});
+  const composed=composeClinicParagraphs({clinicName,clinicQuote:pair?.clinicQuote,cvQuote,confirmed:true,professionalStrengths:writing.clinicalStrengths,clinicSourceURL:selectedClinic?.sourceUrl,clinicReadAt:selectedClinic?.readAt});
   const value=cvQuote?composed.candidateValue:null,clinic=pair&&clinicName?composed.clinicReason:null;
   const doctorName=clean(profile.name||profile.fullName||profile.full_name,150)||'Dr Arash Entezar';
   const paragraphs={opening:writing.confirmed?writing.opening:null,clinic,value,closing:writing.confirmed?writing.closing:null};

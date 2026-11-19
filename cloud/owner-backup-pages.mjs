@@ -13,6 +13,8 @@ D1.google_send_suppressions={owner:'owner_id',columns:'owner_id,email,created_at
 D1.clinic_correspondence_stops={owner:'owner_id',columns:'*',secondary:true};
 D1.private_mail_opportunities={owner:'owner_id',columns:'*',secondary:true};
 D1.private_mail_opportunity_research={owner:'owner_id',columns:'*',secondary:true};
+D1.gp_letter_edits={owner:'owner_id',columns:'*'};
+D1.gp_letter_style_templates={owner:'owner_id',columns:'*'};
 const exclusions=['provider_credentials_and_oauth_state','scheduled_send_and_publish_approvals','received_mail_bodies_and_sync_tokens','raw_send_mime_and_attachments','private_provider_files_not_stored_by_this_app','public_opportunity_database','other_doctor_private_data','shared_tasks_authored_by_other_doctor'];
 const recovery={providerReconnectRequired:true,scheduledApprovalsExcluded:true,automaticJobsRequireReview:true,transportRecordsReferenceOnly:true,productionRestoreImplemented:false};
 const utf8=value=>new TextEncoder().encode(value);
