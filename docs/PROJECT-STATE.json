@@ -51,27 +51,40 @@
     "otherProjectAccess": "do not alter IntMed or native website/Clinic auth to repair AUS"
   },
   "latestFeatureRelease": {
-    "sourceCommit": "e12f30efd36438f8785bf2cf0fde002bb820ee14",
-    "receipt": "docs/MAIL-PRIORITY-2026-11-19.fa.md",
-    "workerDeployment": "657095bc-51f5-4ffa-9901-75cc67c2dcef",
-    "workerVersion": "b8a77880-871e-4de1-b789-20307c889dc5",
+    "sourceCommit": "4f935f8ff2eb7e4265362c1321adac11c0ae2173",
+    "receipt": "docs/AUDIT-2026-11-21.fa.md",
+    "workerDeployment": "67cfb053-f2c7-4827-b865-f5a74217810f",
+    "workerVersion": "15a5deb3-8526-4364-875b-be21875dd203",
     "workerTrafficPercent": 100,
-    "workerModuleSha256": "544c64726578361126b7ec8509311ad8a22e5d33df0c64d8f5b6266e3d8651be",
-    "ausSpecificHostCommit": "63028915173ae1ad068567464d5ec0783f8bb58f",
-    "successfulPagesDeployment": "4a625dd5-c5e4-4d8f-b5fa-9b0755acc499",
+    "workerModuleSha256": "cc573f41bb81d5fa8f4f0148b3ce52f3b3ecde7d1fd9726482697606cfe44f8c",
+    "ausSpecificHostCommit": "a8bde347928d050f2e05fdc85c1f9eeb72365e2e",
+    "successfulPagesDeployment": "ec0f6a10-5472-4770-b921-216e16285579",
     "laterNativeHostCommitsMustBePreserved": true,
     "privateSchemaBaseline": "08ad93d68d17c459cc86bc62ecac98f0776dd3d0",
-    "nodeTestsPassed": 1096,
+    "nodeTestsPassed": 1124,
     "pythonTestsPassed": 79,
-    "browserWorkflowChecksPassed": 17,
-    "independentTargetedTestsPassed": 178,
+    "browserWorkflowChecksPassed": 18,
+    "independentTargetedTestsPassed": 99,
     "hostBrowserCombinationsPassed": 48,
-    "realApplicationsSentForTests": false
+    "realApplicationsSentForTests": false,
+    "workerModuleBytes": 5242646,
+    "hostPullRequest": 45,
+    "hostPullRequestCheckRun": 44905147985,
+    "preservedNativeHostBaseline": "3564529d9a98168ad0e08070b7f70d11c0acaa63",
+    "independentFinalFocusedTestsPassed": 21,
+    "combinedPublicFiles": 497,
+    "combinedBytes": 61191316,
+    "rootGzipBytes": 27771,
+    "productionAssetsObservedAt": "2026-11-21T12:46:08.991700+00:00",
+    "productionAssetHashesMatched": true,
+    "hostMainCheckRun": 44905369297,
+    "hostMainChecksPassed": true,
+    "hostReleaseTag": "release/aus-audit-2026-11-21"
   },
   "runtimeConfigurationObserved": {
-    "checkedAt": "2026-11-19T10:14:54Z",
+    "checkedAt": "2026-11-21T12:43:12.811Z",
     "method": "read-only Cloudflare deployment, settings, schedules and Pages metadata",
-    "workerBindingCount": 29,
+    "workerBindingCount": 30,
     "workerSecretCount": 9,
     "operatorSearchDiagnosticFlagPresent": false,
     "enabledFlags": [
@@ -97,7 +110,9 @@
       "paidActivationAuthorized": false,
       "maximumReservedAttemptsPerUTCDay": 20,
       "sameOwnerQueryReuseDays": 7
-    }
+    },
+    "d1ReadsResumeAfter": "2026-11-22T00:00:05.000Z",
+    "dedicatedWorkerDeployCiConfigured": false
   },
   "mailRules": {
     "defaultSort": "ready",
@@ -161,6 +176,12 @@
   ],
   "openWork": [
     {
+      "id": "d1-post-reset-validation",
+      "owner": "developer and scheduled workers",
+      "notBeforeUTC": "2026-11-22T00:00:05.000Z",
+      "doneWhen": "bounded post-reset mail, research, bank and new-source ingestion receipts; observe actual D1 read usage and retain owner isolation, suppression and unknown transport outcomes"
+    },
+    {
       "id": "progressive-coverage",
       "owner": "developer and scheduled workers",
       "doneWhen": "archive/bank/source coverage receipts; lawful handling of blocked/PDF/dynamic sources"
@@ -217,9 +238,10 @@
       "dailyRowReadLimitExhausted": true,
       "resetAtUTC": "2026-11-22T00:00:00Z",
       "resumeFlag": "D1_READS_RESUME_AFTER",
-      "plannedResumeAtUTC": "2026-11-22T00:00:05.000Z",
       "paidUpgrade": false,
-      "liveQueueResumeVerified": false
+      "liveQueueResumeVerified": false,
+      "configuredResumeAtUTC": "2026-11-22T00:00:05.000Z",
+      "dailyAllowanceReplenishedByDeployment": false
     },
     "proofVersion": 3,
     "newExecutableSources": 4,
@@ -227,6 +249,8 @@
     "newSourcesD1IngestionVerified": false,
     "research": "docs/research/GP-SEARCH-2026-11-21.md",
     "schemaChanged": false,
-    "realApplicationsSentForTests": false
+    "realApplicationsSentForTests": false,
+    "workerDeploymentVerified": true,
+    "hostDeploymentVerified": true
   }
 }

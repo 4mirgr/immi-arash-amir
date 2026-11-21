@@ -1,8 +1,8 @@
 # Start here: project handoff
 
-Updated 2026-11-19. This is a recovery guide for a human or another AI. The repository is public: preserve rules, architecture, public research and release evidence here; retrieve private state only through the owner's authorized storage. Git is not a backup of the doctors' accounts.
+Updated 2026-11-21. This is a recovery guide for a human or another AI. The repository is public: preserve rules, architecture, public research and release evidence here; retrieve private state only through the owner's authorized storage. Git is not a backup of the doctors' accounts.
 
-Latest continuation 2026-11-21: read [the fresh audit](AUDIT-2026-11-21.fa.md) first. Account-wide D1 daily row-read exhaustion7500 was actually observed; no provider reconnection or paid upgrade is indicated. The finite `D1_READS_RESUME_AFTER` boundary expires22Nov00:00:05UTC, retaining queues/grants/approvals; require actual post-reset progress receipts. Materialized/indexed reads, v3 proof revalidation, original cached dates, old-mail/fresh-proof alerts and quota-aware foreground polling are the current fixes. Four direct/collectorHTTP200+robots-allowed GP sources are configured; new D1 ingestion remains unverified until the reset. The C5 release below remains historical until replaced by the audit's actual new deployment receipt.
+Latest continuation 2026-11-21: read [the fresh audit](AUDIT-2026-11-21.fa.md) first. Account-wide D1 daily row-read exhaustion7500 was actually observed; no provider reconnection or paid upgrade is indicated. The deployed finite `D1_READS_RESUME_AFTER` boundary expires on 22 November at 00:00:05 UTC, retaining queues/grants/approvals; require actual post-reset progress receipts. Materialized/indexed reads, v3 proof revalidation, original cached dates, old-mail/fresh-proof alerts and quota-aware foreground polling are the current fixes. Four direct/collectorHTTP200+robots-allowed GP sources are configured; new D1 ingestion remains unverified until the reset. The actual Worker/frontend release is recorded below and in the audit; successful publication does not establish queue resumption before the quota reset.
 
 ## Resume in this order
 
@@ -49,7 +49,7 @@ Keep advertisement editions separate; a new request from an existing employer ca
 
 All old and new opportunities require contact-lookup registration or an explicit blocked/unavailable/storage status. Historical reconciliation and refresh are gradual, not a fixed first-N coverage claim. Private Gmail-derived research updates only that doctor's private bank unless the owner separately shares it. Use exact clinic identity/host checks to avoid mixing branches of a network.
 
-The deployed system uses bounded server cron jobs, not a permanently running conversational AI. These UTC expressions were rechecked read-only on 2026-11-19:
+The deployed system uses bounded server cron jobs, not a permanently running conversational AI. These UTC expressions were rechecked read-only on 2026-11-21:
 
 | Cron | Lane |
 |---|---|
@@ -97,16 +97,19 @@ Transient fetch/auth-bootstrap failures retain same-owner loaded content and in-
 
 ## Latest verified release and one-time actions
 
-- Runtime/UI source: `e12f30efd36438f8785bf2cf0fde002bb820ee14`. Worker deployment `657095bc-51f5-4ffa-9901-75cc67c2dcef`, version `b8a77880-871e-4de1-b789-20307c889dc5`, 100% traffic. Module hash and release evidence: [MAIL-PRIORITY](MAIL-PRIORITY-2026-11-19.fa.md).
-- AUS-specific host release: `63028915173ae1ad068567464d5ec0783f8bb58f`, successful Pages deployment `4a625dd5-c5e4-4d8f-b5fa-9b0755acc499`. Later native host commits preserve the AUS source pin; read current host main before editing it. Do not roll those commits back.
-- Latest code passed 1,096 Node tests, 79 Python tests and 17 browser workflows; independent review passed 178 targeted tests and the ordering browser check. Host native checks and the fresh 478-file combined artifact's 48 browser combinations passed. These are dated release results, not fresh tests of every future change or real delivery.
-- All nine existing Secrets and 29 bindings were preserved. Diagnostic `MAIL_SEARCH_SUPPORT_CHECK` is absent. Private schema baseline is `08ad93d68d17c459cc86bc62ecac98f0776dd3d0`; C3/C4/C5 added no DDL. Never rerun migrations just because a document lists them.
-- Already done once: 132 valid cached messages requeued for the corrected parser; seven previously read rows marked unread; 53 old research rows advanced for minimal-enquiry review. Do not repeat these on startup or reset read/send/notification history. See [parser backfill](MAIL-PARSER-BACKFILL.fa.md).
+- Runtime/UI source: `4f935f8ff2eb7e4265362c1321adac11c0ae2173`. Actual Worker deployment `67cfb053-f2c7-4827-b865-f5a74217810f`, version `15a5deb3-8526-4364-875b-be21875dd203`, 100% traffic at 2026-11-21T12:31:36.930708Z. The independently downloaded 5,242,646-byte module matches SHA-256 `cc573f41bb81d5fa8f4f0148b3ce52f3b3ecde7d1fd9726482697606cfe44f8c`. See [21 November audit](AUDIT-2026-11-21.fa.md).
+- Host PR45 passed CI, merged as `a8bde347928d050f2e05fdc85c1f9eeb72365e2e` and production Pages `ec0f6a10-5472-4770-b921-216e16285579` succeeded. Native site/editorial work through `3564529` and the IntMed pin remain. Current host main may subsequently advance; never roll it back to this receipt.
+- At 2026-11-21T12:46:08.991700Z, `/build-info.json` reported the actual AUS pin, and live `/aus/` HTML plus JS/CSS bytes matched the reviewed artifact. Same-origin health/config passed and unauthenticated mail access returned401. Native production pages, font, account/CMS and private admin barriers also passed read-only checks. These are not real authenticated mailbox/transport tests.
+- 1,124 Node tests, 79 Python tests and 18 browser workflows passed. Independent review passed 99 targeted tests, the quota UI workflow and 21 final focused checks. Full latest-native browser suite, the fresh 497-file/61,191,316-byte build and 48 assembled browser combinations passed. Root HTML is 27,771 B gzip under the unchanged 28,000 B ceiling; held/corrupt asset recovery and no-JavaScript tests pass. No real applications or test Telegram messages were sent.
+- All nine existing Secrets, 30 bindings and five cron strings were verified. The added plain `D1_READS_RESUME_AFTER` expires automatically at 22 Nov 00:00:05 UTC. Diagnostic `MAIL_SEARCH_SUPPORT_CHECK` is absent. Private schema baseline remains `08ad93d68d17c459cc86bc62ecac98f0776dd3d0`; no DDL was added or executed. Do not repeat migrations from a historical document.
+- The account-wide D1 free daily read allowance was already exhausted. The deployed guard does not replenish it: require bounded post-reset progress/read-usage receipts before claiming restored collection or new-source ingestion. Dedicated Worker CI deployment is still unconfigured; its current Actions run passed only the configuration job and skipped deploy. This actual Worker publication used the authorized management connector.
+- Already done once: 132 valid cached messages requeued for the corrected parser; seven previously read rows marked unread; 53 old research rows advanced for minimal-enquiry review. Do not repeat these on startup or reset read/send/notification history. See [parser backfill](MAIL-PARSER-BACKFILL.fa.md) and historical [19 November release](MAIL-PRIORITY-2026-11-19.fa.md). Version 3 proof refresh uses existing versioned due selection instead of a new bulk reset.
 
 ## Open work: owner, next step and completion evidence
 
 | Work | Next step and actual completion condition |
 |---|---|
+| D1 post-reset recovery | Developer/cron: after 22 Nov 00:00:05 UTC, verify bounded actual mail/research/bank/source progress and real read consumption. A finite pause, successful deploy or local SQLite VM reduction is not proof of restored daily capacity |
 | Archive and clinic bank | Developer/cron: continue durable coverage, match public employer identity, improve blocked/PDF/large/dynamic readers lawfully. Completion requires coverage receipts, not queue counts or a fixed sample. No whole-web claim |
 | Standalone bank outreach | Developer: distinguish the working mail-linked initial-enquiry transport from a general bank-only/recurrent campaign. The latter still needs reviewed entry creation, current contact/CV/sender checks, cadence, dedup/suppression and explicit approval |
 | Full independent backup/restore | Developer + owners: agree independent destination/key custody/retention, export all intended stores, then actually restore an empty isolated staging system and test both owners' RLS. Browser checksum and limited Drive export are not this proof. Old approvals must remain inactive |
