@@ -1,6 +1,6 @@
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {Bell,Check,ChevronDown,ExternalLink,FileText,Mail,RefreshCw,Save,Send} from 'lucide-react';
-import {api} from './api';
+import {api,apiRetryAt,storageDailyReadLimitNotice} from './api';
 import {googleAccountLabel} from './google-account-labels.mjs';
 import {interfaceLocale,useInterfaceLanguage} from './interface-locale.mjs';
 import {MixedText} from './mixed-text';
@@ -41,6 +41,7 @@ const copy={
  gmail_send_scope_required:['مجوز ارسال Gmail برای همین صندوق لازم است.','This mailbox requires Gmail sending permission.'],
  suppressed:['این مخاطب در فهرست عدم ارسال همین حساب است.','This contact is on this account’s suppression list.'],
  daily_quota_reached:['سقف ارسال امروز تکمیل شده است؛ نتیجه‌های فعلی حفظ شده‌اند.','Today’s sending limit has been reached; existing results are preserved.'],
+ storage_daily_read_limit:['سهمیهٔ رایگانِ خواندن اطلاعات امروز تمام شده است؛ اطلاعات قبلی حفظ شده‌اند.','Today’s free data-reading allowance has been reached; existing information is preserved.'],
  owner_writing_profile_required:['قالب و اطلاعات نامهٔ همین حساب باید در تنظیمات تکمیل شود.','Complete this account’s letter profile and template in settings.'],
  signature_name_required:['نام صاحب حساب برای امضای نامه کامل نیست.','The account owner’s name is missing from the letter signature.'],
  signature_email_required:['ایمیل تماس در امضای همین حساب باید تکمیل شود.','Complete this account’s contact email in the letter signature.'],
@@ -182,7 +183,8 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
  const accountKey=JSON.stringify([ownerId||'',person,mailbox,google.email||'']);
  const epoch=useRef({key:accountKey,value:0});if(epoch.current.key!==accountKey)epoch.current={key:accountKey,value:epoch.current.value+1};
  const scope=JSON.stringify([accountKey,epoch.current.value]),currentScope=useRef(scope);currentScope.current=scope;
- const mounted=useRef(true),readFlight=useRef(null),actionLock=useRef(null),lastFocus=useRef(''),previewRef=useRef({});
+ const mounted=useRef(true),readFlight=useRef(null),actionLock=useRef(null),lastFocus=useRef(''),previewRef=useRef({}),retry=useRef({scope:null,until:0,error:null});
+ if(retry.current.scope!==scope)retry.current={scope,until:0,error:null};
  const [snapshot,setSnapshot]=useState(null),[versions,setVersions]=useState({scope:null,items:[]}),[cvChoice,setCvChoice]=useState({scope:null,id:''});
  const [cardCvChoice,setCardCvChoice]=useState({scope:null,items:{}}),[dirtyCases,setDirtyCases]=useState({scope:null,items:{}});
  const [open,setOpen]=useState(null),[selected,setSelected]=useState({scope:null,ids:[]}),[previews,setPreviews]=useState({scope:null,items:{}}),[results,setResults]=useState({scope:null,items:{}}),[recipientChoices,setRecipientChoices]=useState({scope:null,items:{}});
@@ -198,6 +200,7 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
  const cache=snapshot?.scope===scope?snapshot:null,items=cache?.items||[],visiblePreviews=previews.scope===scope?previews.items:{},visibleResults=results.scope===scope?results.items:{};
  previewRef.current=visiblePreviews;
  const busyHere=busy?.scope===scope?busy:null,errorHere=error?.scope===scope?error:null;
+ const quotaError=errorHere?.code==='storage_daily_read_limit'?errorHere:retry.current.until>Date.now()&&retry.current.error?.code==='storage_daily_read_limit'?retry.current.error:null;
  const offset=pageState.scope===scope?pageState.offset:0,sort=sortChoice.scope===scope?sortChoice.value:'ready';
  const endpoint=`google/mail-opportunities?profile=${encodeURIComponent(person)}&mailbox=${mailbox}&limit=25&offset=${offset}&sort=${sort}`,endpointRef=useRef(endpoint);endpointRef.current=endpoint;
  const path=id=>`google/mail-opportunities/${encodeURIComponent(id)}?profile=${encodeURIComponent(person)}&mailbox=${mailbox}`;
@@ -211,15 +214,22 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
  const updateResult=(requested,id,value)=>{if(!alive(requested))return;setResults(previous=>({scope:requested,items:{...(previous.scope===requested?previous.items:{}),[id]:value}}));};
  const setCaseDirty=(id,cvVersionId,dirty)=>{if(!alive(scope))return;const next={scope,items:{...(dirtyRef.current.scope===scope?dirtyRef.current.items:{}),[id]:{cvVersionId,dirty:Boolean(dirty)}}};dirtyRef.current=next;setDirtyCases(next);};
  const cacheDraft=(requested,id,proposal)=>{if(!alive(requested))return;setSnapshot(previous=>previous?.scope===requested?{...previous,items:previous.items.map(item=>item.id===id?{...item,draft:proposal}:item),focusedItem:previous.focusedItem?.id===id?{...previous.focusedItem,draft:proposal}:previous.focusedItem}:previous);};
+ const coolingDown=()=>retry.current.scope===currentScope.current&&retry.current.until>Date.now();
+ function requestError(requested,kind,caught,fallback){
+  if(!alive(requested))return;
+  const value={scope:requested,kind,code:caught.code||caught.message||fallback,...(caught.retryAt?{retryAt:caught.retryAt}:{}),...(Number.isFinite(caught.retryAfterSeconds)?{retryAfterSeconds:caught.retryAfterSeconds}:{})},until=apiRetryAt(caught);
+  if(until>Date.now())retry.current={scope:requested,until:Math.max(retry.current.until||0,until),error:value};
+  setError(value);
+ }
  const load=useCallback(async()=>{
-  if(!cloud||person!=='arash'||anyDirty()||readFlight.current?.scope===scope&&readFlight.current.endpoint===endpoint)return;
+  if(!cloud||person!=='arash'||anyDirty()||coolingDown()||readFlight.current?.scope===scope&&readFlight.current.endpoint===endpoint)return;
   const operation={scope,endpoint};readFlight.current=operation;
   try{
    const value=await api(endpoint);if(!alive(scope)||endpointRef.current!==endpoint||anyDirty())return;
    setSnapshot(previous=>{const items=(value.items||[]).filter(item=>ID.test(item?.id||'')),activeId=openRef.current?.scope===scope?openRef.current.id:null,existing=previous?.scope===scope?previous:null,kept=activeId?(existing?.focusedItem?.id===activeId?existing.focusedItem:existing?.items?.find(item=>item.id===activeId)):existing?.focusedItem;return {scope,offset,items,more:Boolean(value.more),nextOffset:value.nextOffset,unreadCount:Number(value.unreadCount)||0,focusedItem:kept?(items.find(item=>item.id===kept.id)||kept):null};});
    onUnreadCount?.(Number(value.unreadCount)||0,mailbox);
    setError(previous=>previous?.scope===scope&&previous.kind==='load'?null:previous);
-  }catch(e){if(alive(scope)&&endpointRef.current===endpoint)setError({scope,kind:'load',code:e.message||'mail_opportunities_unavailable'});}
+  }catch(e){if(alive(scope)&&endpointRef.current===endpoint)requestError(scope,'load',e,'mail_opportunities_unavailable');}
   finally{if(readFlight.current===operation)readFlight.current=null;}
  },[cloud,person,scope,endpoint,mailbox,offset]);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
@@ -227,7 +237,7 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
   actionLock.current=null;setOpen(null);setFilter('all');setFocusError(null);setBusy(null);setError(null);
   if(!cloud||person!=='arash')return;
   const requested=scope;
-  api(`cv/versions?profile=${encodeURIComponent(person)}`).then(value=>{if(!alive(requested))return;const found=ownedCvList(value,person,ownerId),preferred=found.find(item=>item.isDefault||item.is_default),next={scope:requested,id:preferred?.id||found[0]?.id||'',fallback:!preferred&&found.length>0};setVersions({scope:requested,items:found});cvRef.current=next;setCvChoice(next);}).catch(e=>{if(alive(requested))setError({scope:requested,kind:'cv',code:e.message||'cv_required'});});
+  api(`cv/versions?profile=${encodeURIComponent(person)}`).then(value=>{if(!alive(requested))return;const found=ownedCvList(value,person,ownerId),preferred=found.find(item=>item.isDefault||item.is_default),next={scope:requested,id:preferred?.id||found[0]?.id||'',fallback:!preferred&&found.length>0};setVersions({scope:requested,items:found});cvRef.current=next;setCvChoice(next);}).catch(e=>requestError(requested,'cv',e,'cv_required'));
  },[scope,cloud,person]);
  useEffect(()=>{load();},[load]);
  useEffect(()=>{if(!cloud||person!=='arash')return;const timer=setInterval(()=>{if(document.visibilityState==='visible'&&navigator.onLine!==false&&!actionLock.current&&!anyDirty())load();},60000);return()=>clearInterval(timer);},[cloud,person,load]);
@@ -240,7 +250,7 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
    setSnapshot(previous=>({...(previous?.scope===scope?previous:{scope,items:[]}),focusedItem:value}));setOpen({scope,id:requested});setFocusError(null);
    setTimeout(()=>{if(alive(scope))document.getElementById('mail-opportunity-'+requested)?.scrollIntoView({behavior:'smooth',block:'center'});},100);
    await markRead(value);
-  }).catch(()=>{if(alive(scope))setFocusError({scope,id:requested});});
+  }).catch(e=>{if(alive(scope)){setFocusError({scope,id:requested});if(e.code==='storage_daily_read_limit')requestError(scope,'load',e,'mail_opportunity_unavailable');}});
  },[focus?.id,focus?.mailbox,scope,mailbox,hasDirty]);
 
  async function previewOne(id,requested=scope,overrideRecipients,savedProposal){
@@ -259,15 +269,15 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
    for(const recipient of addresses){
     if(!current())return null;
     try{const value=await api(actionPath(id,'preview'),{method:'POST',body:JSON.stringify({cvVersionId:selectedCV,recipient,...(MAIL_EDIT.test(proposal.editedDraftId||'')?{editedDraftId:proposal.editedDraftId}:{})})});if(!current())return null;reviews.push({...value,recipient,subject:value.subject||value.message?.subject||'',body:value.body||value.message?.body||'',cvVersionId:value.cvVersionId||selectedCV,...(proposal.editedDraftId?{editedDraftId:proposal.editedDraftId}:{})});}
-    catch(e){failure=e.message||'needs_evidence';}
+    catch(e){failure=e.code||e.message||'needs_evidence';if(apiRetryAt(e)){requestError(requested,'preview',e,'needs_evidence');break;}}
    }
    if(!current())return null;
    const checked={...proposal,...reviews[0],availableRecipients:available,selectedRecipients:addresses,reviews,readyForReview:!failure&&reviews.length===addresses.length&&reviews.every(review=>review.readyForReview&&review.reviewHash),missing:failure?[failure]:[],cvVersionId:selectedCV};
    updatePreview(requested,id,checked);return checked;
-  }catch(e){if(current())updatePreview(requested,id,{readyForReview:false,missing:[e.message||'needs_evidence'],cvVersionId:selectedCV});return null;}
+  }catch(e){if(current()){updatePreview(requested,id,{readyForReview:false,missing:[e.code||e.message||'needs_evidence'],cvVersionId:selectedCV});if(apiRetryAt(e))requestError(requested,'preview',e,'needs_evidence');}return null;}
  }
  async function prepare(ids,overrides={}){
-  if(actionLock.current||anyDirty())return;const requested=scope,operation={scope:requested,kind:'prepare'};actionLock.current=operation;setBusy({...operation,ids});setError(null);
+  if(actionLock.current||anyDirty()||coolingDown())return;const requested=scope,operation={scope:requested,kind:'prepare'};actionLock.current=operation;setBusy({...operation,ids});setError(null);
   try{const pending=[...ids];await Promise.allSettled([0,1].map(async()=>{while(pending.length&&alive(requested)){const id=pending.shift();if(TERMINAL.has(visibleResults[id]?.status)||isDirty(id))continue;await previewOne(id,requested,overrides[id]);}}));}
   finally{if(actionLock.current===operation)actionLock.current=null;if(alive(requested))setBusy(null);}
  }
@@ -279,13 +289,14 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
   if(cardCV(item.id)&&!previewRef.current[item.id]&&!isDirty(item.id)&&!TERMINAL.has(visibleResults[item.id]?.status))await prepare([item.id]);
  }
  async function markRead(item){
+  if(coolingDown())return;
   if(item.unread){
    try{await api(actionPath(item.id,'read'),{method:'POST',body:'{}'});if(alive(scope)){setSnapshot(previous=>previous?.scope===scope?{...previous,unreadCount:Math.max(0,(previous.unreadCount||0)-1),items:previous.items.map(row=>row.id===item.id?{...row,unread:false}:row),focusedItem:previous.focusedItem?.id===item.id?{...previous.focusedItem,unread:false}:previous.focusedItem}:previous);onUnreadCount?.(Math.max(0,(cache?.unreadCount||0)-1),mailbox);}}
-   catch(e){if(alive(scope))setError({scope,kind:'read',code:e.message||'read_not_recorded'});}
+   catch(e){requestError(scope,'read',e,'read_not_recorded');}
   }
  }
  async function send(ids){
-  if(actionLock.current||!ids.length||anyDirty())return;
+  if(actionLock.current||!ids.length||anyDirty()||coolingDown())return;
   const requested=scope,frozen=ids.map(id=>({id,review:previewRef.current[id]}));
   if(frozen.some(item=>!item.review?.readyForReview||!item.review.reviews?.length||item.review.cvVersionId!==cardCV(item.id)||isDirty(item.id)||!sourceMatches(item.id,item.review)||TERMINAL.has(visibleResults[item.id]?.status)))return;
   const operation={scope:requested,kind:'send'};actionLock.current=operation;setBusy({...operation,ids});setError(null);
@@ -295,12 +306,18 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
    const summarize=(id,outcome)=>{const values=accumulated.get(id);values.push(outcome);const expected=frozen.find(item=>item.id===id).review.reviews.length;const prior=visibleResults[id]?.items||[];const merged=[...prior.filter(row=>!values.some(value=>value.recipient===row.recipient)),...values];const status=values.length<expected?'sending':merged.every(row=>row.status==='sent')?'sent':merged.some(row=>['delivery_unknown','sending'].includes(row.status))?'delivery_unknown':'blocked';updateResult(requested,id,{status,items:merged});};
    await Promise.allSettled([0,1].map(async()=>{while(pending.length&&alive(requested)){
     const item=pending.shift();
+    if(coolingDown()){summarize(item.id,{recipient:item.review.recipient,status:'blocked',code:retry.current.error?.code||'review_changed'});continue;}
     try{
      const value=await api(actionPath(item.id,'send'),{method:'POST',body:JSON.stringify({cvVersionId:item.review.cvVersionId,recipient:item.review.recipient,reviewHash:item.review.reviewHash,confirmSend:true,...(MAIL_EDIT.test(item.review.editedDraftId||'')?{editedDraftId:item.review.editedDraftId}:{})})});
      const outcomes=Array.isArray(value.items)?value.items:[];
      const status=outcomes.length&&outcomes.every(row=>row.status==='sent')?'sent':outcomes.some(row=>['delivery_unknown','sending'].includes(row.status))?'delivery_unknown':value.status==='sent'?'sent':value.status==='delivery_unknown'?'delivery_unknown':'blocked';
      summarize(item.id,{recipient:item.review.recipient,status,code:value.reason||value.error||null});
-    }catch(e){summarize(item.id,{recipient:item.review.recipient,status:!Number.isInteger(e.status)||e.status>=500?'delivery_unknown':'blocked',code:e.message||'send_result_unknown'});}
+    }catch(e){
+     const notStarted=e.status===503&&e.code==='storage_daily_read_limit'&&e.actionNotStarted===true;
+     summarize(item.id,{recipient:item.review.recipient,status:notStarted?'blocked':!Number.isInteger(e.status)||e.status>=500?'delivery_unknown':'blocked',code:e.code||e.message||'send_result_unknown'});
+     if(apiRetryAt(e))requestError(requested,'send',e,'send_result_unknown');
+     if(notStarted){const previous=previewRef.current[item.id];if(previous)updatePreview(requested,item.id,{...previous,readyForReview:false,reviews:[],requiresFreshReview:true,missing:['storage_daily_read_limit']});}
+    }
    }}));
   }finally{if(actionLock.current===operation)actionLock.current=null;if(alive(requested)){setBusy(null);await load();}}
  }
@@ -309,13 +326,14 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
  function changeCV(id){if(!ownVersions.some(version=>version.id===id))return;const next={scope,id,fallback:false};cvRef.current=next;setCvChoice(next);setPreviews(previous=>({scope,items:Object.fromEntries(Object.entries(previous.scope===scope?previous.items:{}).filter(([key])=>cardCvRef.current.scope===scope&&cardCvRef.current.items[key]))}));setError(null);}
  function changeCardCV(id,cvVersionId){if(!ownVersions.some(version=>version.id===cvVersionId))return;const next={scope,items:{...(cardCvRef.current.scope===scope?cardCvRef.current.items:{}),[id]:cvVersionId}};cardCvRef.current=next;setCardCvChoice(next);setPreviews(previous=>({scope,items:Object.fromEntries(Object.entries(previous.scope===scope?previous.items:{}).filter(([key])=>key!==id))}));setCaseDirty(id,cvVersionId,false);setError(null);}
  async function saveMailEdit(id,edit){
+  if(coolingDown())throw Object.assign(Error(retry.current.error?.code||'request_not_completed'),retry.current.error);
   if(actionLock.current)return null;const requested=scope,selectedCV=cardCV(id),operation={scope:requested,kind:'edit'};actionLock.current=operation;setBusy({...operation,ids:[id]});setError(null);
   try{
    const proposal=await api(actionPath(id,'edit'),{method:'POST',body:JSON.stringify({cvVersionId:selectedCV,...edit})});
    if(!alive(requested)||cardCV(id)!==selectedCV)return null;
    if(!MAIL_EDIT.test(proposal.editedDraftId||'')||proposal.cvVersionId!==selectedCV||typeof proposal.body!=='string')throw Error('mail_opportunity_edit_changed');
    setCaseDirty(id,selectedCV,false);cacheDraft(requested,id,proposal);await previewOne(id,requested,undefined,proposal);return proposal;
-  }catch(e){if(alive(requested)){const previous=previewRef.current[id];if(previous)updatePreview(requested,id,{...previous,readyForReview:false,reviews:[],requiresFreshReview:true,missing:[e.message||'mail_opportunity_edit_unavailable']});setError({scope:requested,kind:'edit',code:e.message||'mail_opportunity_edit_unavailable'});}throw e;}
+  }catch(e){if(alive(requested)){const previous=previewRef.current[id];if(previous)updatePreview(requested,id,{...previous,readyForReview:false,reviews:[],requiresFreshReview:true,missing:[e.code||e.message||'mail_opportunity_edit_unavailable']});requestError(requested,'edit',e,'mail_opportunity_edit_unavailable');}throw e;}
   finally{if(actionLock.current===operation)actionLock.current=null;if(alive(requested))setBusy(null);}
  }
  function chooseRecipient(id,recipient){if(isDirty(id))return;const group=previewRef.current[id],selected=recipientRef.current[id]||group?.availableRecipients||[],next=selected.includes(recipient)?selected.filter(value=>value!==recipient):[...selected,recipient];setRecipientChoices(previous=>({scope,items:{...(previous.scope===scope?previous.items:{}),[id]:next}}));updatePreview(scope,id,{...group,selectedRecipients:next,readyForReview:false,reviews:[],missing:['recipient_selection_changed']});prepare([id],{[id]:next});}
@@ -335,7 +353,8 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
   <div className="mail-opportunities-controls"><label>{t('صندوق منبع و فرستنده','Source and sender mailbox')}<select aria-label={t('صندوق فرصت‌های ایمیلی','Email opportunity mailbox')} value={mailbox} disabled={Boolean(busyHere)||hasDirty} onChange={event=>setMailbox(event.target.value)}><option value="primary">{googleAccountLabel(person,'primary',connection?.state.email)}</option><option value="secondary">{googleAccountLabel(person,'secondary',secondaryConnection?.state.email)}</option></select></label><label>{t('رزومهٔ پیش‌فرض این صفحه','Default CV for this page')}<select aria-label={t('رزومهٔ فرصت‌های ایمیلی','Email opportunity CV')} value={cvId} disabled={Boolean(busyHere)||hasDirty} onChange={event=>changeCV(event.target.value)}><option value="" disabled={ownVersions.length>0}>{t('رزومه را انتخاب کنید','Select a CV')}</option>{ownVersions.map(version=><option key={version.id} value={version.id}>{cvLabel(version)}{(version.isDefault||version.is_default)?t(' · پیش‌فرض',' · Default'):''}</option>)}</select></label><label>{t('ترتیب نمایش','Sort opportunities')}<select aria-label={t('ترتیب فرصت‌های ایمیلی','Email opportunity order')} value={sort} disabled={Boolean(busyHere)||hasDirty} onChange={event=>changeSort(event.target.value)}><option value="ready">{t('ابتدا نامه‌های آماده و مراکزِ دارای اطلاعات','Ready letters and known practices first')}</option><option value="newest">{t('جدیدترین پیام‌ها','Newest messages first')}</option></select></label><label>{t('نمایش','Show')}<select value={filter} disabled={Boolean(busyHere)||hasDirty} onChange={event=>setFilter(event.target.value)}><option value="all">{t('همهٔ موارد','All items')}</option><option value="new">{t('تازه و خوانده‌نشده','New and unread')}</option><option value="high">{t('اولویت بررسی بیشتر','Higher review priority')}</option></select></label></div>
   {cvChoice.scope===scope&&cvChoice.fallback&&<p className="section-help mail-opportunity-cv-fallback">{t('چون رزومهٔ پیش‌فرضی ثبت نشده، جدیدترین نسخهٔ همین حساب برای این صفحه انتخاب شد. رزومهٔ هر آگهی را می‌توانید کنار همان نامه عوض کنید.','No saved default CV is set, so this account’s latest version was selected for this page. You can change the CV beside each opportunity’s letter.')}</p>}
   {focusError?.scope===scope&&<div className="notice" role="alert">{t('این فرصت در حساب و صندوق انتخاب‌شده در دسترس نیست. وارد حساب مالک لینک شوید؛ حساب دیگر جایگزین آن نمی‌شود.','This opportunity is unavailable in the selected account and mailbox. Sign in to the account that owns this link; another account is never used as a substitute.')}</div>}
-  {errorHere&&<div className="notice" role="alert"><p>{copy[errorHere.code]?codeText(errorHere.code):t('اطلاعات تازه دریافت نشد؛ موارد خوانده‌شدهٔ همین حساب حفظ شده‌اند.','The latest information could not be loaded; this account’s previous items are preserved.')}</p>{!copy[errorHere.code]&&<small>{t('کد قابل گزارش: ','Report code: ')}<bdi>{/^[a-z0-9_/-]{1,100}$/i.test(errorHere.code)?errorHere.code:'request_not_completed'}</bdi></small>}{/reconnect|not_connected|scope/.test(errorHere.code)&&<button type="button" className="secondary" onClick={onSettings}>{t('بررسی اتصال همین حساب','Check this account’s connection')}</button>}</div>}
+  {quotaError&&<div className="notice" role="status"><p>{storageDailyReadLimitNotice(quotaError,en)}</p></div>}
+  {errorHere&&errorHere.code!=='storage_daily_read_limit'&&<div className="notice" role="alert"><p>{copy[errorHere.code]?codeText(errorHere.code):t('اطلاعات تازه دریافت نشد؛ موارد خوانده‌شدهٔ همین حساب حفظ شده‌اند.','The latest information could not be loaded; this account’s previous items are preserved.')}</p>{!copy[errorHere.code]&&<small>{t('کد قابل گزارش: ','Report code: ')}<bdi>{/^[a-z0-9_/-]{1,100}$/i.test(errorHere.code)?errorHere.code:'request_not_completed'}</bdi></small>}{/reconnect|not_connected|scope/.test(errorHere.code)&&<button type="button" className="secondary" onClick={onSettings}>{t('بررسی اتصال همین حساب','Check this account’s connection')}</button>}</div>}
   {!google.connected&&<p className="section-help">{t('برای ارسال، اتصال و مجوز Gmail همین صندوق باید برقرار باشد.','Sending requires this mailbox’s Gmail connection and permission.')} <button type="button" className="text-button" onClick={onSettings}>{t('اتصال‌ها و تنظیمات','Connections and settings')}</button></p>}
   <div className="mail-opportunities-selection"><label><input type="checkbox" checked={selectionIds.length>0&&selectionIds.length===Math.min(5,shown.filter(item=>!TERMINAL.has(visibleResults[item.id]?.status)).length)} disabled={!shown.length||Boolean(busyHere)} onChange={()=>setSelected({scope,ids:selectionIds.length?[]:shown.filter(item=>!TERMINAL.has(visibleResults[item.id]?.status)).slice(0,5).map(item=>item.id)})}/>{t('انتخاب تا ۵ مورد این صفحه','Select up to 5 items on this page')}</label><span>{selectionIds.length.toLocaleString(interfaceLocale('fa-IR'))}{t(' آگهی انتخاب شده',' opportunities selected')}</span></div>
   {!cache&&!errorHere&&<p role="status">{t('در حال دریافت فرصت‌های همین حساب…','Loading this account’s opportunities…')}</p>}

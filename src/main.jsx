@@ -41,7 +41,7 @@ import {
   X,
 } from "lucide-react";
 import "./workspace-style.css";
-import { api } from "./api";
+import { api,storageDailyReadLimitNotice } from "./api";
 import { AccessGate } from "./auth";
 import { CVVersions, Presets } from "./workspace-tools";
 import { useGoogleConnection, GoogleConnection, GoogleInbox } from "./google-tools";
@@ -124,6 +124,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
     [loading, setLoading] = useState(false),
     [page, setPage] = useState(1);
   const [automationTab,setAutomationTab]=useState("operations");
+  const [loadProblem,setLoadProblem]=useState(null);
   const googleConnection = useGoogleConnection(person, cloud);
   const secondaryGoogleConnection = useGoogleConnection(person, cloud, "secondary");
   const [composeSelection,setComposeSelection] = useState({owner:person,mailbox:"primary"});
@@ -153,11 +154,11 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
     window.addEventListener('popstate',navigate);return()=>window.removeEventListener('popstate',navigate);
   },[]);
   useEffect(()=>{
-    if(!cloud||person!=="arash"||tab==="mail")return;let active=true,inFlight=false;
-    const load=async()=>{if(inFlight||document.visibilityState!=="visible")return;inFlight=true;const mailboxes=['primary',...(secondaryGoogleConnection.state.connected?['secondary']:[])];
-      try{const results=await Promise.allSettled(mailboxes.map(mailbox=>api(`google/mail-opportunities?profile=${person}&mailbox=${mailbox}&limit=1`)));if(!active||results.some(result=>result.status!=='fulfilled'))return;setMailNotificationState({scope:mailNotificationScope,counts:Object.fromEntries(results.map((result,index)=>[mailboxes[index],Number(result.value.unreadCount)||0]))});}
+    if(!cloud||person!=="arash"||tab==="mail")return;let active=true,inFlight=false,after=0;
+    const load=async()=>{if(inFlight||Date.now()<after||document.visibilityState!=="visible"||navigator.onLine===false||document.hasFocus?.()===false)return;inFlight=true;const mailboxes=['primary',...(secondaryGoogleConnection.state.connected?['secondary']:[])];
+      try{const results=await Promise.allSettled(mailboxes.map(mailbox=>api(`google/mail-opportunities?profile=${person}&mailbox=${mailbox}&sort=newest&limit=1`)));if(!active)return;if(results.some(result=>result.status!=='fulfilled')){after=Math.max(0,...results.filter(result=>result.status==='rejected').map(result=>Date.parse(result.reason?.retryAt||'')||0));return;}setMailNotificationState({scope:mailNotificationScope,counts:Object.fromEntries(results.map((result,index)=>[mailboxes[index],Number(result.value.unreadCount)||0]))});}
       finally{inFlight=false;}
-    };load();const timer=setInterval(load,60000);return()=>{active=false;clearInterval(timer);};
+    };load();const timer=setInterval(load,300000);return()=>{active=false;clearInterval(timer);};
   },[cloud,person,tab,mailNotificationScope,secondaryGoogleConnection.state.connected]);
   const isCurrent = () =>
     alive.current &&
@@ -171,6 +172,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
   }, []);
   async function refresh() {
     if (!isCurrent()) return false;
+    if(pollRetry.current.person===person&&pollRetry.current.reason==='storage_daily_read_limit'&&Date.now()<pollRetry.current.after)return false;
     if(refreshFlight.current?.person===person&&refreshFlight.current.epoch===requestEpoch)return refreshFlight.current.promise;
     const flight={person,epoch:requestEpoch,promise:null};refreshFlight.current=flight;
     flight.promise=(async()=>{
@@ -182,14 +184,16 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
       setData({ clinics: [], profiles: [], stations: [], ...d });
       setOnline(true);
       setLast(new Date());
+      setLoadProblem(null);
       if (d.settings?.emailPolicy) setPolicy(d.settings.emailPolicy);
       pollRetry.current={person,failures:0,after:0};return true;
     } catch (e) {
       if (!isCurrent()) return;
       setOnline(false);
+      setLoadProblem({person,error:e});
       if(e.status===401||e.status===403){setData({clinics:[],profiles:[],stations:[]});setLast(null);revision.current={profile:person,value:null};}
       const failures=(pollRetry.current.person===person?pollRetry.current.failures:0)+1;
-      pollRetry.current={person,failures,after:Date.now()+Math.min(60000,10000*2**Math.min(failures-1,3))};
+      pollRetry.current={person,failures,reason:e.code||e.message,after:Math.max(Date.parse(e.retryAt||'')||0,Date.now()+Math.min(60000,10000*2**Math.min(failures-1,3)))};
       return false;
     } finally {
       if (isCurrent()) setLoading(false);
@@ -207,7 +211,8 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
       if (update.revision == null) throw Error("Missing revision");
       if (
         revision.current.profile !== person ||
-        revision.current.value !== update.revision
+        revision.current.value !== update.revision ||
+        pollRetry.current.reason==='storage_daily_read_limit'
       )
         await refresh();
       else {
@@ -223,7 +228,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
   }
   useEffect(() => {
     revision.current = { profile: person, value: null };
-    pollRetry.current={person,failures:0,after:0};setOnline(false);setLast(null);
+    pollRetry.current={person,failures:0,after:0};setOnline(false);setLast(null);setLoadProblem(null);
     setData({ clinics: [], profiles: [], stations: [] });
     refresh();
     setBody("");
@@ -480,9 +485,9 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
           </div>
           {!online && (
             <div className="notice">
-              {cloud
+              {loadProblem?.person===person&&storageDailyReadLimitNotice(loadProblem.error,interfaceLanguage==='en')|| (cloud
                 ? last ? "دریافت تازه موقتاً انجام نشد؛ اطلاعات آخرین دریافت و مرحلهٔ کار شما حفظ شده‌اند. اتصال خودکار دوباره بررسی می‌شود." : "هنوز داده‌ای از سرور دریافت نشده است؛ ارتباط خودکار دوباره بررسی می‌شود."
-                : "نسخهٔ پایه · سرور داده در دسترس نیست. برای دریافت اطلاعات واقعی، API را اجرا کنید."}
+                : "نسخهٔ پایه · سرور داده در دسترس نیست. برای دریافت اطلاعات واقعی، API را اجرا کنید.")}
             </div>
           )}
           {tab === "overview" && arash && <ArashHome onNavigate={setTab} online={online} googleConnected={googleConnection.state.connected} leadCount={clinics.length} draftCount={drafts.length} hasCV={!!profile?.cvText}/>}

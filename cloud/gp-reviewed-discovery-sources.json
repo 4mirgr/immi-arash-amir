@@ -539,5 +539,232 @@
     "directHttpStatus": 406,
     "collectorUserAgentHttpStatus": 503,
     "activationAllowed": false
+  },
+  {
+    "id": "reviewed-calwell-fmc-gp",
+    "name": "Calwell Family Medical Centre — reviewed GP recruitment",
+    "country": "AU",
+    "state": "ACT",
+    "profileScope": "both",
+    "trust": "official",
+    "feedUrl": "https://calwellfmc.com.au/jobs/general-practitioner/",
+    "evidenceUrl": "https://calwellfmc.com.au/jobs/general-practitioner/",
+    "portalUrl": "https://calwellfmc.com.au/jobs/general-practitioner/",
+    "allowedHosts": [
+      "calwellfmc.com.au"
+    ],
+    "organizationName": "Calwell Family Medical Centre",
+    "organizationDomain": "calwellfmc.com.au",
+    "location": "Calwell, ACT",
+    "title": "General Practitioner — Calwell Family Medical Centre",
+    "opportunityType": "job",
+    "kind": "vacancy",
+    "adapter": "gp_reviewed_html",
+    "executable": true,
+    "configurationStatus": "executable",
+    "reviewedAt": "2026-11-21",
+    "readEvidence": {
+      "method": "full_public_content_plus_direct_and_collector_http",
+      "httpStatus": 200,
+      "currentVacancyConfirmed": false,
+      "closingAt": null
+    },
+    "evidenceQuotes": [
+      {
+        "topic": "pesci",
+        "text": "PESCI candidates are strongly encouraged to apply.",
+        "sourceUrl": "https://calwellfmc.com.au/jobs/general-practitioner/"
+      },
+      {
+        "topic": "visa",
+        "text": "Visa sponsorship is available for the right candidates.",
+        "sourceUrl": "https://calwellfmc.com.au/jobs/general-practitioner/"
+      }
+    ],
+    "publishedContacts": [
+      {
+        "type": "email",
+        "value": "reception@calwellfmc.com.au",
+        "contactRole": "organization_general",
+        "sourceUrl": "https://calwellfmc.com.au/jobs/general-practitioner/",
+        "quote": "02 5138 1760 reception@calwellfmc.com.au Book Online"
+      },
+      {
+        "type": "email",
+        "value": "haroon.younas@calwellfmc.com.au",
+        "contactRole": "application",
+        "sourceUrl": "https://calwellfmc.com.au/jobs/general-practitioner/",
+        "quote": "To express your interest in this exciting opportunity, please submit your comprehensive CV and a cover letter outlining your experience, registration status, and availability to Dr. Haroon Younas at Haroon.younas@calwellfmc.com.au Employer questions"
+      }
+    ],
+    "requirements": [],
+    "limitations": [
+      "Exact Level1 capacity and offshore/pre-PESCI acceptance need confirmation.",
+      "Publisher wording about general registration is not regulatory guidance.",
+      "No exact Level 1 capacity or candidate eligibility is established by this registration.",
+      "Current content is fetched again; this review is not copied as a vacancy or grant of permission."
+    ],
+    "sourceType": "first_party_recruitment_page",
+    "directHttpStatus": 200,
+    "collectorUserAgentHttpStatus": 200,
+    "activationAllowed": true
+  },
+  {
+    "id": "reviewed-nqphn-alfa-cairns",
+    "name": "Alfa Medical and Skin Clinic — reviewed GP recruitment",
+    "country": "AU",
+    "state": "QLD",
+    "profileScope": "both",
+    "trust": "official",
+    "feedUrl": "https://nqphn.com.au/health-provider-hub/workforce/health-provider-vacancies/general-practitioner-2/",
+    "evidenceUrl": "https://nqphn.com.au/health-provider-hub/workforce/health-provider-vacancies/general-practitioner-2/",
+    "portalUrl": "https://nqphn.com.au/health-provider-hub/workforce/health-provider-vacancies/general-practitioner-2/",
+    "allowedHosts": [
+      "nqphn.com.au"
+    ],
+    "organizationName": "Alfa Medical and Skin Clinic",
+    "organizationDomain": "alfamedical.com.au",
+    "location": "Cairns North, QLD",
+    "title": "General Practitioner — Alfa Medical and Skin Clinic",
+    "opportunityType": "job",
+    "kind": "vacancy",
+    "adapter": "gp_reviewed_html",
+    "executable": true,
+    "configurationStatus": "executable",
+    "reviewedAt": "2026-11-21",
+    "readEvidence": {
+      "method": "full_public_content_plus_direct_and_collector_http",
+      "httpStatus": 200,
+      "currentVacancyConfirmed": false,
+      "closingAt": null,
+      "advertisedClosingDate": "2026-12-01"
+    },
+    "evidenceQuotes": [],
+    "publishedContacts": [
+      {
+        "type": "email",
+        "value": "manager@alfamedical.com.au",
+        "contactRole": "unknown",
+        "sourceUrl": "https://nqphn.com.au/health-provider-hub/workforce/health-provider-vacancies/general-practitioner-2/",
+        "quote": "0434 286 943 Manager@alfamedical.com.au"
+      }
+    ],
+    "requirements": [
+      "Registration with AHPRA.",
+      "Minimum of two years of relevant clinical experience as a GP."
+    ],
+    "limitations": [
+      "Date-only closing; exact time not published.",
+      "Salary AUD160000–180000 with period unstated in read content.",
+      "Historical social advert is not current Level1/sponsorship confirmation.",
+      "No exact Level 1 capacity or candidate eligibility is established by this registration.",
+      "Current content is fetched again; this review is not copied as a vacancy or grant of permission.",
+      "Source prints 01 December 2026; exact cutoff and timezone are not published, so do not invent closingAt."
+    ],
+    "sourceType": "official_workforce_referral",
+    "directHttpStatus": 200,
+    "collectorUserAgentHttpStatus": 200,
+    "activationAllowed": true
+  },
+  {
+    "id": "reviewed-hellodr-network-eoi",
+    "name": "HelloDR Blackstone — reviewed GP recruitment",
+    "country": "AU",
+    "state": "QLD",
+    "profileScope": "both",
+    "trust": "official",
+    "feedUrl": "https://hellodr.com.au/careers/",
+    "evidenceUrl": "https://hellodr.com.au/careers/",
+    "portalUrl": "https://hellodr.com.au/careers/",
+    "allowedHosts": [
+      "hellodr.com.au"
+    ],
+    "organizationName": "HelloDR Blackstone",
+    "organizationDomain": "hellodr.com.au",
+    "location": "Queensland network; individual role and location require confirmation",
+    "title": "General Practitioner — HelloDR Blackstone",
+    "opportunityType": "job",
+    "kind": "employment_register",
+    "adapter": "gp_reviewed_html",
+    "executable": true,
+    "configurationStatus": "executable",
+    "reviewedAt": "2026-11-21",
+    "readEvidence": {
+      "method": "full_public_content_plus_direct_and_collector_http",
+      "httpStatus": 200,
+      "currentVacancyConfirmed": false,
+      "closingAt": null
+    },
+    "evidenceQuotes": [],
+    "publishedContacts": [],
+    "requirements": [],
+    "limitations": [
+      "The syndicated IMG role and separate VR weekend role must not be merged.",
+      "Do not assume four branch vacancies from one network EOI.",
+      "No exact Level 1 capacity or candidate eligibility is established by this registration.",
+      "Current content is fetched again; this review is not copied as a vacancy or grant of permission."
+    ],
+    "sourceType": "first_party_employment_register",
+    "directHttpStatus": 200,
+    "collectorUserAgentHttpStatus": 200,
+    "activationAllowed": true
+  },
+  {
+    "id": "reviewed-spectrum-wa-gp",
+    "name": "Spectrum Health — reviewed GP recruitment",
+    "country": "AU",
+    "state": "WA",
+    "profileScope": "both",
+    "trust": "official",
+    "feedUrl": "https://spectrumhealth.net.au/gp-vacancies/",
+    "evidenceUrl": "https://spectrumhealth.net.au/gp-vacancies/",
+    "portalUrl": "https://spectrumhealth.net.au/gp-vacancies/",
+    "allowedHosts": [
+      "spectrumhealth.net.au"
+    ],
+    "organizationName": "Spectrum Health",
+    "organizationDomain": "spectrumhealth.net.au",
+    "location": "Western Australia network; branch addresses require confirmation",
+    "title": "General Practitioner — Spectrum Health",
+    "opportunityType": "job",
+    "kind": "employment_register",
+    "adapter": "gp_reviewed_html",
+    "executable": true,
+    "configurationStatus": "executable",
+    "reviewedAt": "2026-11-21",
+    "readEvidence": {
+      "method": "full_public_content_plus_direct_and_collector_http",
+      "httpStatus": 200,
+      "currentVacancyConfirmed": false,
+      "closingAt": null
+    },
+    "evidenceQuotes": [],
+    "publishedContacts": [
+      {
+        "type": "email",
+        "value": "admin@spectrumhealth.net.au",
+        "contactRole": "organization_general",
+        "sourceUrl": "https://spectrumhealth.net.au/gp-vacancies/",
+        "quote": "(08) 6256 0041 admin@spectrumhealth.net.au UNIT 33/9 VISION STREET,"
+      },
+      {
+        "type": "email",
+        "value": "cos@spectrumhealth.net.au",
+        "contactRole": "application",
+        "sourceUrl": "https://spectrumhealth.net.au/gp-vacancies/",
+        "quote": "To apply, send your CV and a cover letter with your availability and preferred location(s) to cos@spectrumhealth.net.au Current Vacancies"
+      }
+    ],
+    "requirements": [],
+    "limitations": [
+      "Some branch-name/address pairs conflict; do not split into13verified roles or infer exact geography.",
+      "Named practice and exact Level1 capacity require clarification.",
+      "No exact Level 1 capacity or candidate eligibility is established by this registration.",
+      "Current content is fetched again; this review is not copied as a vacancy or grant of permission."
+    ],
+    "sourceType": "first_party_employment_register",
+    "directHttpStatus": 200,
+    "collectorUserAgentHttpStatus": 200,
+    "activationAllowed": true
   }
 ]

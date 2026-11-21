@@ -16,7 +16,11 @@ export function applyOwnedMailClinicBankProof(candidate,rows,{rootOwnerId,now=Da
  if(!target||!rootOwnerId)return candidate;
  const source=mailEmployerPublicURL(candidate.sourceUrl),matches=(Array.isArray(rows)?rows:[]).filter(row=>{
   const url=mailEmployerPublicURL(row.url);
-  return row.owner_id===rootOwnerId&&row.profile_id==='arash'&&url&&(!source||host(source)===host(url))&&normalizeMailClinicName(row.name)===target;
+  const storedName=normalizeMailClinicName(row.name),directUnnamed=source&&url&&!storedName&&host(source)===host(url);
+  // URL-only imports keep an empty name even after a successful page read.
+  // A direct same-host lead can still use that read's actual brand evidence
+  // below; an unnamed row never becomes a cross-host/name-only match.
+  return row.owner_id===rootOwnerId&&row.profile_id==='arash'&&url&&(!source||host(source)===host(url))&&(storedName===target||directUnnamed);
  });
  // Exact names on different sites are ambiguous, even if only one has email.
  if(new Set(matches.map(row=>host(row.url))).size!==1||!source&&matches.some(row=>Number(row.name_domain_count)>1))return candidate;

@@ -2,6 +2,8 @@
 
 Updated 2026-11-19. This is a recovery guide for a human or another AI. The repository is public: preserve rules, architecture, public research and release evidence here; retrieve private state only through the owner's authorized storage. Git is not a backup of the doctors' accounts.
 
+Latest continuation 2026-11-21: read [the fresh audit](AUDIT-2026-11-21.fa.md) first. Account-wide D1 daily row-read exhaustion7500 was actually observed; no provider reconnection or paid upgrade is indicated. The finite `D1_READS_RESUME_AFTER` boundary expires22Nov00:00:05UTC, retaining queues/grants/approvals; require actual post-reset progress receipts. Materialized/indexed reads, v3 proof revalidation, original cached dates, old-mail/fresh-proof alerts and quota-aware foreground polling are the current fixes. Four direct/collectorHTTP200+robots-allowed GP sources are configured; new D1 ingestion remains unverified until the reset. The C5 release below remains historical until replaced by the audit's actual new deployment receipt.
+
 ## Resume in this order
 
 1. Read [AGENTS](../AGENTS.md) and only the role file relevant to the task.

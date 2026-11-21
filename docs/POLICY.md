@@ -14,6 +14,8 @@ Automatic public contact discovery is mandatory for every stored opportunity, ol
 ## Cost and availability
 Do not promise perpetual free AI, unlimited crawling, continuous agents or Iran availability. Browser refresh 10s reads cached own data; source acquisition uses per-source schedule, backoff, caching, ETag and budget. Never run every external query every 10s. Honor service terms. Use portable interfaces; domain/DNS choice follows measured accessibility from Iran. TLS remains verified; routing/proxies require legitimate configured infrastructure and do not guarantee access.
 
+Daily storage quota exhaustion is a service-availability condition, not a revoked provider grant. Preserve same-owner state, stop wasteful repeated reads until a verified finite reset boundary and retain explicit uncertain transport outcomes. Only a pause before dispatch may claim `actionNotStarted`; a quota error caught later cannot prove no email was accepted. Do not reset queues, read flags, search quotas or prior send consent as a recovery shortcut. Foreground mail polling is bounded; bank and summary badge polling use a five-minute interval with visibility/online checks. No automatic paid-tier activation is authorized.
+
 ## Delivery
 Publish code and synthetic educational content only. No deployment with personal data until authenticated server sessions, owner isolation, backups and secrets are configured and verified. Status badges distinguish planned, disconnected, local and live. Document unfinished features candidly. Agent task ownership prevents concurrent edits; retain small role-specific instructions.
 

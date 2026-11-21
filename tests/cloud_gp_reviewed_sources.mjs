@@ -13,8 +13,18 @@ function fixture(position){
  const binding={prepare(sql){return{bind(...args){const st=db.prepare(sql);return{async first(){return st.get(...args)||null;},async all(){return{results:st.all(...args)};},async run(){return{success:true,meta:st.run(...args)};},_run(){return st.run(...args);}};}};},async batch(items){db.exec('BEGIN');try{for(const item of items)item._run();db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}}};return{db,env:{OPPORTUNITY_DB:binding}};
 }
 test('only reviewed successful collector HTTP pages activate; unavailable restriction source stays manual',()=>{
- assert.equal(active.length,7);assert.equal(new Set(defs.map(s=>s.id)).size,defs.length);assert.equal(defs.find(s=>s.id==='reviewed-ararat-level1-restriction').executable,false);
+ assert.equal(active.length,11);assert.equal(new Set(defs.map(s=>s.id)).size,defs.length);assert.equal(defs.find(s=>s.id==='reviewed-ararat-level1-restriction').executable,false);
  for(const source of defs){assert.equal(new URL(source.feedUrl).protocol,'https:');assert.deepEqual(source.allowedHosts,[new URL(source.feedUrl).hostname]);assert(source.reason);assert.equal(source.evidenceQuotes,undefined);assert.equal(source.publishedContacts,undefined);assert(SOURCE_REGISTRY.some(s=>s.id===source.id));}
+});
+test('new first-party and workforce pages retain real text, contacts and uncertainty instead of making offers',async()=>{
+ const selected=['reviewed-calwell-fmc-gp','reviewed-nqphn-alfa-cairns','reviewed-hellodr-network-eoi','reviewed-spectrum-wa-gp'];
+ for(const id of selected){
+  const source=defs.find(item=>item.id===id);assert(source?.executable);assert.equal(source.verifiedAt,'2026-11-21');
+  const body=html('<h1>General Practitioner recruitment</h1><p>PESCI candidates are strongly encouraged to apply. Visa sponsorship is available for the right candidates.</p><p>Exact Level 1 supervision capacity must be confirmed.</p><p>Closing: 01 December 2026. Registration with AHPRA is required.</p><a href="mailto:apply@example.invalid">Contact recruitment</a>');
+  const [row]=await normalizeSourceRecords(source,body);assert.equal(row.kind,source.kind);assert.equal(row.url,source.feedUrl);assert.equal(row.closingAt,null);assert.equal(row.publishedAt,null);
+  assert.match(row.fullText,/right candidates/);assert.match(row.fullText,/capacity must be confirmed/);assert.match(row.fullText,/01 December 2026/);assert(row.contactEvidence.some(contact=>contact.value==='apply@example.invalid'));
+  assert.equal(row.sponsorship,undefined);assert.equal(row.supervision,undefined);
+ }
 });
 test('dynamic text preserves negative requirements and ignores old research quotes and hidden claims',async()=>{
  const source=active.find(s=>s.id==='reviewed-alba-health-img');const body=content(source,true).replace('</body>','<p hidden>Level 1 supervision is available.</p><script>apply("evil@example.invalid")</script></body>');

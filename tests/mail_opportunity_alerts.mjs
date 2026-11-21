@@ -55,6 +55,37 @@ test('an initial-enquiry alert distinguishes a clinic prospect from a confirmed 
  assert.equal(mailOpportunityAlertText({...row,fit_json:JSON.stringify({priority:'high',registration:'restricted'})}),null);
 });
 
+test('an old mail lead may notify a newly prepared initial enquiry backed by fresh public clinic proof',async()=>{
+ const f=await fixture(),row=f.seed(),draft={...JSON.parse(row.draft_json),outreachMode:'initial_enquiry'},data={research:{publicEmployerVerified:true,verification:{checkedAt:new Date(NOW-3600000).toISOString()}}};
+ f.db.prepare('UPDATE private_mail_opportunities SET received_at=?,draft_json=?,data_json=? WHERE id=?').run(NOW-40*86400000,JSON.stringify(draft),JSON.stringify(data),row.id);
+ const result=await dispatch(f.env,{fetcher:f.fetcher,now:NOW});
+ assert.equal(result.status,'sent');assert.equal(result.attempted,1);assert.equal(f.sourceChecks.length,1);assert.equal(f.membership,2);
+ const sent=JSON.parse(f.calls[0].options.body);assert(sent.text.includes('پرس‌وجوی همکاری'));assert(sent.text.includes('وجود جای خالی فعلی'));
+ assert.equal(f.db.prepare('SELECT status FROM telegram_notification_receipts').get().status,'sent');
+});
+
+test('old-mail enquiries retain fresh-proof, mode, future-mail and exact live-source guards',async()=>{
+ const old=NOW-40*86400000,fresh=new Date(NOW-3600000).toISOString();
+ for(const change of [
+  value=>{value.data.research.verification.checkedAt=new Date(NOW-8*86400000).toISOString();},
+  value=>{value.data.research.verification.checkedAt=new Date(NOW+120000).toISOString();},
+  value=>{delete value.data.research.verification.checkedAt;},
+  value=>{value.data.research.verification.checkedAt='not-a-date';},
+  value=>{value.data.research.publicEmployerVerified=false;},
+  value=>{value.draft.outreachMode='job_application';},
+  value=>{delete value.draft.outreachMode;},
+  value=>{value.receivedAt=NOW+120000;},value=>{value.receivedAt=0;},value=>{value.receivedAt=-1;},
+ ]){
+  const f=await fixture(),row=f.seed(),value={receivedAt:old,draft:{...JSON.parse(row.draft_json),outreachMode:'initial_enquiry'},data:{research:{publicEmployerVerified:true,verification:{checkedAt:fresh}}}};change(value);
+  f.db.prepare('UPDATE private_mail_opportunities SET received_at=?,draft_json=?,data_json=? WHERE id=?').run(value.receivedAt,JSON.stringify(value.draft),JSON.stringify(value.data),row.id);
+  assert.equal((await dispatch(f.env,{fetcher:f.fetcher,now:NOW})).attempted,0);assert.equal(f.calls.length,0);assert.equal(f.sourceChecks.length,0);
+ }
+ const f=await fixture(),row=f.seed(),draft={...JSON.parse(row.draft_json),outreachMode:'initial_enquiry'};
+ f.db.prepare('UPDATE private_mail_opportunities SET received_at=?,draft_json=?,data_json=? WHERE id=?').run(old,JSON.stringify(draft),JSON.stringify({research:{publicEmployerVerified:true,verification:{checkedAt:fresh}}}),row.id);
+ const blocked=await dispatch(f.env,{fetcher:f.fetcher,now:NOW,sourceValidator:async()=>{throw Object.assign(Error('stale actual clinic proof'),{code:'mail_opportunity_public_evidence_required'});}});
+ assert.equal(blocked.status,'source_review_required');assert.equal(f.calls.length,0);assert.equal(f.db.prepare('SELECT count(*) n FROM telegram_notification_receipts').get().n,0);
+});
+
 test('both own Google slots use the same own private chat with a root cooldown and edition deduplication',async()=>{
  const f=await fixture();f.seed(1,{owner_id:'arash-owner:secondary',google_sub:'arash-second-sub'});f.seed(2);
  assert.equal((await dispatch(f.env,{fetcher:f.fetcher,now:NOW})).attempted,1);assert.equal(new URL(JSON.parse(f.calls[0].options.body).reply_markup.inline_keyboard[0][0].url).searchParams.get('mailbox'),'secondary');

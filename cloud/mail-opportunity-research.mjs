@@ -21,6 +21,28 @@ const text=(value,max=1000)=>typeof value==='string'?value.replace(/[\x00-\x1f\x
 const hostname=value=>new URL(value).hostname.toLowerCase().replace(/^www\./,'');
 const readOK=record=>['read','read_partial'].includes(record?.status);
 const validEmail=value=>typeof value==='string'&&value.length<=254&&/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,}$/.test(value)&&!NO_REPLY.test(value);
+function isGPEmploymentPage(page){
+ if(!readOK(page))return false;
+ const body=typeof page.text==='string'?page.text.slice(0,50000):'';
+ const other='(?:practice\\s+nurses?|registered\\s+nurses?|nurs(?:e|es|ing)|receptionists?|practice\\s+managers?|physiotherapists?|dentists?|administrators?)',otherRole=new RegExp('\\b'+other+'\\b','i');
+ const patientContext=/\b(?:patients?|registration|rebates?|appointments?|treatment)\b(?![- ](?:centred|centered|focused))/i;
+ const absence=/\b(?:no|without)\s+(?:(?:current|open|available|suitable|new)\s+){0,2}(?:GPs?|general practitioners?)\s+(?:vacanc(?:y|ies)|positions?|jobs?|employment|recruitment|applications?)\b|\b(?:GPs?|general practitioners?)\s+(?:vacanc(?:y|ies)|positions?|jobs?|applications?)\b[^.!?;\n]{0,30}\b(?:not (?:currently )?(?:available|open)|closed|filled)\b|\b(?:future|potential|possible)\s+(?:GPs?|general practitioners?)\s+(?:vacanc(?:y|ies)|positions?|jobs?)\b/i;
+ let noCurrentPosition=false;
+ // Recruitment/position wording must concern a GP, not another staff role
+ // or a patient's application for registration, rebates or clinical care.
+ for(const clause of body.split(/\n+|(?<=[.!?;])\s+/)){
+  if(absence.test(clause)){noCurrentPosition=true;continue;}
+  for(const match of clause.matchAll(/\bwe (?:are )?(?:seeking|recruiting|looking for|hiring)\b([^.!?;\n]{0,100}?)\b(?:GPs?|general practitioners?)\b/gi))if(!otherRole.test(match[1])&&!patientContext.test(match[1]))return true;
+  const position=clause.match(/\b(?:GP|general practitioner)\s+(?:vacanc(?:y|ies)|positions?|jobs?|employment|recruitment)\b|\bGP\s+applications?\s+(?:are\s+)?(?:invited|open|welcome)\b/i);
+  if(position&&!otherRole.test(clause.slice(0,position.index))&&!patientContext.test(clause.slice(0,position.index)))return true;
+ }
+ if(noCurrentPosition)return false;
+ const title=String(page.title||'').split(/\s*[|–—]\s*|\s+-\s*/)[0].trim();
+ if(!/^(?:(?:locum|rural|remote|salaried|non[- ]VR|VR)\s+)*(?:general practitioner|GP)(?:\s+\([^)]*\))?$/i.test(title))return false;
+ if(!/\b(?:job\s+(?:type|description)|employment\s+type|position\s+description)\b/i.test(body))return false;
+ const otherStaffJob=new RegExp('\\b'+other+'\\b[^.!?;\\n]{0,80}\\b(?:vacanc\\w*|position|role|job|employment)\\b|\\b(?:seeking|recruiting|looking for|hiring)\\b[^.!?;\\n]{0,80}\\b'+other+'\\b|\\b(?:job\\s+(?:title|type)|position|role)\\s*[:–—-]\\s*'+other+'\\b','i');
+ return !otherStaffJob.test(body);
+}
 
 /** No credentials, authenticated social pages or guessed email-domain roots. */
 export function mailResearchURL(value){
@@ -107,7 +129,7 @@ export async function dispatchMailOpportunityResearch(env,{fetcher=fetch,now=Dat
  const db=env.GOOGLE_DB,exists=await first(db,"SELECT name FROM sqlite_master WHERE type='table' AND name='private_mail_opportunity_research'");
  if(!exists)return {attempted:0,status:'research_storage_required'};
  const selected=await first(db,`SELECT o.id,o.owner_id,o.root_owner_id,o.google_sub,o.profile_id,o.updated_at
-  FROM private_mail_opportunities o JOIN google_accounts g ON g.owner_id=o.owner_id AND g.google_sub=o.google_sub AND g.profile_id=o.profile_id AND g.status='connected'
+  FROM google_accounts g CROSS JOIN private_mail_opportunities o INDEXED BY private_mail_opportunities_owner ON g.owner_id=o.owner_id AND g.google_sub=o.google_sub AND g.profile_id=o.profile_id AND g.status='connected'
   LEFT JOIN private_mail_opportunity_research r ON r.opportunity_id=o.id AND r.owner_id=o.owner_id AND r.google_sub=o.google_sub
   WHERE o.profile_id='arash' AND o.status IN ('suggested','reviewed') AND coalesce(r.lease_until,0)<=?
   AND (r.opportunity_id IS NULL OR r.next_attempt_at<=? OR r.source_updated_at<o.updated_at OR coalesce(json_extract(CASE WHEN json_valid(r.receipt_json) THEN r.receipt_json ELSE '{}' END,'$.discoveryVersion'),0)<?)
@@ -207,14 +229,17 @@ export async function dispatchMailOpportunityResearch(env,{fetcher=fetch,now=Dat
   const priorRestrictions=Array.isArray(candidate.sourceRestrictions)?candidate.sourceRestrictions:[],restrictions=[...new Map([...priorRestrictions,...currentSource.restrictions,...relatedAssessments.flatMap(assessment=>assessment.restrictions)].map(item=>[item.code+'\n'+item.sourceURL,item])).values()].slice(0,12),reviewRequired=candidate.sourceReviewRequired===true||candidate.publicationClosed===true||restrictions.length>0;
   for(const assessment of relatedAssessments)for(const [field,signal] of Object.entries(assessment.assessment.signals))if(signal.status==='restricted'||signal.status==='supported'&&currentSource.assessment.signals[field]?.status==='not_stated')currentSource.assessment.signals[field]=signal;
   currentSource.restrictions=restrictions;currentSource.publicationClosed=currentSource.publicationClosed||relatedAssessments.some(assessment=>assessment.publicationClosed);currentSource.relatedSources=relatedAssessments.map(assessment=>({sourceURL:assessment.sourceURL,checkedAt:assessment.checkedAt,restrictions:assessment.restrictions}));
-  const isGPPosition=page=>readOK(page)&&(/\b(?:general practitioner|GP)\b/i.test(page.title||'')&&/\b(?:requirements?|about you|the opportunity|the role|apply here|GP applications?|GP position)\b/i.test(page.text||'')||/\b(?:we (?:are )?(?:seeking|recruiting|looking for)|(?:GP|general practitioner) (?:vacancy|position|role))\b/i.test(page.text||'')),publicGPPosition=pages.some(isGPPosition);
-  const applicationSourceVerified=((originalUnavailable||socialOriginal||switchedOriginal)?publicGPPosition:candidate.applicationSourceVerified!==false||publicGPPosition)&&headlineMatchVerified;
+  const publicGPPosition=pages.some(isGPEmploymentPage);
+  // A readable homepage or inherited mail label is not a confirmed vacancy.
+  // Only current GP employment wording in pages actually read this turn may
+  // select application mode; otherwise the safe first-enquiry mode remains.
+  const applicationSourceVerified=publicGPPosition&&headlineMatchVerified;
   const priorFit=parse(row.fit_json),signalStatus=field=>currentSource.assessment.signals[field]?.status==='supported'?'supported':currentSource.assessment.signals[field]?.status==='restricted'?'restricted':'unknown';
   const fit={...priorFit,level1:signalStatus('level1'),sponsorship:signalStatus('sponsorship'),registration:signalStatus('registration'),pesci:signalStatus('pesci'),priority:reviewRequired?'review':signalStatus('level1')==='supported'&&signalStatus('sponsorship')!=='restricted'?'high':'review',sourceReviewRequired:reviewRequired,sourceRestrictions:restrictions,sourceURL:currentSource.sourceURL,checkedAt:currentSource.checkedAt,assessment:'current_public_page_signals_not_acceptance_probability'};
   const updated={...candidate,clinicName,fit,sourceUnavailable:false,sourceUnavailableReason:null,sourceUnavailableAt:null,sourceReviewRequired:reviewRequired,sourceRestrictions:restrictions,publicationClosed:candidate.publicationClosed===true||currentSource.publicationClosed,...(currentSource.closesAt?{closesAt:currentSource.closesAt}:{}),applicationSourceVerified,publicationBasis:applicationSourceVerified?'public_source_reviewed':'clinic_enquiry_unverified_vacancy',notificationEligible:reviewRequired?false:candidate.notificationEligible,clinicalFacts:publishedFacts?evidence.clinicalFacts:[],clinicalFactBasis:publishedFacts?'source_published_statement':null,clinicalSourceUrl:publishedFacts?evidence.clinicalSourceUrl:null,research:{...evidence.research,...(bank?{matchedOwnBankLeadId:bank.leadId,matchedOwnBankURL:bank.bankURL||bank.url}:{}),contactEvidence:contacts,sourceAssessment:currentSource,originalAdvertisement:{sourceURL:row.source_url||candidate.sourceUrl,status:isMailTrackingSourceURL(row.source_url||candidate.sourceUrl)?'unread_tracking_lead':socialOriginal?'unread_social_lead':switchedOriginal?priorAttempts.get(originalURL)?.status||'unread_original':originalReading.status,readAt:switchedOriginal?priorAttempts.get(originalURL)?.readAt||null:originalReading.readAt},socialSources,discovery:{version:MAIL_LEAD_DISCOVERY_VERSION,employerSource:employerLink?.method||bank?.from||'published_employer_page',searchStatus:searchReceipt.status,searchMode:searchReceipt.mode||'employer_name',headlineMatchRequired,headlineMatchVerified,coverage:'bounded_owned_bank_and_published_public_links',employerCandidates:hints.slice(0,4).map(item=>({url:item.url,discoveryMethod:item.method||item.discoveryMethod,status:pages.find(page=>page.url===item.url)?.status||'discovered_not_read'})),privateEmailIsLeadOnly:true}},researchStatus:employerRoot?'read':'needs_employer_source',researchReadAt:new Date(now).toISOString(),...(contacts.length?{recipient:contacts[0].value,recipients:contacts.map(contact=>contact.value),contactBasis:{kind:'source_published_research_contact',sourceUrl:contacts[0].sourceURL||contacts[0].sourceUrl,readAt:new Date(now).toISOString()}}:{recipient:null,recipients:[],contactBasis:null})};
   updated.canonicalApplicationURL=null;updated.research.applicationSource=null;
   const rootJobPath=new URL(rootSource).pathname;
-  if(rootJobPath!=='/'&&/(?:jobs?|careers?|vacanc|positions?|roles?|general.practitioner|\bgp\b)/i.test(rootJobPath.replace(/[-_/]+/g,' '))&&headlineMatchVerified&&isGPPosition(root)&&hasFreshMailPublicEmployerEvidence(updated,{now})){
+  if(rootJobPath!=='/'&&/(?:jobs?|careers?|vacanc|positions?|roles?|general.practitioner|\bgp\b)/i.test(rootJobPath.replace(/[-_/]+/g,' '))&&headlineMatchVerified&&isGPEmploymentPage(root)&&hasFreshMailPublicEmployerEvidence(updated,{now})){
    updated.canonicalApplicationURL=rootSource;updated.research.applicationSource={kind:'public_gp_position',sourceURL:rootSource,readAt:root.readAt};
   }
   let writing={};if(typeof writingContextProvider==='function'){try{const found=await writingContextProvider(env,context,fetcher);if(found?.profile&&typeof found.cvText==='string')writing=found;}catch{code='own_writing_context_unavailable';}}

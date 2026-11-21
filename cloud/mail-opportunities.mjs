@@ -123,10 +123,26 @@ export async function extractMailOpportunityCandidates(message,{now=Date.now()}=
 async function fingerprint(message){return hash([text(message.from,2000),text(message.replyTo,2000),text(message.subject,2000),content(message),links(message).map(link=>({url:link.url,label:link.label}))]);}
 async function bankMatches(db,root,candidates,now){
  const domains=[...new Set(candidates.flatMap(c=>c.candidateHosts||[]))].filter(d=>d&&!/linkedin\.com$/.test(d)).slice(0,8),names=[...new Set(candidates.map(inferMailLeadEmployerName).filter(Boolean))].slice(0,3);
- if(!domains.length&&!names.length)return [];
+ // The proof adapter cannot use domain matches without a specific employer
+ // name. Opaque job alerts should continue to public research, not scan a
+ // whole private bank for rows that preparation will immediately discard.
+ if(!names.length)return [];
  const patterns=domains.flatMap(domain=>['https://'+domain+'/%','https://www.'+domain+'/%']),clauses=[...patterns.map(()=>"url LIKE ?"),...names.map(()=>"name=? COLLATE NOCASE")];
- const sites="SELECT count(DISTINCT lower(substr(replace(b.url,'https://www.','https://'),9,instr(substr(replace(b.url,'https://www.','https://'),9),'/')-1))) FROM clinic_bank_leads b WHERE b.owner_id=clinic_bank_leads.owner_id AND b.profile_id='arash' AND b.name=clinic_bank_leads.name COLLATE NOCASE";
- let rows;try{rows=await all(db,"SELECT id,owner_id,profile_id,url,name,status,read_at,last_success_at,result_json,("+sites+") AS name_domain_count FROM clinic_bank_leads WHERE owner_id=? AND profile_id='arash' AND ("+clauses.join(' OR ')+') ORDER BY last_success_at DESC,id LIMIT 20',root,...patterns,...names);}catch(error){if(/no such table:? (?:main\.)?clinic_bank_leads/i.test(error.cause?.message||error.message||''))return [];throw error;}
+ // A per-result correlated name count reread the entire bank up to twenty
+ // times, including thousands of unnamed imports. Materialize only small
+ // identity columns once; load the bounded result payloads by primary key.
+ // Count named matches against the whole owner pool before the result limit
+ // can hide a same-name clinic on another domain.
+ const sql=`WITH owned AS MATERIALIZED (
+  SELECT id,url,name,lower(name) AS name_key,last_success_at FROM clinic_bank_leads WHERE owner_id=? AND profile_id='arash'
+ ), matched AS MATERIALIZED (
+  SELECT * FROM owned WHERE (${clauses.join(' OR ')}) ORDER BY last_success_at DESC,id LIMIT 20
+ ), named_sites AS MATERIALIZED (
+  SELECT name_key,count(DISTINCT lower(substr(replace(url,'https://www.','https://'),9,instr(substr(replace(url,'https://www.','https://'),9),'/')-1))) AS name_domain_count
+  FROM owned WHERE name_key IN (SELECT DISTINCT name_key FROM matched WHERE trim(name)!='') GROUP BY name_key
+ ) SELECT b.id,b.owner_id,b.profile_id,b.url,b.name,b.status,b.read_at,b.last_success_at,b.result_json,coalesce(s.name_domain_count,0) AS name_domain_count
+ FROM matched m JOIN clinic_bank_leads b ON b.id=m.id LEFT JOIN named_sites s ON s.name_key=m.name_key ORDER BY m.last_success_at DESC,m.id`;
+ let rows;try{rows=await all(db,sql,root,...patterns,...names);}catch(error){if(/no such table:? (?:main\.)?clinic_bank_leads/i.test(error.cause?.message||error.message||''))return [];throw error;}
  return rows.map(row=>({...row,result:parse(row.result_json)}));
 }
 function applyBank(candidate,matches,root,now){return applyOwnedMailClinicBankProof(candidate,matches,{rootOwnerId:root,now});}

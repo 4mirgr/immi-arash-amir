@@ -197,7 +197,7 @@ test('a public source restriction survives later mail, an expired research cache
 });
 test('a deletion racing an already claimed extraction prevents that worker from inserting an orphan opportunity',async()=>{
  const f=fixture(),m=message('race'),prepare=f.env.GOOGLE_DB.prepare.bind(f.env.GOOGLE_DB);let raced=false;
- f.env.GOOGLE_DB.prepare=sql=>{const statement=prepare(sql);if(sql.startsWith('SELECT id,owner_id,profile_id,url,name,status')){const bind=statement.bind.bind(statement);statement.bind=(...args)=>{const bound=bind(...args),read=bound.all.bind(bound);bound.all=async()=>{if(!raced){raced=true;await invalidateMailOpportunities(f.env,f.primary,[m.id],{...f.identity,observedAt:3000});}return read();};return bound;};}return statement;};
+ f.env.GOOGLE_DB.prepare=sql=>{const statement=prepare(sql);if(sql.includes('name_domain_count')&&sql.includes('clinic_bank_leads')){const bind=statement.bind.bind(statement);statement.bind=(...args)=>{const bound=bind(...args),read=bound.all.bind(bound);bound.all=async()=>{if(!raced){raced=true;await invalidateMailOpportunities(f.env,f.primary,[m.id],{...f.identity,observedAt:3000});}return read();};return bound;};}return statement;};
  await ingestMailOpportunities(f.env,f.primary,[m],{...f.identity,observedAt:1000},{writingContext:writing});assert.equal(raced,true);assert.equal(f.db.prepare('SELECT count(*) n FROM private_mail_opportunities').get().n,0);assert.equal(f.db.prepare('SELECT status FROM private_mail_opportunity_inputs').get().status,'source_removed');
 });
 test('history-gap watermarks reject unknown old staged jobs and require a fresh archive observation before restoring a proposal',async()=>{

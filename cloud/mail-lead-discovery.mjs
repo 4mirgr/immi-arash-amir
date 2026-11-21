@@ -4,7 +4,7 @@
 import {clinicBankURL} from './clinic-bank.mjs';
 import {mergeClinicSourceRestrictions} from './clinic-source-restrictions.mjs';
 
-export const MAIL_LEAD_DISCOVERY_VERSION=2;
+export const MAIL_LEAD_DISCOVERY_VERSION=3;
 export const MAIL_PUBLIC_EVIDENCE_MAX_AGE=7*86400000;
 const BOARD_HOSTS=['linkedin.com','seek.com.au','indeed.com','indeed.com.au','jora.com','careerjet.com','careerjet.com.au','adzuna.com.au','gumtree.com.au','au.jooble.org','jobrapido.com','simplyhired.com.au','glassdoor.com','glassdoor.com.au','ashbyhq.com','lever.co','greenhouse.io','workable.com'];
 const SOCIAL_HOSTS=['linkedin.com','facebook.com','instagram.com','x.com','twitter.com'];
@@ -90,7 +90,16 @@ export function mailEmployerIdentityEvidence(page,name,now=Date.now()){
 export async function resolveOwnedMailClinicSource(db,context,candidate){
  const name=inferMailLeadEmployerName(candidate),target=normalizeMailClinicName(name);if(!isSpecificMailClinicName(target))return null;
  const exists=await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='clinic_bank_leads'").bind().first();if(!exists)return null;
- const rows=(await db.prepare("SELECT id,name,url,status,result_json FROM clinic_bank_leads WHERE owner_id=? AND profile_id='arash' AND name=? COLLATE NOCASE ORDER BY last_success_at DESC,id LIMIT 4").bind(context.rootUserId,name).all()).results||[];
+ // Resolve ambiguity over the whole exact-name pool before limiting retained
+ // snapshots. Materializing once avoids repeating a full-bank scan per row.
+ const rows=(await db.prepare(`WITH matches AS MATERIALIZED (
+  SELECT id,name,url,status,result_json,last_success_at FROM clinic_bank_leads
+  WHERE owner_id=? AND profile_id='arash' AND name=? COLLATE NOCASE
+ ), domains AS (
+  SELECT count(DISTINCT lower(substr(replace(url,'https://www.','https://'),9,instr(substr(replace(url,'https://www.','https://')||'/',9),'/')-1))) AS name_domain_count FROM matches
+ ) SELECT matches.*,domains.name_domain_count FROM matches CROSS JOIN domains
+ ORDER BY matches.last_success_at DESC,matches.id LIMIT 4`).bind(context.rootUserId,name).all()).results||[];
+ if(rows.some(row=>Number(row.name_domain_count)>1))return null;
  const candidates=rows.flatMap(row=>{const result=parse(row.result_json),canonical=mailEmployerPublicURL(row.url),url=mailEmployerPublicURL(result.sourceURL||row.url);return normalizeMailClinicName(row.name)===target&&canonical&&url&&host(canonical)===host(url)?[{url,bankURL:row.url,leadId:row.id,name,from:'own_bank_candidate',previouslyRead:['public_contacts_found','public_page_read'].includes(row.status)}]:[];});
  return new Set(candidates.map(row=>host(row.url))).size===1?candidates[0]||null:null;
 }
@@ -179,11 +188,11 @@ export async function upsertOwnedMailClinicEvidence(db,context,candidate,{now=Da
  // the resolver matched it; otherwise one stable root per employer hostname.
  let url=clinicBankURL(candidate.research.matchedOwnBankURL);if(!url||host(url)!==host(official))url=root.href;
  const exists=await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='clinic_bank_leads'").bind().first();if(!exists)return {updated:false,reason:'clinic_bank_storage_required'};
- const id='bank_'+[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(context.rootUserId+'\n'+url)))].map(byte=>byte.toString(16).padStart(2,'0')).join('').slice(0,32),at=new Date(now).toISOString();
+ const id='bank_'+[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(context.rootUserId+'\n'+url)))].map(byte=>byte.toString(16).padStart(2,'0')).join('').slice(0,32),observed=stamp(candidate.research.verification.checkedAt),at=new Date(observed).toISOString(),changedAt=new Date(now).toISOString();
  const research=candidate.research,snapshot={sourceRestrictions:mergeClinicSourceRestrictions(candidate.sourceRestrictions,research.sourceRestrictions,research.sourceAssessment?.restrictions),sourceStatus:'read',sourceURL:official,title:candidate.clinicName,contacts:research.publicContactEvidence||research.contactEvidence,contactsReadAt:at,clinicalText:research.facts.filter(fact=>fact.category==='services').map(fact=>fact.text).slice(0,12).join('\n'),clinicalSourceURL:candidate.clinicalSourceUrl||official,clinicalReadAt:at,clinicalScope:'bounded_public_service_statements_not_full_page',research:{version:research.version,observedAt:research.observedAt,sourcePages:research.sourcePages,facts:research.facts,people:research.people||[],organizations:research.organizations||[],gaps:research.gaps||[],scope:research.scope,publicEmployerVerified:true,verification:research.verification,socialSources:research.socialSources||[]},linkedReadings:research.sourcePages.filter(page=>page.sourceURL!==official),limitations:['A public clinic record is not a live vacancy, supervision approval or permission to send.'],lastAttempt:{readAt:at,status:'read',sourceURL:official}};
  const result=await db.prepare(`INSERT INTO clinic_bank_leads(id,owner_id,profile_id,url,name,provenance_json,status,attempts,available_at,lease_until,read_at,last_success_at,result_json,new_email_count,created_at,updated_at)
   SELECT ?,?,'arash',?,?,?,?,0,?,0,?,?,?,0,?,? WHERE EXISTS(SELECT 1 FROM private_mail_opportunities o JOIN google_accounts g ON g.owner_id=o.owner_id AND g.google_sub=o.google_sub AND g.profile_id='arash' AND g.status='connected' WHERE o.id=? AND o.owner_id=? AND o.root_owner_id=? AND o.google_sub=? AND o.updated_at=? AND o.status IN ('suggested','reviewed'))
   ON CONFLICT(owner_id,url) DO UPDATE SET name=excluded.name,status=excluded.status,available_at=excluded.available_at,read_at=excluded.read_at,last_success_at=excluded.last_success_at,result_json=json_set(excluded.result_json,'$.sourceRestrictions',json((SELECT json_group_array(json(value)) FROM (SELECT value,max(json_extract(value,'$.checkedAt')) AS latest FROM (SELECT value FROM json_each(CASE WHEN json_valid(clinic_bank_leads.result_json) THEN coalesce(json_extract(clinic_bank_leads.result_json,'$.sourceRestrictions'),'[]') ELSE '[]' END) UNION ALL SELECT value FROM json_each(excluded.result_json,'$.sourceRestrictions')) GROUP BY json_extract(value,'$.code'),json_extract(value,'$.sourceURL'),json_extract(value,'$.quote') ORDER BY latest DESC LIMIT 48)))),updated_at=excluded.updated_at
-  WHERE clinic_bank_leads.profile_id='arash' AND (trim(clinic_bank_leads.name)='' OR lower(trim(clinic_bank_leads.name))=lower(trim(excluded.name))) AND clinic_bank_leads.lease_until<=? AND coalesce(clinic_bank_leads.last_success_at,'')<=excluded.last_success_at`).bind(id,context.rootUserId,url,clean(candidate.clinicName,180),JSON.stringify({kind:'verified_public_employer_read',sourceURL:official}),research.contactEvidence.length?'public_contacts_found':'public_page_read',now+MAIL_PUBLIC_EVIDENCE_MAX_AGE,at,at,JSON.stringify(snapshot),at,at,opportunityId,context.userId,context.rootUserId,context.googleSubject,sourceVersion,now).run();
+  WHERE clinic_bank_leads.profile_id='arash' AND (trim(clinic_bank_leads.name)='' OR lower(trim(clinic_bank_leads.name))=lower(trim(excluded.name))) AND clinic_bank_leads.lease_until<=? AND coalesce(clinic_bank_leads.last_success_at,'')<=excluded.last_success_at`).bind(id,context.rootUserId,url,clean(candidate.clinicName,180),JSON.stringify({kind:'verified_public_employer_read',sourceURL:official}),research.contactEvidence.length?'public_contacts_found':'public_page_read',observed+MAIL_PUBLIC_EVIDENCE_MAX_AGE,at,at,JSON.stringify(snapshot),changedAt,changedAt,opportunityId,context.userId,context.rootUserId,context.googleSubject,sourceVersion,now).run();
  return {updated:Boolean(result.meta?.changes),reason:result.meta?.changes?null:'source_changed_or_bank_leased'};
 }

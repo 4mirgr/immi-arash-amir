@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedOn": "2026-11-19",
+  "updatedOn": "2026-11-21",
   "userTimezone": "Asia/Tehran",
   "snapshotIsNotLiveStatus": true,
   "repository": "4mirgr/immi-arash-amir",
@@ -28,7 +28,11 @@
     },
     "amir": {
       "goal": "specialist and independent fully funded research-study pathways",
-      "fundingScope": ["Australia", "Italy", "realistic funded European options"],
+      "fundingScope": [
+        "Australia",
+        "Italy",
+        "realistic funded European options"
+      ],
       "fullFunding": "tuition plus living stipend; other costs and award conditions checked separately",
       "planningUnknowns": "read current private completion, board and language scenarios; do not infer credentials"
     },
@@ -70,9 +74,19 @@
     "workerBindingCount": 29,
     "workerSecretCount": 9,
     "operatorSearchDiagnosticFlagPresent": false,
-    "enabledFlags": ["MAIL_LEAD_SEARCH_ENABLED", "MAIL_OPPORTUNITY_RESEARCH_ENABLED", "MAIL_OPPORTUNITY_ALERTS_ENABLED"],
+    "enabledFlags": [
+      "MAIL_LEAD_SEARCH_ENABLED",
+      "MAIL_OPPORTUNITY_RESEARCH_ENABLED",
+      "MAIL_OPPORTUNITY_ALERTS_ENABLED"
+    ],
     "cronTimezone": "UTC",
-    "crons": ["* * * * *", "1-59/2 * * * *", "*/5 * * * *", "0 * * * *", "15 */6 * * *"],
+    "crons": [
+      "* * * * *",
+      "1-59/2 * * * *",
+      "*/5 * * * *",
+      "0 * * * *",
+      "15 */6 * * *"
+    ],
     "privateResearchMaximumHTTPPerPass": 6,
     "tavily": {
       "setupVerified": true,
@@ -90,15 +104,31 @@
     "sortAppliedBeforePagination": true,
     "incompleteResearchLast": true,
     "alternativeSort": "newest",
-    "modes": ["initial_enquiry", "job_application"],
-    "initialEnquiryMinimum": ["one relevant actually-published clinic fact", "published recipient", "owned CV", "confirmed contact signature"],
+    "modes": [
+      "initial_enquiry",
+      "job_application"
+    ],
+    "initialEnquiryMinimum": [
+      "one relevant actually-published clinic fact",
+      "published recipient",
+      "owned CV",
+      "confirmed contact signature"
+    ],
     "completeDossierRequiredForInitialEnquiry": false,
     "exactServiceOverlapRequiredForInitialEnquiry": false,
     "ownBankEvidenceRetainsOriginalObservationTime": true,
     "unreadSpreadsheetContactsArePublicationProof": false,
     "cvSelection": "saved own default, otherwise latest own version, with per-card override",
-    "privateInlineEditableParagraphs": [2, 3],
-    "paragraphStructure": ["fixed owner-approved introduction", "applicant's evidence-based interest in this clinic", "own-CV clinical value to this clinic", "fixed owner-approved invitation to discuss"],
+    "privateInlineEditableParagraphs": [
+      2,
+      3
+    ],
+    "paragraphStructure": [
+      "fixed owner-approved introduction",
+      "applicant's evidence-based interest in this clinic",
+      "own-CV clinical value to this clinic",
+      "fixed owner-approved invitation to discuss"
+    ],
     "completeContactSignatureRequired": true,
     "defaultRecipients": "all current published recipients, individually selectable",
     "defaultAdvertisementSelection": "none",
@@ -110,21 +140,93 @@
     "editAndSendBinding": "exact owner, mailbox, Google subject, opportunity, CV, base/review hash, edit ID or explicit null and head revision"
   },
   "completedOneTimeActions": [
-    {"action": "cached-parser-backfill", "count": 132, "receipt": "docs/MAIL-PARSER-BACKFILL.fa.md", "repeatOnStartup": false},
-    {"action": "previously-read-to-unread", "count": 7, "receipt": "docs/MAIL-PRIORITY-2026-11-19.fa.md", "repeatOnStartup": false},
-    {"action": "old-research-minimal-enquiry-refresh", "count": 53, "receipt": "docs/MAIL-PRIORITY-2026-11-19.fa.md", "repeatOnStartup": false}
+    {
+      "action": "cached-parser-backfill",
+      "count": 132,
+      "receipt": "docs/MAIL-PARSER-BACKFILL.fa.md",
+      "repeatOnStartup": false
+    },
+    {
+      "action": "previously-read-to-unread",
+      "count": 7,
+      "receipt": "docs/MAIL-PRIORITY-2026-11-19.fa.md",
+      "repeatOnStartup": false
+    },
+    {
+      "action": "old-research-minimal-enquiry-refresh",
+      "count": 53,
+      "receipt": "docs/MAIL-PRIORITY-2026-11-19.fa.md",
+      "repeatOnStartup": false
+    }
   ],
   "openWork": [
-    {"id": "progressive-coverage", "owner": "developer and scheduled workers", "doneWhen": "archive/bank/source coverage receipts; lawful handling of blocked/PDF/dynamic sources"},
-    {"id": "standalone-recurring-bank-outreach", "owner": "developer and reviewing account owner", "doneWhen": "separate reviewed bank-only workflow with current evidence, cadence, suppression and explicit send approval"},
-    {"id": "independent-backup-restore", "owner": "developer and account owners", "doneWhen": "complete independent encrypted export, key custody and actual isolated staging restore with both owners' RLS"},
-    {"id": "advanced-linkedin", "owner": "account owner and provider", "doneWhen": "approved product/scopes or authorized own exports; no claim from basic sign-in/share"},
-    {"id": "funding-call-readiness", "owner": "developer and Amir", "doneWhen": "per-call supervisor/project/proposal/referee/language/start-date and full award conditions reviewed"},
-    {"id": "professional-and-pesci-validation", "owner": "account owner and qualified reviewer", "doneWhen": "private CV conflicts resolved and original cases clinically/source reviewed"},
-    {"id": "worker-ci-verification", "owner": "operator", "doneWhen": "current dedicated deploy credential and actual successful current-main workflow receipt"},
-    {"id": "account-data-lifecycle", "owner": "developer", "doneWhen": "owner-isolated multi-store deletion/revocation/restore procedures preserve required stops and deactivate old approvals"},
-    {"id": "carrier-access", "owner": "owner and operator", "doneWhen": "actual relevant device/carrier evidence, not only a server probe"}
+    {
+      "id": "progressive-coverage",
+      "owner": "developer and scheduled workers",
+      "doneWhen": "archive/bank/source coverage receipts; lawful handling of blocked/PDF/dynamic sources"
+    },
+    {
+      "id": "standalone-recurring-bank-outreach",
+      "owner": "developer and reviewing account owner",
+      "doneWhen": "separate reviewed bank-only workflow with current evidence, cadence, suppression and explicit send approval"
+    },
+    {
+      "id": "independent-backup-restore",
+      "owner": "developer and account owners",
+      "doneWhen": "complete independent encrypted export, key custody and actual isolated staging restore with both owners' RLS"
+    },
+    {
+      "id": "advanced-linkedin",
+      "owner": "account owner and provider",
+      "doneWhen": "approved product/scopes or authorized own exports; no claim from basic sign-in/share"
+    },
+    {
+      "id": "funding-call-readiness",
+      "owner": "developer and Amir",
+      "doneWhen": "per-call supervisor/project/proposal/referee/language/start-date and full award conditions reviewed"
+    },
+    {
+      "id": "professional-and-pesci-validation",
+      "owner": "account owner and qualified reviewer",
+      "doneWhen": "private CV conflicts resolved and original cases clinically/source reviewed"
+    },
+    {
+      "id": "worker-ci-verification",
+      "owner": "operator",
+      "doneWhen": "current dedicated deploy credential and actual successful current-main workflow receipt"
+    },
+    {
+      "id": "account-data-lifecycle",
+      "owner": "developer",
+      "doneWhen": "owner-isolated multi-store deletion/revocation/restore procedures preserve required stops and deactivate old approvals"
+    },
+    {
+      "id": "carrier-access",
+      "owner": "owner and operator",
+      "doneWhen": "actual relevant device/carrier evidence, not only a server probe"
+    }
   ],
   "privateDataInGit": false,
-  "documentationChangeRequiresRuntimeDeployment": false
+  "documentationChangeRequiresRuntimeDeployment": false,
+  "latestAudit": {
+    "date": "2026-11-21",
+    "receipt": "docs/AUDIT-2026-11-21.fa.md",
+    "quota": {
+      "provider": "Cloudflare D1",
+      "observedErrorCode": 7500,
+      "dailyRowReadLimitExhausted": true,
+      "resetAtUTC": "2026-11-22T00:00:00Z",
+      "resumeFlag": "D1_READS_RESUME_AFTER",
+      "plannedResumeAtUTC": "2026-11-22T00:00:05.000Z",
+      "paidUpgrade": false,
+      "liveQueueResumeVerified": false
+    },
+    "proofVersion": 3,
+    "newExecutableSources": 4,
+    "totalExecutableSources": 40,
+    "newSourcesD1IngestionVerified": false,
+    "research": "docs/research/GP-SEARCH-2026-11-21.md",
+    "schemaChanged": false,
+    "realApplicationsSentForTests": false
+  }
 }

@@ -247,7 +247,7 @@ export function JobOpportunitiesPanel({person,notify,onOpenSettings,workspaceOwn
   </div>}
   {arash&&<div className="arash-job-extras">
    <PeriodicOutreach key={person} person={person} defaultOpen={false} disabled={bulkBusy} onOpen={item=>{if(bulkBusy)return;setBulkOpen(false);setArashRowKey(item.id);setGpSelection(null);setMailOpportunity(null);setGpOpportunity(item);arashPendingFocus.current={id:'arash-row-'+item.id,heading:true};}} onBatch={suggestions=>{if(bulkBusy)return;setBulkSelected(suggestions.slice(0,20));openBulk();}}/>
-   <ClinicBankPanel person={person} onSearch={value=>{if(bulkBusy)return;setQuery(value);setSubmittedQuery(value);setPage(0);closeArashRow();document.querySelector('.opportunity-control-panel')?.scrollIntoView({block:'start'});}}/>
+   <ClinicBankPanel person={person} ownerId={workspaceOwnerId} onSearch={value=>{if(bulkBusy)return;setQuery(value);setSubmittedQuery(value);setPage(0);closeArashRow();document.querySelector('.opportunity-control-panel')?.scrollIntoView({block:'start'});}}/>
    <details className="arash-fold neon-cyan"><summary>کاوش بیشتر؛ کلینیک، مناطق rural و شبکه‌ها</summary><div className="arash-fold-body"><GPDiscovery sources={gpSources} notify={notify}/></div></details>
    <details className="arash-fold neon-violet"><summary>شواهد و متن‌های تکمیلی</summary><div className="arash-fold-body"><ExtractedEvidence key={person+':'+effectiveCountry} person={person} section="jobs" country="AU"/></div></details>
    <details className="arash-fold neon-amber"><summary>وضعیت جست‌وجوی خودکار و پوشش منابع</summary><div className="arash-fold-body">{automationStatus}{sourceHealth}{coverageNotice}</div></details>

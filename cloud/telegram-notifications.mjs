@@ -1,6 +1,7 @@
 // Explicitly linked private chats only. Public opportunities never contain mail/CV content.
 import {checkAutomationMembership} from './automation-membership.mjs';
 import {getOwnedMailOpportunityContext} from './mail-opportunities.mjs';
+import {MAIL_PUBLIC_EVIDENCE_MAX_AGE} from './mail-lead-discovery.mjs';
 const WEBHOOK_PATH='/api/telegram/webhook';
 const DEFAULT_WEBHOOK='https://immi-arash-amir.dr-gerami-md.workers.dev'+WEBHOOK_PATH;
 const DAILY_LIMIT=10,GLOBAL_RUN_LIMIT=3;
@@ -177,12 +178,17 @@ export async function dispatchMailOpportunityNotifications(env,{fetcher=fetch,no
   JOIN google_accounts g ON g.owner_id=o.owner_id AND g.profile_id=o.profile_id AND g.google_sub=o.google_sub AND g.status='connected'
   WHERE o.profile_id='arash' AND a.enabled=1 AND a.enabled_since IS NOT NULL AND o.notification_eligible=1
   AND (CASE WHEN json_valid(o.draft_json) THEN json_extract(o.draft_json,'$.status')='ready_for_review' AND json_extract(o.draft_json,'$.readyForReview')=1 ELSE 0 END)
-  AND o.status IN ('suggested','reviewed') AND o.received_at>=? AND o.received_at<=? AND o.created_at<=?
+  AND o.status IN ('suggested','reviewed') AND o.received_at>0
+  AND (o.received_at>=? OR CASE WHEN json_valid(o.draft_json) AND json_valid(o.data_json) THEN
+   json_extract(o.draft_json,'$.outreachMode')='initial_enquiry'
+   AND json_extract(o.data_json,'$.research.publicEmployerVerified')=1
+   AND (julianday(json_extract(o.data_json,'$.research.verification.checkedAt'))-2440587.5)*86400000 BETWEEN ? AND ? ELSE 0 END)
+  AND o.received_at<=? AND o.created_at<=?
   AND (a.last_dispatch_at IS NULL OR a.last_dispatch_at<=?)
   AND (SELECT count(*) FROM telegram_notification_receipts r WHERE r.owner_id=a.owner_id AND r.created_day=?)<?
   AND NOT EXISTS(SELECT 1 FROM mail_automation_suppressions s JOIN json_each(CASE WHEN json_valid(o.draft_json) THEN json_extract(o.draft_json,'$.recipients') ELSE '[]' END) recipient ON lower(s.email)=lower(recipient.value) WHERE s.owner_id=a.owner_id)
   AND NOT EXISTS(SELECT 1 FROM telegram_notification_receipts r WHERE r.owner_id=a.owner_id AND r.event_key='mail_opportunity:'||o.id)
-  ORDER BY CASE WHEN json_valid(o.fit_json) THEN CASE WHEN json_extract(o.fit_json,'$.priority')='high' THEN 0 ELSE 1 END ELSE 1 END,coalesce(a.last_dispatch_at,0),o.created_at,o.id LIMIT 5`,now-MAIL_ALERT_WINDOW,now+60000,now+60000,now-MAIL_ALERT_COOLDOWN,createdDay(now),DAILY_LIMIT);
+  ORDER BY CASE WHEN json_valid(o.fit_json) THEN CASE WHEN json_extract(o.fit_json,'$.priority')='high' THEN 0 ELSE 1 END ELSE 1 END,coalesce(a.last_dispatch_at,0),o.created_at,o.id LIMIT 5`,now-MAIL_ALERT_WINDOW,now-MAIL_PUBLIC_EVIDENCE_MAX_AGE,now+60000,now+60000,now+60000,now-MAIL_ALERT_COOLDOWN,createdDay(now),DAILY_LIMIT);
  const candidate=rows.find(row=>!telegramQuiet(row,now));
  if(!candidate)return {configured:true,attempted:0,status:'idle'};
  const message=mailOpportunityAlertText(candidate);

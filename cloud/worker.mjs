@@ -44,6 +44,7 @@ import {handleClinicBankRequest} from './clinic-bank.mjs';
 import {runBackgroundCycle} from './background-cycle.mjs';
 import {runConnectionSupportCheck} from './connection-support-check.mjs';
 import {runMailSearchSupportCheck} from './mail-search-support-check.mjs';
+import {storageReadPause,storageBackedPath,storagePauseResponse,storageDailyReadFailure} from './storage-read-budget.mjs';
 import educationalCase from '../library/pesci/PESCI-PRACTICE-COMM-001.json' with { type: 'json' };
 
 const DEFAULT_SETTINGS = { emailPolicy: 'auto_after_connection', defaultTemplate: '', notifications: false };
@@ -106,6 +107,8 @@ export function createHandler(fetcher = fetch) {
       if (!['arash','amir'].includes(profileId)) throw new ApiError(403, 'Account has not been provisioned for this workspace');
       const requestedProfile = url.searchParams.get('profile');
       if (requestedProfile && requestedProfile !== profileId) throw new ApiError(403, 'Profile access denied');
+      const storagePause=storageReadPause(env);
+      if(storagePause&&storageBackedPath(url.pathname))return storagePauseResponse(storagePause,{actionNotStarted:true});
       if(url.pathname==='/api/research-funding'||url.pathname.startsWith('/api/research-funding/'))return handleResearchFundingRequest(request,env,{userId:user.id,profileId,rest});
       if(url.pathname==='/api/team-board'||url.pathname.startsWith('/api/team-board/'))return handleTeamBoardRequest(request,env,{userId:user.id,profileId});
       if(url.pathname==='/api/clinic-bank/enquiry')return await handleClinicEnquiryRequest(request,env,{userId:user.id,profileId,rest});
@@ -263,7 +266,8 @@ export function createHandler(fetcher = fetch) {
         return json(data);
       }
       throw new ApiError(404,'Not found');
-    } catch (error) { const expected=error instanceof ApiError||error instanceof GoogleError;return json({error:expected ? error.message : 'Request failed',...(error instanceof GoogleError?{code:error.code}:{})},expected ? error.status : 500); }
+    } catch (error) { if(storageDailyReadFailure(error))return storagePauseResponse(storageReadPause(env,{failure:true}));const expected=error instanceof ApiError||error instanceof GoogleError;return json({error:expected ? error.message : 'Request failed',...(error instanceof GoogleError?{code:error.code}:{})},expected ? error.status : 500); }
   };
 }
-export default {fetch:createHandler(),async scheduled(event,env){const cron=event.cron||'0 * * * *';if(cron==='1-59/2 * * * *'||cron==='*/15 * * * *'){const planCheck=await runMailSearchSupportCheck(env);if(planCheck.attempted)return {planCheck,research:{status:'deferred_plan_check'}};const support=await runConnectionSupportCheck(env);if(support.attempted)return {support,telegram:{status:'deferred_support_check'}};return await runMailOpportunityNotificationCycle(env,{now:Number.isFinite(event.scheduledTime)?event.scheduledTime:Date.now()});}if(cron==='*/5 * * * *')return await runBackgroundCycle(env,{now:Number.isFinite(event.scheduledTime)?event.scheduledTime:Date.now()});if(cron==='* * * * *'||cron==='2-57/5 * * * *')return await runCorrespondenceMailCycle(env,{now:Number.isFinite(event.scheduledTime)?event.scheduledTime:Date.now()});if(cron==='15 */6 * * *'){const maintenance=await runMaintenance(env);const evidence=await watchEvidenceSources(env);return {maintenance,evidence};}return await runScheduledCollection(event,env,collectRegisteredSources);}};
+async function scheduled(event,env){const pause=storageReadPause(env);if(pause)return {status:pause.error,deferred:true,retryAt:pause.retryAt,automaticEmailSending:false};try{const cron=event.cron||'0 * * * *';if(cron==='1-59/2 * * * *'||cron==='*/15 * * * *'){const planCheck=await runMailSearchSupportCheck(env);if(planCheck.attempted)return {planCheck,research:{status:'deferred_plan_check'}};const support=await runConnectionSupportCheck(env);if(support.attempted)return {support,telegram:{status:'deferred_support_check'}};return await runMailOpportunityNotificationCycle(env,{now:Number.isFinite(event.scheduledTime)?event.scheduledTime:Date.now()});}if(cron==='*/5 * * * *')return await runBackgroundCycle(env,{now:Number.isFinite(event.scheduledTime)?event.scheduledTime:Date.now()});if(cron==='* * * * *'||cron==='2-57/5 * * * *')return await runCorrespondenceMailCycle(env,{now:Number.isFinite(event.scheduledTime)?event.scheduledTime:Date.now()});if(cron==='15 */6 * * *'){const maintenance=await runMaintenance(env);const evidence=await watchEvidenceSources(env);return {maintenance,evidence};}return await runScheduledCollection(event,env,collectRegisteredSources);}catch(error){if(storageDailyReadFailure(error)){const failure=storageReadPause(env,{failure:true});return {status:failure.error,deferred:true,retryAt:failure.retryAt,transportOutcome:'not_inferred'};}throw error;}}
+export default {fetch:createHandler(),scheduled};
