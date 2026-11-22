@@ -30,7 +30,16 @@ export async function reconcileClinicBankGrowth(env,fetcher=fetch,at=Date.now(),
   const db=env.GOOGLE_DB;
   // Existing imported bank ownership is the enrollment boundary; this never
   // creates a new account or copies another doctor's bank/contact information.
-  const ownerRow=await db.prepare("SELECT b.owner_id FROM clinic_bank_leads b LEFT JOIN clinic_bank_growth_state s ON s.owner_id=b.owner_id WHERE b.profile_id='arash' GROUP BY b.owner_id ORDER BY coalesce(s.last_run_at,''),b.owner_id LIMIT 1").bind().first();
+  // The bank schema is Arash-only. Seek the next distinct owner through the
+  // owner index rather than counting every clinic in the bank at each turn.
+  const ownerRow=await db.prepare(`WITH RECURSIVE owners(owner_id) AS (
+   SELECT min(owner_id) FROM clinic_bank_leads
+   UNION ALL
+   SELECT (SELECT min(b.owner_id) FROM clinic_bank_leads b WHERE b.owner_id>owners.owner_id)
+   FROM owners WHERE owners.owner_id IS NOT NULL
+  )
+  SELECT o.owner_id FROM owners o LEFT JOIN clinic_bank_growth_state s ON s.owner_id=o.owner_id
+  WHERE o.owner_id IS NOT NULL ORDER BY coalesce(s.last_run_at,''),o.owner_id LIMIT 1`).bind().first();
   const owner=ownerRow?.owner_id;if(!UUID.test(owner||''))return{enabled:true,status:'owner_bank_missing',scanned:0,added:0};
   if(!(await membershipCheck(env,owner,'arash',fetcher))?.active)return{enabled:true,status:'membership_check_blocked',scanned:0,added:0};
   const cursor=await db.prepare('SELECT * FROM clinic_bank_growth_state WHERE owner_id=?').bind(owner).first(),iso=new Date(at).toISOString();

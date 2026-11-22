@@ -103,8 +103,13 @@ export async function dispatchClinicBankReading(env,fetcher=fetch,at=Date.now(),
   const upgradeWindow=Math.floor(at/300000)%3===0;
   const legacy="status IN ('public_contacts_found','public_page_read') AND attempts=0 AND (CASE WHEN json_valid(result_json) THEN CASE WHEN json_type(result_json,'$.research.version')='integer' THEN json_extract(result_json,'$.research.version') ELSE 0 END ELSE 0 END)<"+CLINIC_RESEARCH_VERSION;
   for(let i=0;i<CLINIC_BANK_RUN_LIMIT;i++){
-   const upgradeSlot=i===1&&upgradeWindow,eligible=upgradeSlot?'(available_at<=? OR ('+legacy+'))':'available_at<=?',priority=upgradeSlot?'CASE WHEN '+legacy+' THEN 0 ELSE 1 END,':'';
-   const row=await db.prepare("UPDATE clinic_bank_leads SET lease_until=?,status=CASE WHEN status='pending' THEN 'reading' ELSE status END WHERE id=(SELECT id FROM clinic_bank_leads WHERE profile_id='arash' AND lease_until<=? AND "+eligible+" ORDER BY "+priority+"available_at,updated_at,id LIMIT 1) AND lease_until<=? AND "+eligible+" RETURNING *").bind(at+CLINIC_BANK_LEASE_MS,at,at,at,at).first();
+   const upgradeSlot=i===1&&upgradeWindow;
+   const eligible=upgradeSlot?'(available_at<=? OR ('+legacy+'))':'available_at<=?';
+   // Normal claims follow the due index from its first eligible entry. A
+   // temporary sort on updated_at had to read every untouched import tied at 0.
+   const queue=upgradeSlot?'clinic_bank_leads':'clinic_bank_leads INDEXED BY clinic_bank_due';
+   const order=upgradeSlot?'CASE WHEN '+legacy+' THEN 0 ELSE 1 END,available_at,updated_at,id':'available_at,lease_until,rowid';
+   const row=await db.prepare("UPDATE clinic_bank_leads SET lease_until=?,status=CASE WHEN status='pending' THEN 'reading' ELSE status END WHERE id=(SELECT id FROM "+queue+" WHERE profile_id='arash' AND lease_until<=? AND "+eligible+" ORDER BY "+order+" LIMIT 1) AND lease_until<=? AND "+eligible+" RETURNING *").bind(at+CLINIC_BANK_LEASE_MS,at,at,at,at).first();
    if(!row){if(i===0&&upgradeWindow)continue;break;}
    claimed.push(row);
   }

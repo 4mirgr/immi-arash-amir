@@ -1,8 +1,10 @@
 # Start here: project handoff
 
-Updated 2026-11-21. This is a recovery guide for a human or another AI. The repository is public: preserve rules, architecture, public research and release evidence here; retrieve private state only through the owner's authorized storage. Git is not a backup of the doctors' accounts.
+Updated 2026-11-22. This is a recovery guide for a human or another AI. The repository is public: preserve rules, architecture, public research and release evidence here; retrieve private state only through the owner's authorized storage. Git is not a backup of the doctors' accounts.
 
 Latest continuation 2026-11-21: read [the fresh audit](AUDIT-2026-11-21.fa.md) first. Account-wide D1 daily row-read exhaustion7500 was actually observed; no provider reconnection or paid upgrade is indicated. The deployed finite `D1_READS_RESUME_AFTER` boundary expires on 22 November at 00:00:05 UTC, retaining queues/grants/approvals; require actual post-reset progress receipts. Materialized/indexed reads, v3 proof revalidation, original cached dates, old-mail/fresh-proof alerts and quota-aware foreground polling are the current fixes. Four direct/collectorHTTP200+robots-allowed GP sources are configured; new D1 ingestion remains unverified until the reset. The actual Worker/frontend release is recorded below and in the audit; successful publication does not establish queue resumption before the quota reset.
+
+Latest audit 2026-11-22: [row-read recurrence and current job research](AUDIT-2026-11-22.fa.md). D1 returned the daily row-read limit again after the prior pause expired. The new backend uses existing indexes for mailbox/bank matching and normal claims, omits the scheduled thread count, and runs full contact-coverage repair twice hourly. Direct publisher closure notices are retained even on HTTP 200. GPAP is an additional employment enquiry source. See the dated receipt for actual publication and post-reset limits.
 
 ## Resume in this order
 

@@ -28,6 +28,21 @@ function provider(messages,{pageToken=null,history=null}={}){return async(url,in
  const id=parsed.pathname.split('/').at(-1),message=messages.find(message=>message.id===id);return Response.json(message||{}, {status:message?200:404});
 };}
 
+test('scheduled sync advances the same cursors without aggregating the entire thread ledger',async()=>{
+ const fullFixture=fixture(),scheduledFixture=fixture();
+ const full=await fullFixture.sync(provider([raw('application')]));
+ const scheduled=await scheduledFixture.sync(provider([raw('application')]),context,{includeCoverage:false});
+ assert.equal(scheduled.status,'connected');
+ assert.equal(scheduled.scannedMessageCount,full.scannedMessageCount);
+ assert.equal(scheduled.archiveComplete,full.archiveComplete);
+ assert.equal(scheduled.lastSyncedAt,full.lastSyncedAt);
+ assert.equal(scheduled.threadCount,undefined);
+ assert.equal(scheduled.readerQueries,full.readerQueries-1);
+ const coverage=await getClinicCorrespondenceCoverage(scheduledFixture.env,context);
+ assert.equal(coverage.threadCount,1);
+ assert.equal(coverage.scannedMessageCount,1);
+});
+
 test('HTML-only normalization preserves quoted history but excludes it from current intent and link selection',()=>{
  const body='<p>Thank you. Please send your CV.</p><script>job offer</script><style>interview</style><a href="https://clinic.example.invalid/careers?a=1&amp;b=2">Current role</a><blockquote>We can offer sponsorship. <a href="https://old.example.invalid/role">Old role</a></blockquote>';
  const message=normalizeMessage(raw('htmlreply',body,{labels:['INBOX'],html:true,cc:'second@example.invalid',bcc:'third@example.invalid'}));

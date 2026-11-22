@@ -2,6 +2,23 @@
 // that an old advertisement is open or that every contact can be retrieved.
 export const CONTACT_COVERAGE_POLICY='all_opportunities_contact_v3';
 export const CONTACT_COVERAGE_LIMIT=25;
+export const CONTACT_COVERAGE_REPAIR_INTERVAL_MS=30*60*1000;
+const READER_CRON_INTERVAL_MS=5*60*1000;
+// New advertisements already register atomically during ingestion. The legacy
+// reconciliation query scans the corpus, so run it only in the :00/:30 reader
+// slots, never on all six five-minute deliveries in a half-hour. The caller
+// supplies Cloudflare's scheduledTime, avoiding delayed execution clock drift.
+export function contactCoverageRepairDue(scheduledAt){
+ return Number.isSafeInteger(scheduledAt)&&scheduledAt>=0
+  && scheduledAt%CONTACT_COVERAGE_REPAIR_INTERVAL_MS<READER_CRON_INTERVAL_MS;
+}
+export async function reconcileScheduledContactCoverage(env,scheduledAt=Date.now()){
+ if(env?.PUBLIC_PAGE_READING_ENABLED!=='true'||!env?.OPPORTUNITY_DB)return {enabled:false,registered:0,refreshMarked:0};
+ if(!Number.isSafeInteger(scheduledAt)||scheduledAt<0)return {enabled:true,status:'invalid_time',registered:0,refreshMarked:0};
+ const cadence={repairIntervalMinutes:30};
+ if(!contactCoverageRepairDue(scheduledAt))return {enabled:true,status:'cadence_skipped',registered:0,refreshMarked:0,...cadence,nextRepairAt:(Math.floor(scheduledAt/CONTACT_COVERAGE_REPAIR_INTERVAL_MS)+1)*CONTACT_COVERAGE_REPAIR_INTERVAL_MS};
+ return {...await reconcileContactCoverage(env,scheduledAt),...cadence};
+}
 const jsonData=alias=>`CASE WHEN json_valid(${alias}.data) THEN ${alias}.data ELSE '{}' END`;
 const related=`(EXISTS(SELECT 1 FROM opportunity_editions e WHERE e.url=q.url AND e.country=q.country) OR EXISTS(SELECT 1 FROM public_page_queue parent JOIN opportunity_editions e ON e.url=parent.url AND e.country=parent.country WHERE parent.id=json_extract(${jsonData('q')},'$.parentPageId') AND parent.country=q.country))`;
 const selectionSQL=`WITH missing AS (

@@ -36,3 +36,14 @@ test('invalid candidates still advance cursor; membership denial and disabled fl
  result=await reconcileClinicBankGrowth({...env,CLINIC_BANK_READING_ENABLED:'false'},()=>{},at,member);assert.equal(result.enabled,false);
  result=await reconcileClinicBankGrowth(env,()=>{},at,member);assert.equal(result.scanned,2);assert.equal(result.added,1);result=await reconcileClinicBankGrowth(env,()=>{},at,member);assert.equal(result.scanned,0);
 });
+
+test('growth seeks distinct bank owners and preserves least-recently served rotation',async()=>{
+ const {db,env}=fixture(),other='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',checked=[];
+ const stamp=new Date(at).toISOString();
+ const bank=db.prepare("INSERT INTO clinic_bank_leads(id,owner_id,profile_id,url,created_at,updated_at) VALUES(?,?,'arash',?,?,?)");
+ for(let i=0;i<500;i++)bank.run('bulk_'+i,owner,'https://bulk'+i+'.example/',stamp,stamp);
+ bank.run('bank_other',other,'https://other.example/',stamp,stamp);
+ const member=async(_env,id)=>{checked.push(id);return {active:true};};
+ for(let pass=0;pass<3;pass++)assert.equal((await reconcileClinicBankGrowth(env,()=>{},at+pass,member)).status,'reconciled');
+ assert.deepEqual(checked,[owner,other,owner]);
+});

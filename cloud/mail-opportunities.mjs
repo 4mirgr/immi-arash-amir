@@ -127,22 +127,36 @@ async function bankMatches(db,root,candidates,now){
  // name. Opaque job alerts should continue to public research, not scan a
  // whole private bank for rows that preparation will immediately discard.
  if(!names.length)return [];
- const patterns=domains.flatMap(domain=>['https://'+domain+'/%','https://www.'+domain+'/%']),clauses=[...patterns.map(()=>"url LIKE ?"),...names.map(()=>"name=? COLLATE NOCASE")];
- // A per-result correlated name count reread the entire bank up to twenty
- // times, including thousands of unnamed imports. Materialize only small
- // identity columns once; load the bounded result payloads by primary key.
- // Count named matches against the whole owner pool before the result limit
- // can hide a same-name clinic on another domain.
- const sql=`WITH owned AS MATERIALIZED (
-  SELECT id,url,name,lower(name) AS name_key,last_success_at FROM clinic_bank_leads WHERE owner_id=? AND profile_id='arash'
+ // D1's compound-SELECT ceiling is lower than native SQLite's. Use only
+ // two indexed arms, regardless of how many bounded names/hosts occur in an
+ // alert. Each term is bound as JSON, never interpolated into SQL.
+ const prefixes=domains.flatMap(domain=>['https://'+domain+'/','https://www.'+domain+'/']).map(prefix=>({prefix,upper:prefix.slice(0,-1)+'0'}));
+ // Every prefix ends in ASCII '/'; its exclusive successor '0' bounds exactly
+ // that host's URL range under NOCASE. The LIKE guard retains the prior match
+ // predicate, while explicit bounds make the existing URL index usable.
+ // Preserve complete same-name ambiguity outside the twenty displayed rows;
+ // unnamed direct-host imports still have a zero name-domain count.
+ const sql=`WITH matching AS MATERIALIZED (
+  SELECT b.id,b.url,b.name,lower(b.name) AS name_key,b.last_success_at
+  FROM json_each(?) n CROSS JOIN clinic_bank_leads b
+  WHERE b.owner_id=? AND b.profile_id='arash' AND b.name=n.value COLLATE NOCASE
+  UNION
+  SELECT b.id,b.url,b.name,lower(b.name) AS name_key,b.last_success_at
+  FROM json_each(?) p CROSS JOIN clinic_bank_leads b
+  WHERE b.owner_id=? AND b.profile_id='arash'
+   AND b.url COLLATE NOCASE>=json_extract(p.value,'$.prefix') AND b.url COLLATE NOCASE<json_extract(p.value,'$.upper')
+   AND b.url LIKE json_extract(p.value,'$.prefix')||'%'
  ), matched AS MATERIALIZED (
-  SELECT * FROM owned WHERE (${clauses.join(' OR ')}) ORDER BY last_success_at DESC,id LIMIT 20
+  SELECT * FROM matching ORDER BY last_success_at DESC,id LIMIT 20
+ ), matched_names AS MATERIALIZED (
+  SELECT DISTINCT name_key FROM matched WHERE trim(name)!=''
  ), named_sites AS MATERIALIZED (
-  SELECT name_key,count(DISTINCT lower(substr(replace(url,'https://www.','https://'),9,instr(substr(replace(url,'https://www.','https://'),9),'/')-1))) AS name_domain_count
-  FROM owned WHERE name_key IN (SELECT DISTINCT name_key FROM matched WHERE trim(name)!='') GROUP BY name_key
+  SELECT n.name_key,count(DISTINCT lower(substr(replace(b.url,'https://www.','https://'),9,instr(substr(replace(b.url,'https://www.','https://'),9),'/')-1))) AS name_domain_count
+  FROM matched_names n CROSS JOIN clinic_bank_leads b
+  WHERE b.owner_id=? AND b.profile_id='arash' AND b.name=n.name_key COLLATE NOCASE GROUP BY n.name_key
  ) SELECT b.id,b.owner_id,b.profile_id,b.url,b.name,b.status,b.read_at,b.last_success_at,b.result_json,coalesce(s.name_domain_count,0) AS name_domain_count
  FROM matched m JOIN clinic_bank_leads b ON b.id=m.id LEFT JOIN named_sites s ON s.name_key=m.name_key ORDER BY m.last_success_at DESC,m.id`;
- let rows;try{rows=await all(db,sql,root,...patterns,...names);}catch(error){if(/no such table:? (?:main\.)?clinic_bank_leads/i.test(error.cause?.message||error.message||''))return [];throw error;}
+ let rows;try{rows=await all(db,sql,JSON.stringify(names),root,JSON.stringify(prefixes),root,root);}catch(error){if(/no such table:? (?:main\.)?clinic_bank_leads/i.test(error.cause?.message||error.message||''))return [];throw error;}
  return rows.map(row=>({...row,result:parse(row.result_json)}));
 }
 function applyBank(candidate,matches,root,now){return applyOwnedMailClinicBankProof(candidate,matches,{rootOwnerId:root,now});}

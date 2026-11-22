@@ -10,10 +10,10 @@ import {inferMailLeadEmployerName} from '../cloud/mail-lead-discovery.mjs';
 const owner='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222';
 const now=Date.parse('2026-11-21T09:00:00Z'),at=new Date(now-60000).toISOString(),name='Harbour Medical Centre';
 const context={userId:owner,rootUserId:owner,profileId:'arash'},identity={subject:'sub1',email:'candidate@example.org'};
-const schema=readFileSync(new URL('../cloud/clinic-bank-schema.sql',import.meta.url),'utf8');
+const schema=readFileSync(new URL('../cloud/clinic-bank-schema.sql',import.meta.url),'utf8')+readFileSync(new URL('../cloud/mail-lead-discovery-schema.sql',import.meta.url),'utf8');
 function fixture(){
  const db=new DatabaseSync(':memory:'),queries=[];
- for(const file of ['google-schema.sql','mail-opportunities-schema.sql','clinic-bank-schema.sql','mail-automation-schema.sql'])db.exec(readFileSync(new URL('../cloud/'+file,import.meta.url),'utf8'));
+ for(const file of ['google-schema.sql','mail-opportunities-schema.sql','clinic-bank-schema.sql','mail-lead-discovery-schema.sql','mail-automation-schema.sql'])db.exec(readFileSync(new URL('../cloud/'+file,import.meta.url),'utf8'));
  const binding={prepare(sql){let args=[];return {bind(...values){args=values;return this;},async first(){return db.prepare(sql).get(...args)||null;},async all(){const rows=db.prepare(sql).all(...args);if(sql.includes('name_domain_count')&&sql.includes('clinic_bank_leads'))queries.push({sql,args,rows});return {results:rows};},async run(){return {meta:db.prepare(sql).run(...args)};}};}};
  db.prepare('INSERT INTO google_accounts VALUES(?,?,?,?,?,?,?,?,?)').run(owner,'arash',identity.subject,identity.email,'[]','synthetic',0,'connected',now);
  const insert=db.prepare('INSERT INTO clinic_bank_leads(id,owner_id,profile_id,url,name,status,read_at,last_success_at,result_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)');
@@ -63,34 +63,79 @@ test('an opaque GP alert with a public job domain but no employer name does not 
  assert.equal(f.queries.length,0);assert.equal(f.db.prepare('SELECT count(*) AS total FROM private_mail_opportunities').get().total,1);
 });
 
-test('a 5233-site local bank lookup has no correlated full-bank plan and materially fewer SQLite VM steps',async t=>{
+test('indexed matching preserves immediate prior results and does not scale with unrelated imported sites',async t=>{
  const f=fixture(),read=await lookup(f,'https://harbour.example.org/jobs/gp');
- // Compare actual runtime SQL with the former query over realistic synthetic
- // URL-only imports. This measures SQLite work, not elapsed wall-clock time or
- // an invented live D1 bill. No provider call or production row is involved.
- const previous="SELECT id,owner_id,profile_id,url,name,status,read_at,last_success_at,result_json,(SELECT count(DISTINCT lower(substr(replace(b.url,'https://www.','https://'),9,instr(substr(replace(b.url,'https://www.','https://'),9),'/')-1))) FROM clinic_bank_leads b WHERE b.owner_id=clinic_bank_leads.owner_id AND b.profile_id='arash' AND b.name=clinic_bank_leads.name COLLATE NOCASE) AS name_domain_count FROM clinic_bank_leads WHERE owner_id=? AND profile_id='arash' AND (url LIKE ? OR url LIKE ? OR name=? COLLATE NOCASE) ORDER BY last_success_at DESC,id LIMIT 20";
+ // Compare actual runtime SQL to the previously deployed materialized-owner
+ // query. Synthetic SQLite VM work is evidence of query shape, not a live D1
+ // row-read bill or a benchmark against production private data.
+ const previous=`WITH owned AS MATERIALIZED (
+  SELECT id,url,name,lower(name) AS name_key,last_success_at FROM clinic_bank_leads WHERE owner_id=? AND profile_id='arash'
+ ), matched AS MATERIALIZED (
+  SELECT * FROM owned WHERE (url LIKE ? OR url LIKE ? OR name=? COLLATE NOCASE) ORDER BY last_success_at DESC,id LIMIT 20
+ ), named_sites AS MATERIALIZED (
+  SELECT name_key,count(DISTINCT lower(substr(replace(url,'https://www.','https://'),9,instr(substr(replace(url,'https://www.','https://'),9),'/')-1))) AS name_domain_count
+  FROM owned WHERE name_key IN (SELECT DISTINCT name_key FROM matched WHERE trim(name)!='') GROUP BY name_key
+ ) SELECT b.id,b.owner_id,b.profile_id,b.url,b.name,b.status,b.read_at,b.last_success_at,b.result_json,coalesce(s.name_domain_count,0) AS name_domain_count
+ FROM matched m JOIN clinic_bank_leads b ON b.id=m.id LEFT JOIN named_sites s ON s.name_key=m.name_key ORDER BY m.last_success_at DESC,m.id`;
  const program=String.raw`
 import json,sqlite3,sys
-d=json.load(sys.stdin); c=sqlite3.connect(':memory:'); c.executescript(d['schema'])
-rows=[]
-for i in range(5233):
- url='https://harbour.example.org/branch/'+str(i) if i<20 else 'https://site'+str(i)+'.example.org/'
- rows.append(('bank_'+str(i),d['owner'],'arash',url,'','public_page_read',d['at'],d['at'],'{}',d['at'],d['at']))
-c.executemany('INSERT INTO clinic_bank_leads(id,owner_id,profile_id,url,name,status,read_at,last_success_at,result_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',rows)
-def measure(sql):
- count=[0]
- def step(): count[0]+=1; return 0
- c.set_progress_handler(step,100)
- result=c.execute(sql,d['args']).fetchall()
- c.set_progress_handler(None,0)
- return {'steps':count[0]*100,'rows':len(result),'plan':[r[3] for r in c.execute('EXPLAIN QUERY PLAN '+sql,d['args'])]}
-print(json.dumps({'current':measure(d['sql']),'previous':measure(d['previous'])}))
+d=json.load(sys.stdin)
+def trial(size):
+ c=sqlite3.connect(':memory:'); c.executescript(d['schema'])
+ rows=[]
+ for i in range(size):
+  url='https://harbour.example.org/branch/'+str(i) if i<20 else 'https://site'+str(i)+'.example.org/'
+  rows.append(('bank_'+str(i),d['owner'],'arash',url,'','public_page_read',d['at'],d['at'],'{}',d['at'],d['at']))
+ c.executemany('INSERT INTO clinic_bank_leads(id,owner_id,profile_id,url,name,status,read_at,last_success_at,result_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',rows)
+ def measure(sql,args):
+  count=[0]
+  def step(): count[0]+=1; return 0
+  c.set_progress_handler(step,1)
+  result=c.execute(sql,args).fetchall()
+  c.set_progress_handler(None,0)
+  return {'steps':count[0],'rows':len(result),'result':result,'plan':[r[3] for r in c.execute('EXPLAIN QUERY PLAN '+sql,args)]}
+ current=measure(d['sql'],d['args']); previous=measure(d['previous'],d['previousArgs'])
+ assert current.pop('result')==previous.pop('result')
+ return {'size':size,'current':current,'previous':previous}
+print(json.dumps([trial(5233),trial(52330)]))
 `;
- const result=spawnSync('python3',['-c',program],{input:JSON.stringify({sql:read.sql,args:read.args,previous,schema,owner,at}),encoding:'utf8',timeout:15000});
+ const result=spawnSync('python3',['-c',program],{input:JSON.stringify({sql:read.sql,args:read.args,previous,previousArgs:[owner,'https://harbour.example.org/%','https://www.harbour.example.org/%',name],schema,owner,at}),encoding:'utf8',timeout:15000});
  assert.equal(result.status,0,result.stderr);const measured=JSON.parse(result.stdout);
- assert.equal(measured.current.rows,20);assert.equal(measured.previous.rows,20);
- assert(!measured.current.plan.some(item=>/CORRELATED SCALAR SUBQUERY/.test(item)),JSON.stringify(measured));
- assert(measured.previous.plan.some(item=>/CORRELATED SCALAR SUBQUERY/.test(item)));
- assert(measured.current.steps*3<measured.previous.steps,JSON.stringify(measured));
- t.diagnostic('Local SQLite VM steps: '+measured.previous.steps+' before, '+measured.current.steps+' after; this is not a live D1 row-read measurement.');
+ for(const run of measured){
+  assert.equal(run.current.rows,20);assert.equal(run.previous.rows,20);
+  assert(!run.current.plan.some(item=>/SCAN (?:owned|b)$/.test(item)),JSON.stringify(run));
+  assert(run.current.plan.some(item=>/clinic_bank_owner_name_nocase.*name=/.test(item)),JSON.stringify(run));
+  assert(run.current.plan.some(item=>/clinic_bank_owner_url_nocase.*url>/.test(item)),JSON.stringify(run));
+  assert(run.previous.plan.some(item=>/SCAN owned/.test(item)));
+  assert(run.current.steps*20<run.previous.steps,JSON.stringify(run));
+  t.diagnostic(run.size+' synthetic sites: '+run.previous.steps+' prior vs '+run.current.steps+' indexed SQLite VM steps; no live D1 data used.');
+ }
+ assert(measured[1].current.steps<measured[0].current.steps*2,JSON.stringify(measured));
+ assert(measured[1].previous.steps>measured[0].previous.steps*9,JSON.stringify(measured));
+});
+
+test('maximum bounded host/name terms retain two D1 compound arms, literal host ranges, and deduplicated matches',async()=>{
+ const f=fixture(),read=await lookup(f);
+ const names=['Harbour Medical Centre','Second Medical Centre','Third Medical Centre'];
+ const hosts=Array.from({length:8},(_,i)=>'clinic'+i+'.example.org');
+ const prefixes=hosts.flatMap(host=>['https://'+host+'/','https://www.'+host+'/']).map(prefix=>({prefix,upper:prefix.slice(0,-1)+'0'}));
+ f.put('matches_name_and_host','https://clinic0.example.org/jobs/gp',names[0]);
+ f.put('unnamed_www_host','https://www.clinic7.example.org/contact');
+ f.put('unnamed_uppercase_host','HTTPS://CLINIC6.EXAMPLE.ORG/contact');
+ f.put('same_name_outside_hosts','https://older-other-domain.example.org/',names[0],{lastSuccess:new Date(now-86400000).toISOString()});
+ f.put('similar_host_not_equal','https://clinic0.example.org.evil.invalid/');
+ f.put('range_end_not_equal','https://clinic0.example.org0/');
+ f.put('different_host_same_owner','https://not-clinic.example.org/');
+ f.put('foreign_owner','https://clinic0.example.org/private',names[0],{owner:other});
+ const args=[JSON.stringify(names),owner,JSON.stringify(prefixes),owner,owner];
+ assert.equal((read.sql.match(/\bUNION\b/g)||[]).length,1,'D1 gets two arms even with sixteen URL prefixes and three names');
+ const rows=f.db.prepare(read.sql).all(...args);
+ assert.deepEqual(rows.map(row=>row.id).sort(),['matches_name_and_host','same_name_outside_hosts','unnamed_uppercase_host','unnamed_www_host']);
+ assert.equal(rows.filter(row=>row.id==='matches_name_and_host').length,1);
+ assert(rows.filter(row=>row.name).every(row=>row.name_domain_count===2),'older same-name domain must remain ambiguous');
+ assert(rows.filter(row=>!row.name).every(row=>row.name_domain_count===0),'unnamed same-host rows remain usable but never get a global empty-name identity count');
+ const plan=f.db.prepare('EXPLAIN QUERY PLAN '+read.sql).all(...args).map(row=>row.detail);
+ assert(plan.some(item=>/clinic_bank_owner_name_nocase.*name=/.test(item)),JSON.stringify(plan));
+ assert(plan.some(item=>/clinic_bank_owner_url_nocase.*url>/.test(item)),JSON.stringify(plan));
+ assert(!plan.some(item=>/SCAN (?:owned|b)$/.test(item)),JSON.stringify(plan));
 });

@@ -13,7 +13,7 @@ function fixture(position){
  const binding={prepare(sql){return{bind(...args){const st=db.prepare(sql);return{async first(){return st.get(...args)||null;},async all(){return{results:st.all(...args)};},async run(){return{success:true,meta:st.run(...args)};},_run(){return st.run(...args);}};}};},async batch(items){db.exec('BEGIN');try{for(const item of items)item._run();db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}}};return{db,env:{OPPORTUNITY_DB:binding}};
 }
 test('only reviewed successful collector HTTP pages activate; unavailable restriction source stays manual',()=>{
- assert.equal(active.length,11);assert.equal(new Set(defs.map(s=>s.id)).size,defs.length);assert.equal(defs.find(s=>s.id==='reviewed-ararat-level1-restriction').executable,false);
+ assert.equal(active.length,12);assert.equal(new Set(defs.map(s=>s.id)).size,defs.length);assert.equal(defs.find(s=>s.id==='reviewed-ararat-level1-restriction').executable,false);
  for(const source of defs){assert.equal(new URL(source.feedUrl).protocol,'https:');assert.deepEqual(source.allowedHosts,[new URL(source.feedUrl).hostname]);assert(source.reason);assert.equal(source.evidenceQuotes,undefined);assert.equal(source.publishedContacts,undefined);assert(SOURCE_REGISTRY.some(s=>s.id===source.id));}
 });
 test('new first-party and workforce pages retain real text, contacts and uncertainty instead of making offers',async()=>{
@@ -50,6 +50,29 @@ test('fresh source pages flow through normal collection while missing HTTP pages
  const receipt=await collectRegisteredSources(f.env,async(url,options)=>{calls.push({url,options});if(url.endsWith('/robots.txt'))return new Response('',{status:404});const source=active.find(s=>s.feedUrl===url);return source.id===active[1].id?new Response('Not found',{status:404}):new Response(content(source),{headers:{etag:'"synthetic"'}});});
  assert.equal(receipt.sources.length,3);assert.equal(receipt.sourceBudget,3);assert.equal(calls.length,6);assert.equal(receipt.imported,2);assert.equal(receipt.sources[1].status,'failed');assert.equal(f.db.prepare('SELECT count(*) n FROM opportunity_editions').get().n,2);
  const rows=f.db.prepare('SELECT data FROM opportunity_editions').all().map(r=>JSON.parse(r.data));assert(rows.every(row=>row.status==='unknown'));assert(rows.some(row=>row.kind==='employment_register'));
+});
+
+test('an HTTP 200 closure notice replaces the existing edition status without inventing a deadline',async()=>{
+ const source=active.find(s=>s.id==='reviewed-calwell-fmc-gp'),start=allActive.findIndex(s=>s.id===source.id),f=fixture(start);
+ let notice='';
+ const fetcher=async url=>{
+  if(url.endsWith('/robots.txt'))return new Response('User-agent: *');
+  if(url!==source.feedUrl)return new Response(null,{status:404});
+  return new Response(html('<h1>General Practitioner</h1>'+notice+'<p>We are recruiting overseas general practitioners for our supervised training program and welcome PESCI applicants.</p><form>Apply now</form>'));
+ };
+ const collect=()=>collectRegisteredSources(f.env,fetcher);
+ await collect();
+ const edition=f.db.prepare('SELECT id,status,closing_at FROM opportunity_editions WHERE source_id=?');
+ const prior=edition.get(source.id);assert.equal(prior.status,'unknown');
+ f.db.prepare("UPDATE source_collector_state SET position=? WHERE id='rotation'").run(start);
+ f.db.exec('UPDATE registered_source_checks SET next_check_at=0');
+ notice='<p>This job has closed. Click here for more jobs.</p>';
+ await collect();
+ assert.deepEqual(edition.all(source.id).map(row=>({...row})),[{...prior,status:'closed'}]);
+ const visible=f.db.prepare("SELECT count(*) n FROM opportunity_editions WHERE source_id=? AND status NOT IN ('closed','source_removed')").get(source.id);
+ assert.equal(visible.n,0);
+ const [unrelated]=normalize(source,html('<h1>General Practitioner recruitment</h1><p>Vaccination applications are closed, please call reception.</p><p>Our practice is hiring a full-time GP and offers a supervised role for eligible doctors.</p>'));
+ assert.equal(unrelated.status,undefined);
 });
 
 test('unavailable, redirected, HTML or excessive-delay robots receipts never fetch a page',async()=>{

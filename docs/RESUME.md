@@ -1,5 +1,7 @@
 # Resume this project with minimal context
 
+2026-11-22 audit: [row-read recurrence and targeted job research](AUDIT-2026-11-22.fa.md). Latest deployment and post-reset checks are recorded in that receipt.
+
 2026-11-21 audit: [quota, efficiency and GP source expansion](AUDIT-2026-11-21.fa.md). D1 free daily row-read limit7500 was actually hit; do not query-loop, upgrade billing or ask to reconsent valid Google. Finite `D1_READS_RESUME_AFTER` expires22Nov00:00:05UTC; preserve both queues/owners. Materialized bank matching, indexed research, practical v3 enquiries, original evidence dates, old-mail/fresh-proof Telegram and bounded foreground UI polling. Worker/source4f935 and host PR45 are published and verified; see the audit receipt. Four direct/collectorHTTP200+robots-allowed sources are configured; actual D1 ingestion/queue continuation remains deferred until reset. No historical unread/backfill reset should be repeated.
 
 Start with [HANDOFF](HANDOFF.md) and [PROJECT-STATE.json](PROJECT-STATE.json), then only the relevant feature record below. They identify the latest policy/release and genuine remaining work. Older counts, provider setup notes, fixed addresses and source rotation totals below are historical unless explicitly reverified; never repeat completed backfills/unread resets on startup.

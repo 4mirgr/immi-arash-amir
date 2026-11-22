@@ -180,5 +180,16 @@ export async function syncClinicCorrespondence(env,context,fetcher=fetch,options
   state.last_error=safeCode(error);await save();
  }throw error;}
  finally{await run(db,'UPDATE google_mail_full_scan SET lock_token=NULL,lock_until=0 WHERE owner_id=? AND google_sub=? AND lock_token=?',owner,subject,lock);}
- const result=await coverage(db,owner,subject,mailbox,state);return {...result,synced,providerReads,readerQueries,readThreads,scannedThisRun,matchedThisRun,lane};
+ // The scheduled receipt only needs cursor progress. Counting the entire
+ // thread and error ledger every minute serves no scheduled decision.
+ const result=options.includeCoverage===false?{
+  status:'connected',mailbox,
+  archiveComplete:!!state.archive_complete,
+  scannedMessageCount:Number(state.archive_scanned_count||0),
+  historyReviewedCount:Number(state.history_reviewed_count||0),
+  historyRecoveryActive:!!state.history_recovery_active,
+  pendingThreadMessageCount:messageList(state.pending_thread_messages).length,
+  lastSyncedAt:state.last_synced_at?new Date(state.last_synced_at).toISOString():null
+ }:await coverage(db,owner,subject,mailbox,state);
+ return {...result,synced,providerReads,readerQueries,readThreads,scannedThisRun,matchedThisRun,lane};
 }

@@ -766,5 +766,58 @@
     "directHttpStatus": 200,
     "collectorUserAgentHttpStatus": 200,
     "activationAllowed": true
+  },
+  {
+    "id": "reviewed-gpap-img-program-eoi",
+    "name": "General Practice Australia Program — IMG employment enquiry",
+    "country": "AU",
+    "state": "UNKNOWN",
+    "profileScope": "both",
+    "trust": "official",
+    "feedUrl": "https://www.gpap.com.au/img-jobs",
+    "evidenceUrl": "https://www.gpap.com.au/img-jobs",
+    "portalUrl": "https://www.gpap.com.au/",
+    "allowedHosts": [
+      "www.gpap.com.au"
+    ],
+    "organizationName": "General Practice Australia Program",
+    "organizationDomain": "gpap.com.au",
+    "location": "Australia, host practice not specified",
+    "title": "General Practice Australia Program — IMG employment enquiry",
+    "opportunityType": "job",
+    "kind": "employment_register",
+    "adapter": "gp_reviewed_html",
+    "executable": true,
+    "configurationStatus": "verified_fixed_page",
+    "reviewedAt": "2026-11-22",
+    "readEvidence": {
+      "method": "direct_http_and_collector_user_agent",
+      "httpStatus": 200,
+      "currentVacancyConfirmed": false,
+      "closingAt": null
+    },
+    "evidenceQuotes": [
+      {
+        "topic": "sponsorship",
+        "text": "Employer sponsorship",
+        "sourceUrl": "https://www.gpap.com.au/img-jobs"
+      },
+      {
+        "topic": "pesci",
+        "text": "When a suitable match is identified, the practice signs a formal contract of commitment, agreeing to host you as part of their clinical team under the GPAP structure.",
+        "sourceUrl": "https://www.gpap.com.au/blogs/join-gpap"
+      }
+    ],
+    "publishedContacts": [],
+    "limitations": [
+      "Program expression of interest. No current named clinic, exact Level 1 capacity, confirmed eligibility or job offer.",
+      "The program advertises employer sponsorship and a minimum four-year role. Verify requirements, employer, proposed supervision and terms in writing.",
+      "The companion provider page explains that matching precedes PESCI. It does not establish this applicant will be matched."
+    ],
+    "sourceType": "first_party_employment_program",
+    "url": "https://www.gpap.com.au/img-jobs",
+    "directHttpStatus": 200,
+    "collectorUserAgentHttpStatus": 200,
+    "activationAllowed": true
   }
 ]

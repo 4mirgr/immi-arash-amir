@@ -25,7 +25,7 @@ export async function dispatchClinicCorrespondence(env,{fetcher=fetch,now=Date.n
   if(checked?.active!==true)result={attempted:false,status:'blocked',code:checked?.reason==='owner_inactive'?'owner_inactive':'membership_check_unavailable'};
   else{
    const context={userId:account.owner_id,rootUserId:root,profileId:account.profile_id,mailbox};
-   result={attempted:true,...safeReceipt(await sync(env,context,fetcher,{now}))};
+   result={attempted:true,...safeReceipt(await sync(env,context,fetcher,{now,includeCoverage:false}))};
    if(sync!==syncMailDiscovery){const stops=await recordStops(env,context);result.recordedStops=Number(stops?.recorded)||0;}
   }
  }catch(error){result={attempted:true,status:'blocked',code:safeCode(error)};}

@@ -57,6 +57,7 @@ function stateCode(raw, country, fallback) {
 }
 function statusAt(item, ms) {
   if (item.status==='source_removed') return 'source_removed';
+  if (item.status==='closed') return 'closed';
   if (item.closingAt && Date.parse(item.closingAt)<=ms) return 'closed';
   if (item.publishedAt && Date.parse(item.publishedAt)>ms) return 'future';
   // A source listing with no explicit deadline is not represented as a verified open job.
@@ -89,7 +90,7 @@ async function prepare(source, raw, now) {
   const editionKey=await digest(JSON.stringify([normalized(title),publishedAt,closingAt,opportunityType,kind]));
   const id='opp_'+(await digest(JSON.stringify([source.id,externalId,editionKey]))).slice(0,32);
   const item={id,sourceId:source.id,externalId,organizationId,organization:organizationName,organizationDomain,editionKey,profileScope:source.profileScope,trust:source.trust,opportunityType,country,state,title,url,publishedAt,closingAt,kind,summary:text(raw.summary,3000),fullText:text(raw.fullText || raw.description,20000),location:text(raw.location,500)||null,city:text(raw.city,200)||null,sourceUrl:source.feedUrl || source.portalUrl || null,sponsorship:null,supervision:null,monash:null,eligibility:'not_assessed',evidenceStatus:source.trust==='official'?'official_source_listing_not_job_offer':'unofficial_listing_requires_verification'};
-  item.status=statusAt({...item,status:raw.status==='source_removed'?'source_removed':undefined},now.ms);
+  item.status=statusAt({...item,status:raw.status},now.ms);
   return {item,organization};
 }
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args);

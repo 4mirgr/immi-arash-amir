@@ -18,6 +18,9 @@ export function normalizeReviewedGpSourceRecords(input,body){
  if(!/<html\b/i.test(body)||!/<\/html\s*>/i.test(body))fail('invalid_reviewed_gp_source_html');
  let content=visiblePageText(body).text;
  if(/verify (?:that )?you are (?:a )?human|checking your browser|access denied|sign in to continue|attention required.{0,30}cloudflare|just a moment/i.test(content.slice(0,1500)))fail('reviewed_gp_access_challenge');
+ // Hosted job boards can keep the advertisement and application form on a
+ // successful HTTP response after explicitly closing the job.
+ const closed=source.kind==='vacancy'&&/^\s*(?:this (?:job|position|vacancy|role) (?:has (?:been )?|is (?:now )?)closed|applications(?: for this (?:job|position|vacancy|role))? (?:are (?:now )?|have (?:now )?)closed)(?=[.!]|\s*$)/im.test(content);
  // This third-party referral page also prints its publisher's headquarters and
  // related navigation. Keep only the actual job/practice contact section.
  if(source.id==='reviewed-hwq-wembley-level1'){
@@ -33,5 +36,5 @@ export function normalizeReviewedGpSourceRecords(input,body){
  const fullText=(content+(appendix?'\n'+appendix:'')).slice(0,20000);
  // Evergreen network pages remain EOI registers, never a current named vacancy.
  const title=source.kind==='employment_register'?'General Practitioner expression of interest — '+source.organizationName:source.title;
- return [{externalId:source.id,title,url:source.feedUrl,country:'AU',state:source.state,organization:source.organizationName,organizationDomain:source.organizationDomain,location:source.location,city:source.location,opportunityType:'job',kind:source.kind,publishedAt:null,closingAt:null,summary:content.slice(0,2800),fullText,contactEvidence:contacts}];
+ return [{externalId:source.id,title,url:source.feedUrl,country:'AU',state:source.state,organization:source.organizationName,organizationDomain:source.organizationDomain,location:source.location,city:source.location,opportunityType:'job',kind:source.kind,publishedAt:null,closingAt:null,summary:content.slice(0,2800),fullText,contactEvidence:contacts,...(closed?{status:'closed'}:{})}];
 }
