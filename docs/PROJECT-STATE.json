@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedOn": "2026-11-21",
+  "updatedOn": "2026-11-22",
   "userTimezone": "Asia/Tehran",
   "snapshotIsNotLiveStatus": true,
   "repository": "4mirgr/immi-arash-amir",
@@ -51,27 +51,25 @@
     "otherProjectAccess": "do not alter IntMed or native website/Clinic auth to repair AUS"
   },
   "latestFeatureRelease": {
-    "sourceCommit": "4f935f8ff2eb7e4265362c1321adac11c0ae2173",
-    "receipt": "docs/AUDIT-2026-11-21.fa.md",
-    "workerDeployment": "67cfb053-f2c7-4827-b865-f5a74217810f",
-    "workerVersion": "15a5deb3-8526-4364-875b-be21875dd203",
+    "sourceCommit": "e7291ec80ed0514a486c660ea3fb3b665640bc2e",
+    "receipt": "docs/AUDIT-2026-11-22.fa.md",
+    "workerDeployment": "812596d0-0ec7-4f59-a284-cbaaa66eea5f",
+    "workerVersion": "acac6daf-1d44-404c-b678-29de98bb0353",
     "workerTrafficPercent": 100,
-    "workerModuleSha256": "cc573f41bb81d5fa8f4f0148b3ce52f3b3ecde7d1fd9726482697606cfe44f8c",
+    "workerModuleSha256": "1b2260ca2e57bda96075e4bd26dfff529b30a65269425b548cce3091ebc3fa8f",
     "ausSpecificHostCommit": "a8bde347928d050f2e05fdc85c1f9eeb72365e2e",
     "successfulPagesDeployment": "ec0f6a10-5472-4770-b921-216e16285579",
     "laterNativeHostCommitsMustBePreserved": true,
     "privateSchemaBaseline": "08ad93d68d17c459cc86bc62ecac98f0776dd3d0",
-    "nodeTestsPassed": 1124,
+    "nodeTestsPassed": 1131,
     "pythonTestsPassed": 79,
     "browserWorkflowChecksPassed": 18,
-    "independentTargetedTestsPassed": 99,
     "hostBrowserCombinationsPassed": 48,
     "realApplicationsSentForTests": false,
-    "workerModuleBytes": 5242646,
+    "workerModuleBytes": 5246420,
     "hostPullRequest": 45,
     "hostPullRequestCheckRun": 44905147985,
     "preservedNativeHostBaseline": "3564529d9a98168ad0e08070b7f70d11c0acaa63",
-    "independentFinalFocusedTestsPassed": 21,
     "combinedPublicFiles": 497,
     "combinedBytes": 61191316,
     "rootGzipBytes": 27771,
@@ -79,10 +77,12 @@
     "productionAssetHashesMatched": true,
     "hostMainCheckRun": 44905369297,
     "hostMainChecksPassed": true,
-    "hostReleaseTag": "release/aus-audit-2026-11-21"
+    "hostReleaseTag": "release/aus-audit-2026-11-21",
+    "frontendSourceCommit": "4f935f8ff2eb7e4265362c1321adac11c0ae2173",
+    "workerModuleObservedAt": "2026-11-22T10:20:07.878Z"
   },
   "runtimeConfigurationObserved": {
-    "checkedAt": "2026-11-21T12:43:12.811Z",
+    "checkedAt": "2026-11-22T10:20:07.878Z",
     "method": "read-only Cloudflare deployment, settings, schedules and Pages metadata",
     "workerBindingCount": 30,
     "workerSecretCount": 9,
@@ -111,7 +111,7 @@
       "maximumReservedAttemptsPerUTCDay": 20,
       "sameOwnerQueryReuseDays": 7
     },
-    "d1ReadsResumeAfter": "2026-11-22T00:00:05.000Z",
+    "d1ReadsResumeAfter": "2026-11-23T00:00:05.000Z",
     "dedicatedWorkerDeployCiConfigured": false
   },
   "mailRules": {
@@ -178,8 +178,8 @@
     {
       "id": "d1-post-reset-validation",
       "owner": "developer and scheduled workers",
-      "notBeforeUTC": "2026-11-22T00:00:05.000Z",
-      "doneWhen": "bounded post-reset mail, research, bank and new-source ingestion receipts; observe actual D1 read usage and retain owner isolation, suppression and unknown transport outcomes"
+      "notBeforeUTC": "2026-11-23T00:00:05.000Z",
+      "doneWhen": "bounded post-reset receipts for owned mail, research, bank, contact and last five sources; observe actual read usage after the 22 November recurrence"
     },
     {
       "id": "progressive-coverage",
@@ -230,27 +230,25 @@
   "privateDataInGit": false,
   "documentationChangeRequiresRuntimeDeployment": false,
   "latestAudit": {
-    "date": "2026-11-21",
-    "receipt": "docs/AUDIT-2026-11-21.fa.md",
+    "date": "2026-11-22",
+    "receipt": "docs/AUDIT-2026-11-22.fa.md",
     "quota": {
       "provider": "Cloudflare D1",
       "observedErrorCode": 7500,
+      "repeatedAfterPreviousReset": true,
       "dailyRowReadLimitExhausted": true,
-      "resetAtUTC": "2026-11-22T00:00:00Z",
-      "resumeFlag": "D1_READS_RESUME_AFTER",
-      "paidUpgrade": false,
+      "observedPublicCollectorStartedAtUTC": "2026-11-22T10:00:26.899Z",
+      "resetAtUTC": "2026-11-23T00:00:00Z",
+      "configuredResumeAtUTC": "2026-11-23T00:00:05.000Z",
       "liveQueueResumeVerified": false,
-      "configuredResumeAtUTC": "2026-11-22T00:00:05.000Z",
-      "dailyAllowanceReplenishedByDeployment": false
+      "paidUpgrade": false
     },
-    "proofVersion": 3,
-    "newExecutableSources": 4,
-    "totalExecutableSources": 40,
-    "newSourcesD1IngestionVerified": false,
-    "research": "docs/research/GP-SEARCH-2026-11-21.md",
-    "schemaChanged": false,
-    "realApplicationsSentForTests": false,
     "workerDeploymentVerified": true,
-    "hostDeploymentVerified": true
+    "newExecutableSources": 1,
+    "totalExecutableSources": 41,
+    "newSourcesD1IngestionVerified": false,
+    "previousFourSourcesD1IngestionVerified": false,
+    "schemaChanged": false,
+    "realApplicationsSentForTests": false
   }
 }
