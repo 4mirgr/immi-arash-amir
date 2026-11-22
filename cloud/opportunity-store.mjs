@@ -139,9 +139,12 @@ export async function upsertOpportunityBatch(db, inputSource, rawRecords, at=Dat
     ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at`,now.iso,now.iso,JSON.stringify(organizationRows)));
   const chunks=[];let chunk=[],bytes=2;
   for(const item of editionRows){const size=new TextEncoder().encode(JSON.stringify(item)).length+1;if(chunk.length&&bytes+size>400000){chunks.push(chunk);chunk=[];bytes=2;}chunk.push(item);bytes+=size;}if(chunk.length)chunks.push(chunk);
+  // Removing a closure banner does not identify a new edition. Dated reposts
+  // get their own key and can be imported beside the existing closed record.
   for(const items of chunks)writes.push(stmt(db,`INSERT INTO opportunity_editions(id,source_id,external_id,organization_id,edition_key,profile_scope,trust,opportunity_type,country,state,title,url,published_at,closing_at,status,data,first_seen_at,last_seen_at)
     SELECT json_extract(value,'$.id'),json_extract(value,'$.sourceId'),json_extract(value,'$.externalId'),json_extract(value,'$.organizationId'),json_extract(value,'$.editionKey'),json_extract(value,'$.profileScope'),json_extract(value,'$.trust'),json_extract(value,'$.opportunityType'),json_extract(value,'$.country'),json_extract(value,'$.state'),json_extract(value,'$.title'),json_extract(value,'$.url'),json_extract(value,'$.publishedAt'),json_extract(value,'$.closingAt'),json_extract(value,'$.status'),value,?,? FROM json_each(?) WHERE 1
-    ON CONFLICT(source_id,external_id,edition_key) DO UPDATE SET organization_id=excluded.organization_id,profile_scope=excluded.profile_scope,trust=excluded.trust,country=excluded.country,state=excluded.state,title=excluded.title,url=excluded.url,status=excluded.status,data=excluded.data,last_seen_at=excluded.last_seen_at`,now.iso,now.iso,JSON.stringify(items)));
+    ON CONFLICT(source_id,external_id,edition_key) DO UPDATE SET organization_id=excluded.organization_id,profile_scope=excluded.profile_scope,trust=excluded.trust,country=excluded.country,state=excluded.state,title=excluded.title,url=excluded.url,status=excluded.status,data=excluded.data,last_seen_at=excluded.last_seen_at
+    WHERE NOT (opportunity_editions.status='closed' AND opportunity_editions.closing_at IS NULL AND excluded.status='unknown')`,now.iso,now.iso,JSON.stringify(items)));
   // Queue registration shares the import transaction: a broken queue cannot
   // leave a successfully imported advertisement silently outside automation.
   if(contactPages.length)writes.push(...contactQueueWrites(db,contactPages));

@@ -4,6 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {GP_REVIEWED_SOURCE_DEFINITIONS as defs,normalizeReviewedGpSourceRecords as normalize} from '../cloud/gp-reviewed-source-adapter.mjs';
 import {SOURCE_REGISTRY,normalizeSourceRecords,collectRegisteredSources} from '../cloud/source-collectors.mjs';
+import {upsertOpportunityBatch} from '../cloud/opportunity-store.mjs';
 const active=defs.filter(s=>s.executable),allActive=SOURCE_REGISTRY.filter(s=>s.executable);
 const html=body=>'<html><head><title>Synthetic clinic careers</title></head><body>'+body+'</body></html>';
 function content(source,negative=false){return html(source.id==='reviewed-hwq-wembley-level1'?'<p>Publisher headquarters email publisher@example.invalid.</p><h2>Position Highlights:</h2><p>General Practitioner opportunity for International Medical Graduates requiring Level 1-2 supervision. AMC Certificate required. Eligibility for RACGP PESCI assessment.</p><h3>Practice Contact Details:</h3><p>Practice: Wembley Rd Medical Centre Contact: Synthetic contact Phone: 07 1234 5678 Email: apply@wrmc.au Website: www.wrmc.au</p><button>APPLY NOW!</button><p>Publisher elsewhere email publisher@example.invalid.</p>':'<h1>General Practitioner employment and training</h1><p>Our practice invites GP enquiries and international medical graduates to discuss the requirements of supervised general practice.</p><p>'+(negative?'We currently do not have any positions for PESCI or Level 1 supervision.':'IMG support may be available, subject to registration requirements.')+'</p><p>Email your CV to <a href="mailto:recruit@example.invalid">our recruitment team</a>.</p>');}
@@ -69,10 +70,21 @@ test('an HTTP 200 closure notice replaces the existing edition status without in
  notice='<p>This job has closed. Click here for more jobs.</p>';
  await collect();
  assert.deepEqual(edition.all(source.id).map(row=>({...row})),[{...prior,status:'closed'}]);
+ f.db.prepare("UPDATE source_collector_state SET position=? WHERE id='rotation'").run(start);
+ f.db.exec('UPDATE registered_source_checks SET next_check_at=0');
+ notice='';
+ await collect();
+ assert.deepEqual(edition.all(source.id).map(row=>({...row})),[{...prior,status:'closed'}]);
  const visible=f.db.prepare("SELECT count(*) n FROM opportunity_editions WHERE source_id=? AND status NOT IN ('closed','source_removed')").get(source.id);
  assert.equal(visible.n,0);
  const [unrelated]=normalize(source,html('<h1>General Practitioner recruitment</h1><p>Vaccination applications are closed, please call reception.</p><p>Our practice is hiring a full-time GP and offers a supervised role for eligible doctors.</p>'));
  assert.equal(unrelated.status,undefined);
+ const repostAt=Date.now();
+ await upsertOpportunityBatch(f.env.OPPORTUNITY_DB,source,[{...unrelated,publishedAt:new Date(repostAt).toISOString()}],repostAt);
+ const editions=edition.all(source.id);
+ assert.equal(editions.length,2);
+ assert.equal(editions.find(row=>row.id===prior.id)?.status,'closed');
+ assert.equal(editions.find(row=>row.id!==prior.id)?.status,'unknown');
 });
 
 test('unavailable, redirected, HTML or excessive-delay robots receipts never fetch a page',async()=>{
