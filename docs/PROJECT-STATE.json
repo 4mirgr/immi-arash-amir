@@ -51,12 +51,12 @@
     "otherProjectAccess": "do not alter IntMed or native website/Clinic auth to repair AUS"
   },
   "latestFeatureRelease": {
-    "sourceCommit": "e7291ec80ed0514a486c660ea3fb3b665640bc2e",
+    "sourceCommit": "789e2b2a3939ebd22660d34745987e8c5e4a1ef9",
     "receipt": "docs/AUDIT-2026-11-22.fa.md",
-    "workerDeployment": "812596d0-0ec7-4f59-a284-cbaaa66eea5f",
-    "workerVersion": "acac6daf-1d44-404c-b678-29de98bb0353",
+    "workerDeployment": "cdaa2167-053f-4b15-8de6-4ff26a043509",
+    "workerVersion": "63bec543-617e-4ef3-a021-83160d1fc962",
     "workerTrafficPercent": 100,
-    "workerModuleSha256": "1b2260ca2e57bda96075e4bd26dfff529b30a65269425b548cce3091ebc3fa8f",
+    "workerModuleSha256": "51d0639debc011f5e916a16f939e10b07bbe1159830e67d3bd787fb5fc69377e",
     "ausSpecificHostCommit": "a8bde347928d050f2e05fdc85c1f9eeb72365e2e",
     "successfulPagesDeployment": "ec0f6a10-5472-4770-b921-216e16285579",
     "laterNativeHostCommitsMustBePreserved": true,
@@ -66,7 +66,7 @@
     "browserWorkflowChecksPassed": 18,
     "hostBrowserCombinationsPassed": 48,
     "realApplicationsSentForTests": false,
-    "workerModuleBytes": 5246420,
+    "workerModuleBytes": 5246547,
     "hostPullRequest": 45,
     "hostPullRequestCheckRun": 44905147985,
     "preservedNativeHostBaseline": "3564529d9a98168ad0e08070b7f70d11c0acaa63",
@@ -79,10 +79,11 @@
     "hostMainChecksPassed": true,
     "hostReleaseTag": "release/aus-audit-2026-11-21",
     "frontendSourceCommit": "4f935f8ff2eb7e4265362c1321adac11c0ae2173",
-    "workerModuleObservedAt": "2026-11-22T10:20:07.878Z"
+    "workerModuleObservedAt": "2026-11-22T10:23:53.656Z",
+    "independentTargetedTestsPassed": 82
   },
   "runtimeConfigurationObserved": {
-    "checkedAt": "2026-11-22T10:20:07.878Z",
+    "checkedAt": "2026-11-22T10:23:53.656Z",
     "method": "read-only Cloudflare deployment, settings, schedules and Pages metadata",
     "workerBindingCount": 30,
     "workerSecretCount": 9,
@@ -249,6 +250,7 @@
     "newSourcesD1IngestionVerified": false,
     "previousFourSourcesD1IngestionVerified": false,
     "schemaChanged": false,
-    "realApplicationsSentForTests": false
+    "realApplicationsSentForTests": false,
+    "sameEditionClosurePreserved": true
   }
 }
