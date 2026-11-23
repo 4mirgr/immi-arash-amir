@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedOn": "2026-11-22",
+  "updatedOn": "2026-11-24",
   "userTimezone": "Asia/Tehran",
   "snapshotIsNotLiveStatus": true,
   "repository": "4mirgr/immi-arash-amir",
@@ -252,5 +252,25 @@
     "schemaChanged": false,
     "realApplicationsSentForTests": false,
     "sameEditionClosurePreserved": true
+  },
+  "latestEntryRelease": {
+    "dateTehran": "2026-11-24",
+    "sourceCommit": "84ee3b66ca2ec0ffcc9d8210ae052e449e154a92",
+    "hostCommit": "097bceb2956bc60ee64c9cd71a60073da97144a0",
+    "pagesDeployment": "687010e9-2f1b-4792-9c66-c8f01134f51e",
+    "workerDeployment": "87d6a637-f2d6-45f0-8e9b-ab9318a66a57",
+    "workerVersion": "5dc7cd7e-0f05-4249-80a2-51aa49bf5823",
+    "workerModuleSha256": "403c9630de61dd59c6eeea36724d92718f5cf6969d6af9c782cd56ded93f076f",
+    "productionAssetsObservedAtUTC": "2026-11-23T22:15:54.436561Z",
+    "arashSignInDefault": "mail",
+    "exactMailDeepLinkPreserved": true,
+    "syntheticBrowserFlowPassed": true
+  },
+  "postResetObservation": {
+    "dateUTC": "2026-11-23",
+    "mailSyncObservedAtUTC": "2026-11-23T21:55:08.911Z",
+    "archiveCompleteAtObservation": true,
+    "successfulCollectorReceiptsForPreviousFiveSources": true,
+    "fullDayReadUsageNotMeasured": true
   }
 }
