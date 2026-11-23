@@ -4,6 +4,8 @@ Updated 2026-11-22. This is a recovery guide for a human or another AI. The repo
 
 Latest audit 2026-11-22: [row-read recurrence and current job research](AUDIT-2026-11-22.fa.md). D1 returned the daily row-read limit again after the prior pause expired. The new backend uses existing indexes for mailbox/bank matching and normal claims, omits the scheduled thread count, and runs full contact-coverage repair twice hourly. Direct publisher closure notices are retained even on HTTP 200. GPAP is an additional employment enquiry source. The deployed pause ends at 2026-11-23T00:00:05Z. Verify post-reset work from actual receipts. The [21 November audit](AUDIT-2026-11-21.fa.md) records the independently pinned frontend and four earlier sources.
 
+2026-11-24 Tehran: verified Arash sign-in starts at Correspondence, including when the browser previously saved another tab. Exact private mail links keep their requested item and mailbox. The browser test covers the unread badge and opening the green review action from this landing without sending. The existing navigation checkpoint for Amir remains applicable. A bounded live observation on 23 November UTC showed Gmail history had advanced and GPAP and the four sources from the preceding audit had successful collector receipts.
+
 ## Resume in this order
 
 1. Read [AGENTS](../AGENTS.md) and only the role file relevant to the task.

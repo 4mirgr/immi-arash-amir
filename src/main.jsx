@@ -103,7 +103,11 @@ const fallbackStation = {
 function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignOut }) {
   const interfaceLanguage=useInterfaceLanguage();
   const t=(fa,en)=>interfaceLanguage==="en"?en:fa;
-  const [tab, setTab] = useState(() => {if(readMailOpportunityDeepLink(globalThis.location?.href).id)return "mail";const saved=readCheckpoint(workspaceOwnerId,initialPerson,"navigation")?.tab;return nav.some(item=>item[0]===saved)?saved:initialPerson === "arash" ? "opportunities" : "overview";}),
+  const [tab, setTab] = useState(() => {
+    if (readMailOpportunityDeepLink(globalThis.location?.href).id || (cloud && initialPerson === "arash")) return "mail";
+    const saved = readCheckpoint(workspaceOwnerId, initialPerson, "navigation")?.tab;
+    return nav.some(item => item[0] === saved) ? saved : initialPerson === "arash" ? "opportunities" : "overview";
+  }),
     [person, setPerson] = useState(initialPerson),
     [data, setData] = useState({ clinics: [], profiles: [], stations: [] }),
     [online, setOnline] = useState(false),
@@ -458,7 +462,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
             <div className="small-avatar">{arash ? "AE" : "AG"}</div>
           </div>
         </header>
-        <div className={"page"+(arash && tab === "opportunities" ? " arash-opportunity-focus" : "")} >{!(arash && tab === "opportunities") && <WorkspaceGuidance/>}
+        <div className={"page"+(arash && ["opportunities", "mail"].includes(tab) ? " arash-opportunity-focus" : "")} >{!(arash && tab === "opportunities") && <WorkspaceGuidance/>}
           <div className="page-heading">
             <div>
               <div className="eyebrow">

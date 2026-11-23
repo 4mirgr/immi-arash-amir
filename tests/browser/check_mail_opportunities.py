@@ -554,6 +554,26 @@ with sync_playwright() as playwright:
     expect(gate.locator(".mail-opportunities").get_by_label("صندوق فرصت‌های ایمیلی", exact=True)).to_have_value("secondary")
     assert "mailOpportunity=" + second in gate.url
     assert not [entry for entry in writes[before:] if entry["path"].endswith("/send")]
+    # A fresh sign-in starts with correspondence even if the tab was previously
+    # left on public opportunities. The toolbar and per-card action start visible.
+    gate.goto(base + "/full.html")
+    gate.evaluate("""() => {
+        const owner = '22222222-2222-4222-8222-222222222222';
+        sessionStorage.setItem('masir-ui:v1:' + owner + ':arash:navigation',
+            JSON.stringify({version: 1, owner, profile: 'arash',
+                            savedAt: Date.now(), value: {tab: 'opportunities'}}));
+    }""")
+    gate.locator("#login-email").fill("synthetic@example.invalid")
+    gate.locator("#login-password").fill("synthetic-password-for-tests")
+    gate.get_by_role("button", name="ورود امن", exact=True).click()
+    expect(gate.locator("#mail-opportunities")).to_be_visible()
+    expect(gate.locator(".mail-opportunity-toolbar-badge")).to_have_text("۲")
+    first_action = gate.locator("#mail-opportunity-" + first + " .mail-opportunity-send")
+    expect(first_action).to_be_visible()
+    expect(first_action).to_be_enabled()
+    first_action.click()
+    expect(gate.locator("#mail-opportunity-" + first + " .mail-opportunity-detail")).to_be_visible()
+    assert not [entry for entry in writes[before:] if entry["path"].endswith("/send")]
     assert not errors, errors
     browser.close()
 
