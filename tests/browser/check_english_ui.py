@@ -6,7 +6,7 @@ from pathlib import Path
 import json,subprocess,shutil,tempfile
 repo=Path(__file__).resolve().parents[2]
 work=tempfile.TemporaryDirectory();root=Path(work.name)
-s=(repo/'src/main.jsx').read_text();s=s[:s.rfind('createRoot(document.getElementById("root"))')]
+s="import {createRoot} from 'react-dom/client';"+"\n"+(repo/'src/main.jsx').read_text()
 s=s.replace('const [automationTab,setAutomationTab]=useState("operations");','const [automationTab,setAutomationTab]=useState("operations");window.__tab=setTab;window.__automation=setAutomationTab;')
 s+='\nfunction Harness(){const[owner,setOwner]=useState("arash");window.__owner=setOwner;return <App key={owner} cloud initialPerson={owner} workspaceOwnerId={owner==="arash"?"11111111-1111-4111-8111-111111111111":"22222222-2222-4222-8222-222222222222"} onSignOut={()=>{}}/>};createRoot(document.getElementById("root")).render(<Harness/>);'
 script='import {build} from "esbuild";await build('+json.dumps({'stdin':{'contents':s,'resolveDir':str(repo/'src'),'sourcefile':'english-audit.jsx','loader':'jsx'},'outfile':str(root/'app.js'),'bundle':True,'format':'esm','external':['/fonts/*'],'logLevel':'silent'})+');'

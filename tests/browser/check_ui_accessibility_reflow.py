@@ -13,7 +13,7 @@ repo = Path(__file__).resolve().parents[2]
 with tempfile.TemporaryDirectory() as directory:
  root = Path(directory)
  source = (repo/'src/main.jsx').read_text()
- source = source[:source.rfind('createRoot(document.getElementById("root"))')]
+ source="import {createRoot} from 'react-dom/client';import {AccessGate} from './auth';"+"\n"+source
  source = source.replace('const [automationTab,setAutomationTab]=useState("operations");', 'const [automationTab,setAutomationTab]=useState("operations");window.__tab=setTab;')
  source += '''
 function Audit(){const[owner,setOwner]=useState('arash');window.__owner=setOwner;return location.search==='?access'?<AccessGate>{()=>null}</AccessGate>:<App key={owner} cloud initialPerson={owner} workspaceOwnerId={owner==='arash'?'11111111-1111-4111-8111-111111111111':'22222222-2222-4222-8222-222222222222'} onSignOut={()=>{}}/>};createRoot(document.getElementById('root')).render(<Audit/>);

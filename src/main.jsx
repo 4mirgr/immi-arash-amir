@@ -2,7 +2,6 @@ import {interfaceLocale,useInterfaceLanguage} from './interface-locale.mjs';
 import {readCheckpoint,writeCheckpoint} from './workspace-checkpoint.mjs';
 import {googleAccountLabel} from './google-account-labels.mjs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
 import {
   LayoutDashboard,
   Linkedin,
@@ -42,7 +41,6 @@ import {
 } from "lucide-react";
 import "./workspace-style.css";
 import { api,storageDailyReadLimitNotice } from "./api";
-import { AccessGate } from "./auth";
 import { CVVersions, Presets } from "./workspace-tools";
 import { useGoogleConnection, GoogleConnection, GoogleInbox } from "./google-tools";
 import {ClinicCorrespondence} from "./clinic-correspondence";
@@ -100,7 +98,7 @@ const fallbackStation = {
     "Communication and safe transfer",
   ],
 };
-function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignOut }) {
+export default function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignOut }) {
   const interfaceLanguage=useInterfaceLanguage();
   const t=(fa,en)=>interfaceLanguage==="en"?en:fa;
   const [tab, setTab] = useState(() => {
@@ -1044,6 +1042,3 @@ function Stat({ icon: Icon, value, title, sub }) {
     </section>
   );
 }
-createRoot(document.getElementById("root")).render(
-  <AccessGate>{(props) => <App key={(props.initialPerson || "local")+":"+(props.workspaceOwnerId || "local")} {...props} />}</AccessGate>,
-);

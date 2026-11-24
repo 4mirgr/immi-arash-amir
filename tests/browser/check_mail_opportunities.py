@@ -38,7 +38,7 @@ function Harness(){const[person,setPerson]=useState('arash'),[owner,setOwner]=us
 config = {"stdin": {"contents": harness, "resolveDir": str(repo), "sourcefile": "mail-opportunities.jsx", "loader": "jsx"}, "outfile": str(root / "app.js"), "bundle": True, "format": "esm", "external": ["/fonts/*"], "logLevel": "silent"}
 subprocess.run(["node", "--input-type=module", "-e", 'import {build} from "esbuild";await build(' + json.dumps(config) + ');'], cwd=repo, check=True)
 (root / "index.html").write_text('<html lang="fa" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="app.css"><div id="root"></div><script type="module" src="app.js"></script></html>')
-full_config = {"entryPoints": [str(repo / "src/main.jsx")], "outfile": str(root / "main.js"), "bundle": True, "format": "esm", "external": ["/fonts/*"], "logLevel": "silent"}
+full_config = {"entryPoints": [str(repo / "src/entry.jsx")], "outfile": str(root / "main.js"), "bundle": True, "format": "esm", "external": ["/fonts/*"], "logLevel": "silent"}
 subprocess.run(["node", "--input-type=module", "-e", 'import {build} from "esbuild";await build(' + json.dumps(full_config) + ');'], cwd=repo, check=True)
 (root / "full.html").write_text('<html lang="fa" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="main.css"><div id="root"></div><script type="module" src="main.js"></script></html>')
 shutil.copytree(repo / "public/fonts", root / "fonts")

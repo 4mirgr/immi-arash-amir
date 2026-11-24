@@ -50,7 +50,7 @@ export function AccessGate({ children }) {
     setBusy(true);
     setError("");
     try {
-      const result = await api("public-config");
+      const result = await api("public-config", {signal: AbortSignal.timeout(7000)});
       if (
         result.mode === "local_demo" &&
         result.authRequired === false &&
@@ -67,7 +67,9 @@ export function AccessGate({ children }) {
       else
         throw Error("پیکربندی ورود امن کامل نیست. دسترسی به داده‌ها بسته است.");
     } catch (e) {
-      setError(e.message);
+      setError(e.name === 'TimeoutError' || e.name === 'TypeError'
+        ? 'ارتباط با سرویس ورود برقرار نشد. دوباره امتحان کنید.'
+        : e.message);
     } finally {
       setBusy(false);
     }
@@ -335,7 +337,7 @@ export function AccessGate({ children }) {
       <section className="panel access-card">
         <div style={{display:"flex",justifyContent:"flex-end"}}><LanguageControl/></div>
         <div className="access-brand">
-          <img src="/brand-aa-180.png" alt="AA" width="64" height="64" style={{borderRadius:14}}/>
+          <img src="/brand-aa-64.png" alt="AA" width="64" height="64" style={{borderRadius:14}}/>
           <h1>مسیر</h1>
         </div>
         <h2>{view === 'forgot' ? 'بازیابی رمز عبور' : view === 'reset' ? 'تعیین رمز عبور جدید' : view === 'validating' ? 'بررسی لینک بازیابی' : 'ورود به فضای کاری پزشکی'}</h2>

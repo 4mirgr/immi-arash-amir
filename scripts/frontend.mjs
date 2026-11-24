@@ -46,8 +46,13 @@ export async function buildFrontend({root=process.cwd(),base='/',development=fal
    return {contents,loader:filename.endsWith('.jsx')?'jsx':'js',resolveDir:path.dirname(filename)};
   });
  }};
- const result=await build({absWorkingDir:root,entryPoints:{index:'src/main.jsx'},outdir:dist,bundle:true,splitting:true,format:'esm',platform:'browser',target:'es2022',jsx:'automatic',minify:!development,sourcemap:false,metafile:true,entryNames:'assets/[name]-[hash]',chunkNames:'assets/[name]-[hash]',assetNames:'assets/[name]-[hash]',external:['/fonts/*',base+'fonts/*'],plugins:[plugin],define:{'process.env.NODE_ENV':JSON.stringify(development?'development':'production'),'import.meta.env.BASE_URL':JSON.stringify(base),'import.meta.env.DEV':String(development),'import.meta.env.PROD':String(!development)},logLevel:'silent'});
- const outputs=Object.entries(result.metafile.outputs),entry=outputs.find(([,meta])=>meta.entryPoint==='src/main.jsx');
+ let html=await readFile(path.join(root,'index.html'),'utf8');
+ const original=/<script\b[^>]*\btype=['"]module['"][^>]*\bsrc=['"]\/(src\/(?:entry|main)\.jsx)['"][^>]*><\/script>/g;
+ const entries=[...html.matchAll(original)];
+ if(entries.length!==1)throw Error('Public HTML entry contract changed');
+ const entryPoint=entries[0][1],deferWorkspace=html.includes('<!-- workspace-styles -->');
+ const result=await build({absWorkingDir:root,entryPoints:{index:entryPoint},outdir:dist,bundle:true,splitting:true,format:'esm',platform:'browser',target:'es2022',jsx:'automatic',minify:!development,sourcemap:false,metafile:true,entryNames:'assets/[name]-[hash]',chunkNames:'assets/[name]-[hash]',assetNames:'assets/[name]-[hash]',external:['/fonts/*',base+'fonts/*'],plugins:[plugin],define:{'process.env.NODE_ENV':JSON.stringify(development?'development':'production'),'import.meta.env.BASE_URL':JSON.stringify(base),'import.meta.env.DEV':String(development),'import.meta.env.PROD':String(!development)},logLevel:'silent'});
+ const outputs=Object.entries(result.metafile.outputs),entry=outputs.find(([,meta])=>meta.entryPoint===entryPoint);
  if(!entry)throw Error('Public frontend entry is missing');
  const relative=filename=>path.relative(dist,path.resolve(root,filename)).split(path.sep).join('/');
  const script=base+relative(entry[0]),cssBundle=entry[1].cssBundle;
@@ -55,13 +60,18 @@ export async function buildFrontend({root=process.cwd(),base='/',development=fal
  // that contract instead of shipping a lazy screen with missing styles.
  const cssInputs=new Set(Object.entries(result.metafile.outputs[cssBundle]?.inputs||{}).filter(([filename])=>filename.endsWith('.css')).map(([filename])=>filename));
  for(const [filename,meta]of outputs.filter(([filename])=>filename.endsWith('.css')))for(const input of Object.keys(meta.inputs||{}))if(input.endsWith('.css')&&!cssInputs.has(input))throw Error('Lazy screen CSS is missing from the public entry');
- let html=await readFile(path.join(root,'index.html'),'utf8');
- const original=/<script\b[^>]*\btype=['"]module['"][^>]*\bsrc=['"]\/src\/main\.jsx['"][^>]*><\/script>/g;
- if([...html.matchAll(original)].length!==1)throw Error('Public HTML entry contract changed');
  html=html.replace(original,'<!-- public-frontend-entry -->');
  html=rewriteHTML(html,base);
  html=html.replace('<!-- public-frontend-entry -->','<script type="module" src="'+script+'"></script>');
- if(cssBundle)html=html.replace('</head>','<link rel="stylesheet" href="'+base+relative(cssBundle)+'"/></head>');
+ if(deferWorkspace){
+  const preloads=entry[1].imports.filter(item=>item.kind==='import-statement'&&!item.external)
+   .map(item=>'<link rel="modulepreload" href="'+base+relative(item.path)+'" crossorigin>');
+  html=html.replace('</head>',preloads.join('')+'</head>');
+ }
+ if(cssBundle){
+  const stylesheet='<link rel="stylesheet" href="'+base+relative(cssBundle)+'"/>';
+  html=deferWorkspace?html.replace('<!-- workspace-styles -->','<template id="workspace-styles">'+stylesheet+'</template>'):html.replace('</head>',stylesheet+'</head>');
+ }
  if(development)html=html.replace('</body>','<script type="module" src="'+base+'__frontend_reload.js"></script></body>');
  await writeFile(path.join(dist,'index.html'),html);
  return {dist,base,script,css:cssBundle?base+relative(cssBundle):null,metafile:result.metafile};

@@ -7,6 +7,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 import json
+import gzip
+import re
 import shutil
 import subprocess
 import tempfile
@@ -79,3 +81,76 @@ createRoot(document.getElementById('root')).render(<App/>);
         server.shutdown()
         server.server_close()
 print("PASS production build: React, /aus/ mount, local brand/fonts, lazy modules and lazy CSS; no private input or provider calls.")
+
+with tempfile.TemporaryDirectory(prefix="aus-entry-browser-") as folder:
+    root = Path(folder)
+    for name in ("index.html", "package.json"):
+        shutil.copyfile(repo / name, root / name)
+    for name in ("src", "public"):
+        shutil.copytree(repo / name, root / name)
+    for directory, filename in (("cloud", "gp-discovery-sources.json"), ("cloud", "evidence-deadline.mjs"), ("library", "sources.json")):
+        (root / directory).mkdir(exist_ok=True)
+        shutil.copyfile(repo / directory / filename, root / directory / filename)
+    (root / "node_modules").symlink_to(repo / "node_modules", target_is_directory=True)
+    command = 'import{buildFrontend}from' + json.dumps((repo / "scripts/frontend.mjs").as_uri()) + ';console.log(JSON.stringify(await buildFrontend({root:' + json.dumps(str(root)) + ',base:"/aus/"})));'
+    build = json.loads(subprocess.check_output(["node", "--input-type=module", "-e", command], cwd=repo))
+    outputs = build["metafile"]["outputs"]
+    assert isinstance(outputs, dict)
+    modules = set()
+
+    def visit(name):
+        if name in modules:
+            return
+        modules.add(name)
+        for dependency in outputs[name]["imports"]:
+            if dependency["kind"] == "import-statement":
+                visit(dependency["path"])
+
+    visit(next(name for name, metadata in outputs.items() if metadata.get("entryPoint") == "src/entry.jsx"))
+    startup_bytes = sum(len(gzip.compress((root / name).read_bytes(), mtime=0)) for name in modules)
+    assert startup_bytes < 95_000, startup_bytes
+    assert all(outputs[name].get("entryPoint") not in ("src/main.jsx", "src/ui-translations.mjs") for name in modules)
+    assert build["css"]
+    html = (root / "dist/index.html").read_text()
+    assert len(gzip.compress(html.encode(), mtime=0)) < 2_500
+    assert re.search(r'<template id="workspace-styles">\s*<link rel="stylesheet"', html)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), partial(MountHandler, directory=str(root / "dist")))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(executable_path=shutil.which("chromium"), args=["--no-sandbox"])
+            page = browser.new_page(viewport={"width": 390, "height": 780})
+            base = "http://127.0.0.1:" + str(server.server_port)
+            workspace_requests = []
+            requests = []
+
+            def hold_workspace(route):
+                workspace_requests.append(route.request.url)
+                route.abort()
+
+            page.on("request", lambda request: requests.append(request.url))
+            page.route(re.compile(r"/aus/assets/(?:main-.*\.js|.*\.css)$"), hold_workspace)
+            page.route("**/api/public-config", lambda route: route.fulfill(json={
+                "mode": "cloud", "authRequired": True, "supabaseUrl": "https://auth.example.invalid", "publishableKey": "synthetic",
+            }))
+            page.route("**/aus/fonts/**", lambda route: route.abort())
+            page.route("**/aus/brand-aa-64.png", lambda route: route.abort())
+            page.goto(base + "/aus/")
+            expect(page.locator("#login-email")).to_be_visible()
+            expect(page.get_by_role("button", name="ورود امن")).to_be_enabled()
+            assert not workspace_requests, workspace_requests
+            assert len([url for url in requests if "/api/" in url]) == 1
+            assert not [url for url in requests if "/aus/fonts/" in url]
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            document_only = browser.new_page(viewport={"width": 390, "height": 780})
+            document_only.route("**/aus/**", lambda route: route.continue_() if route.request.is_navigation_request() else route.abort())
+            document_only.goto(base + "/aus/")
+            expect(document_only.get_by_role("heading", name="مسیر")).to_be_visible()
+            expect(document_only.get_by_role("link", name="تازه‌سازی صفحه")).to_be_visible()
+            assert document_only.locator("#login-email").count() == 0
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+    print(f"PASS real AUS entry: renderable document, no workspace or font dependency before login, {startup_bytes:,} gzip bytes for required modules.")

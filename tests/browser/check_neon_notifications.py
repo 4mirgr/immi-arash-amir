@@ -11,7 +11,7 @@ work = tempfile.TemporaryDirectory()
 root = Path(work.name)
 source = (repo/'src/main.jsx').read_text()
 assert 'neon-notifications.css' in source, 'The shared notification style must be imported by the actual app.'
-source = source[:source.rfind('createRoot(document.getElementById("root"))')]
+source="import {createRoot} from 'react-dom/client';"+"\n"+source
 source = source.replace('const [automationTab,setAutomationTab]=useState("operations");', 'const [automationTab,setAutomationTab]=useState("operations");window.__tab=setTab;window.__toast=setToast;')
 # Keep the real app/components and actual current CSS. This is a display-only
 # harness in place of the login gate, not a production authentication bypass.
