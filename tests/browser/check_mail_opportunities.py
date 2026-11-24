@@ -55,6 +55,13 @@ owner = "ownerA"
 recipients = ["manager@synthetic-clinic.example.invalid", "recruitment@synthetic-clinic.example.invalid"]
 
 
+def recipients_for(identifier):
+    if identifier == first:
+        return recipients
+    rural = ["manager@synthetic-rural.example.invalid", "recruitment@synthetic-rural.example.invalid"]
+    return [recipients[0], rural[1]] if scenario == "batch_shared" else rural
+
+
 def letter_proposal(identifier, cv_id, mailbox="primary"):
     label = "Coastal" if identifier == first else "Rural"
     blocks = ["Dear Practice Manager,", "I am a general practitioner with verified experience and am seeking a supervised GP position.",
@@ -62,7 +69,7 @@ def letter_proposal(identifier, cv_id, mailbox="primary"):
               "My verified clinical experience and collaborative approach would support your team. " + ("Latest CV." if cv_id == cv_latest else "Earlier CV."),
               "Please let me know a convenient time to discuss how I can support your practice.",
               "Synthetic Applicant\nEmail: applicant@example.invalid\nPhone: +61 000 000 000"]
-    proposal = {"readyForReview": True, "recipients": recipients, "subject": "Application to " + label + " Practice", "body": "\n\n".join(blocks), "cvVersionId": cv_id, "evidenceHash": "synthetic-current-source-" + identifier, "missing": [], "outreachMode": "initial_enquiry" if identifier == second else "job_application"}
+    proposal = {"readyForReview": True, "recipients": recipients_for(identifier), "subject": "Application to " + label + " Practice", "body": "\n\n".join(blocks), "cvVersionId": cv_id, "evidenceHash": "synthetic-current-source-" + identifier, "missing": [], "outreachMode": "initial_enquiry" if identifier == second else "job_application"}
     saved = saved_edits.get((owner, mailbox, identifier, cv_id))
     if saved:
         blocks[2], blocks[3] = saved["clinicParagraph"], saved["valueParagraph"]
@@ -133,6 +140,7 @@ def route(request):
             else:
                 request.fulfill(json={"items": [item(first, mailbox), item(second, mailbox)], "unreadCount": 2, "more": False})
         return
+    identifier = path.split("/")[-2]
     body = json.loads(request.request.post_data or "{}")
     writes.append({"path": path, "mailbox": mailbox, "body": body})
     if path.endswith("/read"):
@@ -161,18 +169,18 @@ def route(request):
         assert body == {"cvVersionId": cv}
         if scenario == "research_blocked":
             request.fulfill(json={"readyForReview": False, "recipients": [], "missing": ["mail_opportunity_public_evidence_required"], "cvVersionId": cv})
-        elif scenario == "needs_contact":
+        elif scenario == "needs_contact" or scenario == "batch_mixed" and identifier == second:
             request.fulfill(json={"readyForReview": False, "recipients": [], "missing": ["needs_contact"], "cvVersionId": cv})
         else:
-            request.fulfill(json={"readyForReview": True, "recipients": recipients, "subject": "Synthetic tailored application", "body": "Synthetic clinic-specific letter.\n\nOwn verified clinical experience.\n\nPlease let me know a convenient time to discuss how I can support your practice.\n\nSynthetic Applicant\nEmail: applicant@example.invalid", "cvVersionId": cv})
+            request.fulfill(json={"readyForReview": True, "recipients": recipients_for(identifier), "subject": "Synthetic tailored application", "body": "Synthetic clinic-specific letter.\n\nOwn verified clinical experience.\n\nPlease let me know a convenient time to discuss how I can support your practice.\n\nSynthetic Applicant\nEmail: applicant@example.invalid", "cvVersionId": cv})
     elif path.endswith("/preview"):
         if scenario.startswith("inline"):
-            assert body["cvVersionId"] in [cv, cv_latest] and body["recipient"] in recipients
+            assert body["cvVersionId"] in [cv, cv_latest] and body["recipient"] in recipients_for(identifier)
             data = letter_proposal(path.split("/")[-2], body["cvVersionId"], mailbox)
             assert body.get("editedDraftId") == data.get("editedDraftId"), "Fresh review must use the saved edit receipt"
             request.fulfill(json={**data, "sender": owner + "-" + mailbox + "@example.invalid", "reviewHash": "synthetic-review-" + body["recipient"] + ":" + body.get("editedDraftId", "canonical")})
             return
-        assert body["cvVersionId"] == cv and body["recipient"] in recipients
+        assert body["cvVersionId"] == cv and body["recipient"] in recipients_for(identifier)
         request.fulfill(json={"readyForReview": True, "sender": owner + "-" + mailbox + "@example.invalid", "recipients": [{"recipient": body["recipient"]}], "cvVersionId": cv, "reviewHash": "synthetic-review-" + body["recipient"], "subject": "Synthetic tailored application", "body": "Synthetic clinic-specific letter.\n\nOwn verified clinical experience.\n\nPlease let me know a convenient time to discuss how I can support your practice.\n\nSynthetic Applicant\nEmail: applicant@example.invalid"})
     elif path.endswith("/send"):
         if scenario.startswith("inline"):
@@ -183,7 +191,9 @@ def route(request):
             request.fulfill(json={"items": [{"status": "sent", "recipient": body["recipient"]}], "automaticRetry": False})
             return
         assert body["confirmSend"] is True and body["reviewHash"] == "synthetic-review-" + body["recipient"] and body["cvVersionId"] == cv
-        if scenario == "unknown":
+        if scenario == "batch_partial" and body["recipient"] == recipients[1]:
+            request.fulfill(status=409, json={"error": "mail_opportunity_review_changed"})
+        elif scenario == "unknown":
             request.fulfill(status=503, json={"error": "delivery_unknown"})
         elif scenario == "sending":
             pending.append((request, {"items": [{"status": "sent", "recipient": body["recipient"]}]}))
@@ -241,14 +251,82 @@ with sync_playwright() as playwright:
     dock = page.get_by_role("region", name="ارسال گروهی فرصت‌های ایمیلی", exact=True)
     expect(dock).to_contain_text("۲ آگهی انتخاب شده")
     dock.get_by_role("button", name="آماده‌کردن نامه برای ۲ آگهی", exact=True).click()
-    expect(dock.get_by_role("button", name="تأیید و ارسال برای ۲ آگهی", exact=True)).to_be_visible()
     before = len([entry for entry in writes if entry["path"].endswith("/send")])
     page.evaluate("scrollTo(0,document.body.scrollHeight)")
-    button = dock.get_by_role("button", name="تأیید و ارسال برای ۲ آگهی", exact=True)
+    button = dock.get_by_role("button", name="بازبینی و ارسال برای ۲ آگهی", exact=True)
     assert button.bounding_box()["y"] < 780
     button.click()
+    summary = page.get_by_role("dialog", name="بازبینی نهایی آگهی‌های انتخاب‌شده", exact=True)
+    expect(summary).to_be_visible()
+    assert len([entry for entry in writes if entry["path"].endswith("/send")]) == before
+    summary.get_by_role("button", name="تأیید و ارسال برای ۲ آگهی", exact=True).click()
     expect(dock.get_by_role("button", name="ارسال شد", exact=True)).to_be_disabled()
     assert len([entry for entry in writes if entry["path"].endswith("/send")]) == before + 4
+
+    # A missing clinic contact must not trap a prepared peer on the
+    # preparation button. The compact mobile review keeps confirm reachable.
+    scenario = "batch_mixed"
+    page.reload()
+    cards.first.locator('header>input[type="checkbox"]').check()
+    cards.nth(1).locator('header>input[type="checkbox"]').check()
+    before = len(writes)
+    dock.get_by_role("button", name="آماده‌کردن نامه برای ۲ آگهی", exact=True).click()
+    review_one = dock.get_by_role("button", name="بازبینی و ارسال برای ۱ آگهی", exact=True)
+    review_one.click()
+    expect(summary.locator("li").nth(0)).to_contain_text(recipients[0])
+    expect(summary.locator("li").nth(0)).to_contain_text("ownerA-primary@example.invalid")
+    expect(summary.locator("li").nth(1)).to_contain_text("راه تماس مناسب هنوز تأیید نشده")
+    summary.locator("details").first.locator("summary").click()
+    expect(summary.locator(".mail-opportunity-letter").first).to_be_visible()
+    confirm_one = summary.get_by_role("button", name="تأیید و ارسال برای ۱ آگهی", exact=True)
+    box = confirm_one.bounding_box()
+    assert box["x"] >= 0 and box["x"] + box["width"] <= 390 and box["y"] + box["height"] <= 780
+    page.keyboard.press("Escape")
+    expect(summary).to_have_count(0)
+    assert not [entry for entry in writes[before:] if entry["path"].endswith("/send")]
+    review_one.click()
+    confirm_one.click()
+    expect(dock).to_contain_text("۱ ارسال شد")
+    expect(dock).to_contain_text("۱ نیازمند بررسی")
+    dock.get_by_role("button", name="بررسی دوبارهٔ ۱ آگهی", exact=True).click()
+    expect(dock.get_by_role("button", name="بررسی دوبارهٔ ۱ آگهی", exact=True)).to_be_enabled()
+    sent = [entry for entry in writes[before:] if entry["path"].endswith("/send")]
+    assert len(sent) == 2 and all(first in entry["path"] for entry in sent)
+    assert len([entry for entry in writes[before:] if first in entry["path"] and entry["path"].endswith("/prepare")]) == 1
+
+    # A shared mailbox appears once in the plan and is sent once even
+    # when different ads have a different application key on the server.
+    scenario = "batch_shared"
+    page.reload()
+    cards.first.locator('header>input[type="checkbox"]').check()
+    cards.nth(1).locator('header>input[type="checkbox"]').check()
+    dock.get_by_role("button", name="آماده‌کردن نامه برای ۲ آگهی", exact=True).click()
+    dock.get_by_role("button", name="بازبینی و ارسال برای ۲ آگهی", exact=True).click()
+    expect(summary.locator("li").nth(1)).to_contain_text("گیرندهٔ مشترک گروه")
+    before = len(writes)
+    summary.get_by_role("button", name="تأیید و ارسال برای ۲ آگهی", exact=True).click()
+    expect(dock.get_by_role("button", name="ارسال شد", exact=True)).to_be_disabled()
+    sent = [entry for entry in writes[before:] if entry["path"].endswith("/send")]
+    assert len(sent) == 3 and len({entry["body"]["recipient"] for entry in sent}) == 3
+
+    # A successful recipient remains excluded when a rejected peer is
+    # prepared again; the result acknowledges the partial delivery.
+    scenario = "batch_partial"
+    page.reload()
+    cards.first.locator('header>input[type="checkbox"]').check()
+    dock.get_by_role("button", name="آماده‌کردن نامه برای ۱ آگهی", exact=True).click()
+    review_one.click()
+    confirm_one.click()
+    again = dock.get_by_role("button", name="بررسی دوبارهٔ ۱ آگهی", exact=True)
+    expect(again).to_be_enabled()
+    dock.get_by_role("button", name="وضعیت آگهی‌ها", exact=True).click()
+    expect(summary).to_contain_text("فقط به بعضی گیرندگان ارسال شد")
+    summary.get_by_role("button", name="بازگشت", exact=True).click()
+    again.click()
+    review_one.click()
+    assert summary.locator(".mail-opportunity-batch-delivery").count() == 1
+    expect(summary.locator(".mail-opportunity-batch-delivery")).to_contain_text(recipients[1])
+    page.keyboard.press("Escape")
 
     scenario = "unknown"
     page.reload()
@@ -415,13 +493,12 @@ with sync_playwright() as playwright:
     expect(cards.first.get_by_role("button", name="تأیید و ارسال ایمیل و رزومه", exact=True)).to_be_enabled()
     cards.first.locator('header>input[type="checkbox"]').check()
     cards.nth(1).locator('header>input[type="checkbox"]').check()
-    dock.get_by_role("button", name="آماده‌کردن نامه برای ۲ آگهی", exact=True).click()
-    expect(dock.get_by_role("button", name="تأیید و ارسال برای ۲ آگهی", exact=True)).to_be_enabled()
-    summary = panel.get_by_role("region", name="بازبینی نهایی آگهی‌های انتخاب‌شده", exact=True)
+    dock.get_by_role("button", name="آماده‌کردن نامه برای ۱ آگهی", exact=True).click()
+    dock.get_by_role("button", name="بازبینی و ارسال برای ۲ آگهی", exact=True).click()
     expect(summary.locator("li").nth(0)).to_contain_text("Synthetic own GP CV")
     expect(summary.locator("li").nth(1)).to_contain_text("Synthetic latest GP CV")
     before = len(writes)
-    dock.get_by_role("button", name="تأیید و ارسال برای ۲ آگهی", exact=True).click()
+    summary.get_by_role("button", name="تأیید و ارسال برای ۲ آگهی", exact=True).click()
     expect(dock.get_by_role("button", name="ارسال شد", exact=True)).to_be_disabled()
     delivered = [entry for entry in writes[before:] if entry["path"].endswith("/send")]
     assert len(delivered) == 4
@@ -579,4 +656,4 @@ with sync_playwright() as playwright:
 
 server.shutdown()
 workspace.cleanup()
-print("PASS private mail opportunities: owner/mailbox isolation, own default/latest CV and per-card mixed-CV batches, visible editable letters, source-bound saved receipts, stale-edit rebase, failed-save retention, ready/newest server ordering without losing open letters, initial enquiry labels, green sends, English/mobile; synthetic transport only.")
+print("PASS private mail opportunities: owner/mailbox isolation, own default/latest CV and per-card mixed-CV batches, mixed readiness, shared-recipient deduplication, acknowledged partial delivery, visible editable letters, source-bound saved receipts, stale-edit rebase, failed-save retention, ready/newest server ordering without losing open letters, initial enquiry labels, green sends, English/mobile; synthetic transport only.")

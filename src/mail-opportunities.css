@@ -56,12 +56,19 @@
 .mail-opportunity-recipients bdi{overflow-wrap:anywhere;min-width:0}
 .mail-opportunity-pages{display:flex;align-items:center;justify-content:center;gap:.7rem;flex-wrap:wrap;margin-block:1rem;font-size:.82rem}
 
-.mail-opportunity-batch-review{border:1px solid #47dfac60;border-radius:.85rem;padding:.85rem;margin-block:1rem;min-width:0}
-.mail-opportunity-batch-review h4{font-size:.92rem;line-height:1.8;margin-block:.2rem .7rem}
-.mail-opportunity-batch-review ol{display:grid;gap:.8rem;padding-inline-start:1.5rem}
+.mail-opportunity-batch-dialog{position:fixed;inset:0;width:min(46rem,calc(100% - 1.5rem));max-height:min(44rem,calc(100dvh - 2rem));margin:auto;padding:0;border:1px solid #47dfac80;border-radius:1rem;background:var(--panel,#142439);color:var(--text,#edf6ff);overflow:hidden}
+.mail-opportunity-batch-dialog[open]{display:flex;flex-direction:column}
+.mail-opportunity-batch-dialog::backdrop{background:#000a}
+.mail-opportunity-batch-review{overflow-y:auto;overscroll-behavior:contain;padding:1rem;min-height:0}
+.mail-opportunity-batch-review h4{font-size:1rem;line-height:1.7;margin:0}
+.mail-opportunity-batch-review>p{font-size:.85rem;line-height:1.7;margin-block:.4rem .7rem}
+.mail-opportunity-batch-review ol{display:grid;gap:.65rem;margin:0;padding-inline-start:1.35rem}
 .mail-opportunity-batch-review li{padding:.7rem;border:1px solid #47dfac30;border-radius:.7rem;min-width:0;overflow-wrap:anywhere;font-size:.83rem;line-height:1.8}
 .mail-opportunity-batch-review li p{margin:.25rem 0}
 .mail-opportunity-batch-review li summary{cursor:pointer;color:var(--cyan,#68e5c1);padding:.35rem}
+.mail-opportunity-batch-delivery+.mail-opportunity-batch-delivery{border-block-start:1px solid #47dfac30;padding-block-start:.4rem;margin-block-start:.4rem}
+.mail-opportunity-batch-dialog>footer{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;padding:.75rem 1rem;border-block-start:1px solid #47dfac60}
+.mail-opportunity-batch-dialog>footer .mail-opportunity-send{flex:1}
 .mail-opportunity-fit{border:1px solid #47d9b42b;border-radius:.7rem;padding:.65rem;margin-block:.75rem;font-size:.82rem;line-height:1.8}
 .mail-opportunity-fit summary{cursor:pointer;color:var(--cyan,#68e5c1)}
 

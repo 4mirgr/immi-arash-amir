@@ -188,6 +188,7 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
  const [snapshot,setSnapshot]=useState(null),[versions,setVersions]=useState({scope:null,items:[]}),[cvChoice,setCvChoice]=useState({scope:null,id:''});
  const [cardCvChoice,setCardCvChoice]=useState({scope:null,items:{}}),[dirtyCases,setDirtyCases]=useState({scope:null,items:{}});
  const [open,setOpen]=useState(null),[selected,setSelected]=useState({scope:null,ids:[]}),[previews,setPreviews]=useState({scope:null,items:{}}),[results,setResults]=useState({scope:null,items:{}}),[recipientChoices,setRecipientChoices]=useState({scope:null,items:{}});
+ const [batchReview,setBatchReview]=useState(null),batchDialog=useRef(null);
  const [busy,setBusy]=useState(null),[error,setError]=useState(null),[focusError,setFocusError]=useState(null),[filter,setFilter]=useState('all'),[pageState,setPageState]=useState({scope:null,offset:0}),[sortChoice,setSortChoice]=useState({scope:null,value:'ready'});
  const openRef=useRef(open);openRef.current=open;
  const recipientRef=useRef({});recipientRef.current=recipientChoices.scope===scope?recipientChoices.items:{};
@@ -207,7 +208,10 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
  const actionPath=(id,action)=>`google/mail-opportunities/${encodeURIComponent(id)}/${action}?profile=${encodeURIComponent(person)}&mailbox=${mailbox}`;
  const alive=requested=>mounted.current&&currentScope.current===requested;
  const cvLabel=version=>version?(version.name||'CV')+(Number.isFinite(Number(version.version||version.revision))?' · '+t('نسخهٔ ','version ')+Number(version.version||version.revision).toLocaleString(interfaceLocale('fa-IR')):''):'CV';
- const sourceMatches=(id,review)=>{if(review?.requiresFreshReview)return false;const item=cache?.focusedItem?.id===id?cache.focusedItem:items.find(row=>row.id===id);return !(review?.evidenceHash&&item?.draft?.cvVersionId===review.cvVersionId&&item.draft.evidenceHash&&item.draft.evidenceHash!==review.evidenceHash);};
+ const opportunity=id=>cache?.focusedItem?.id===id?cache.focusedItem:items.find(row=>row.id===id);
+ const canUse=item=>Boolean(item&&!['dismissed','source_removed'].includes(item.status));
+ const sourceMatches=(id,review)=>{if(review?.requiresFreshReview)return false;const item=opportunity(id);return canUse(item)&&!(review?.evidenceHash&&item.draft?.cvVersionId===review.cvVersionId&&item.draft.evidenceHash&&item.draft.evidenceHash!==review.evidenceHash);};
+ const canSend=(id,review)=>Boolean(review?.readyForReview&&review.reviews?.length&&review.cvVersionId===cardCV(id)&&!isDirty(id)&&sourceMatches(id,review)&&!TERMINAL.has(visibleResults[id]?.status));
  const codeText=code=>copy[code]?.[en?1:0]||t('این مورد به بررسی بیشتری نیاز دارد؛ علت را در نتیجهٔ زیر ببینید.','This item needs further review; see the result below.');
  const date=value=>{const stamp=typeof value==='number'?value:Date.parse(value||'');return Number.isFinite(stamp)&&stamp>0?new Date(stamp).toLocaleDateString(interfaceLocale('fa-IR'),{timeZone:'Asia/Tehran',dateStyle:'medium'}):'';};
  const updatePreview=(requested,id,value)=>{if(!alive(requested))return;setPreviews(previous=>({scope:requested,items:{...(previous.scope===requested?previous.items:{}),[id]:value}}));};
@@ -234,11 +238,12 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
  },[cloud,person,scope,endpoint,mailbox,offset]);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  useEffect(()=>{
-  actionLock.current=null;setOpen(null);setFilter('all');setFocusError(null);setBusy(null);setError(null);
+  actionLock.current=null;setOpen(null);setFilter('all');setFocusError(null);setBusy(null);setError(null);setBatchReview(null);
   if(!cloud||person!=='arash')return;
   const requested=scope;
   api(`cv/versions?profile=${encodeURIComponent(person)}`).then(value=>{if(!alive(requested))return;const found=ownedCvList(value,person,ownerId),preferred=found.find(item=>item.isDefault||item.is_default),next={scope:requested,id:preferred?.id||found[0]?.id||'',fallback:!preferred&&found.length>0};setVersions({scope:requested,items:found});cvRef.current=next;setCvChoice(next);}).catch(e=>requestError(requested,'cv',e,'cv_required'));
  },[scope,cloud,person]);
+ useEffect(()=>{const dialog=batchDialog.current;if(dialog&&!dialog.open)dialog.showModal();},[batchReview]);
  useEffect(()=>{load();},[load]);
  useEffect(()=>{if(!cloud||person!=='arash')return;const timer=setInterval(()=>{if(document.visibilityState==='visible'&&navigator.onLine!==false&&!actionLock.current&&!anyDirty())load();},60000);return()=>clearInterval(timer);},[cloud,person,load]);
  useEffect(()=>{
@@ -295,15 +300,26 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
    catch(e){requestError(scope,'read',e,'read_not_recorded');}
   }
  }
- async function send(ids){
+ async function send(ids,approved){
   if(actionLock.current||!ids.length||anyDirty()||coolingDown())return;
-  const requested=scope,frozen=ids.map(id=>({id,review:previewRef.current[id]}));
-  if(frozen.some(item=>!item.review?.readyForReview||!item.review.reviews?.length||item.review.cvVersionId!==cardCV(item.id)||isDirty(item.id)||!sourceMatches(item.id,item.review)||TERMINAL.has(visibleResults[item.id]?.status)))return;
+  const requested=scope,frozen=approved||ids.map(id=>({id,review:previewRef.current[id],deliveries:previewRef.current[id]?.reviews}));
+  if(frozen.some(({id,review})=>previewRef.current[id]!==review||!canSend(id,review))){
+   if(approved)setBatchReview(null);
+   setError({scope,kind:'send',code:'review_changed'});return;
+  }
+  if(approved)setBatchReview(null);
   const operation={scope:requested,kind:'send'};actionLock.current=operation;setBusy({...operation,ids});setError(null);
   try{
    const accumulated=new Map(frozen.map(item=>[item.id,[]]));
-   const pending=frozen.flatMap(item=>item.review.reviews.map(review=>({id:item.id,review})));for(const item of frozen)updateResult(requested,item.id,{status:'sending'});
-   const summarize=(id,outcome)=>{const values=accumulated.get(id);values.push(outcome);const expected=frozen.find(item=>item.id===id).review.reviews.length;const prior=visibleResults[id]?.items||[];const merged=[...prior.filter(row=>!values.some(value=>value.recipient===row.recipient)),...values];const status=values.length<expected?'sending':merged.every(row=>row.status==='sent')?'sent':merged.some(row=>['delivery_unknown','sending'].includes(row.status))?'delivery_unknown':'blocked';updateResult(requested,id,{status,items:merged});};
+   const pending=frozen.flatMap(item=>item.deliveries.map(review=>({id:item.id,review})));for(const item of frozen)updateResult(requested,item.id,{status:'sending'});
+   const summarize=(id,outcome)=>{
+    const values=accumulated.get(id);values.push(outcome);
+    const entry=frozen.find(item=>item.id===id),prior=visibleResults[id]?.items||[];
+    const merged=[...prior.filter(row=>!values.some(value=>value.recipient===row.recipient)),...values];
+    const status=values.length<entry.deliveries.length?'sending':merged.every(row=>row.status==='sent')?'sent':merged.some(row=>['delivery_unknown','sending'].includes(row.status))?'delivery_unknown':merged.some(row=>row.status==='sent')?'partial':'blocked';
+    updateResult(requested,id,{status,items:merged});
+    if(status==='blocked'||status==='partial')updatePreview(requested,id,{...entry.review,readyForReview:false,reviews:[],requiresFreshReview:true,missing:unique(values.filter(row=>row.status==='blocked').map(row=>row.code||'review_changed'))});
+   };
    await Promise.allSettled([0,1].map(async()=>{while(pending.length&&alive(requested)){
     const item=pending.shift();
     if(coolingDown()){summarize(item.id,{recipient:item.review.recipient,status:'blocked',code:retry.current.error?.code||'review_changed'});continue;}
@@ -316,13 +332,13 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
      const notStarted=e.status===503&&e.code==='storage_daily_read_limit'&&e.actionNotStarted===true;
      summarize(item.id,{recipient:item.review.recipient,status:notStarted?'blocked':!Number.isInteger(e.status)||e.status>=500?'delivery_unknown':'blocked',code:e.code||e.message||'send_result_unknown'});
      if(apiRetryAt(e))requestError(requested,'send',e,'send_result_unknown');
-     if(notStarted){const previous=previewRef.current[item.id];if(previous)updatePreview(requested,item.id,{...previous,readyForReview:false,reviews:[],requiresFreshReview:true,missing:['storage_daily_read_limit']});}
     }
    }}));
   }finally{if(actionLock.current===operation)actionLock.current=null;if(alive(requested)){setBusy(null);await load();}}
  }
  function choose(id){setSelected(previous=>{const ids=previous.scope===scope?previous.ids:[];return {scope,ids:ids.includes(id)?ids.filter(value=>value!==id):ids.length<5?[...ids,id]:ids};});}
- function changeSort(value){if(!['ready','newest'].includes(value)||value===sort||anyDirty()||actionLock.current)return;setSortChoice({scope,value});setPageState({scope,offset:0});}
+ function changePage(nextOffset){setSelected({scope,ids:[]});setPageState({scope,offset:nextOffset});}
+ function changeSort(value){if(!['ready','newest'].includes(value)||value===sort||anyDirty()||actionLock.current)return;setSortChoice({scope,value});changePage(0);}
  function changeCV(id){if(!ownVersions.some(version=>version.id===id))return;const next={scope,id,fallback:false};cvRef.current=next;setCvChoice(next);setPreviews(previous=>({scope,items:Object.fromEntries(Object.entries(previous.scope===scope?previous.items:{}).filter(([key])=>cardCvRef.current.scope===scope&&cardCvRef.current.items[key]))}));setError(null);}
  function changeCardCV(id,cvVersionId){if(!ownVersions.some(version=>version.id===cvVersionId))return;const next={scope,items:{...(cardCvRef.current.scope===scope?cardCvRef.current.items:{}),[id]:cvVersionId}};cardCvRef.current=next;setCardCvChoice(next);setPreviews(previous=>({scope,items:Object.fromEntries(Object.entries(previous.scope===scope?previous.items:{}).filter(([key])=>key!==id))}));setCaseDirty(id,cvVersionId,false);setError(null);}
  async function saveMailEdit(id,edit){
@@ -340,17 +356,36 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
  useEffect(()=>{if(open?.scope===scope&&cardCV(open.id)&&!previewRef.current[open.id]&&!isDirty(open.id)&&!actionLock.current&&!TERMINAL.has(visibleResults[open.id]?.status))prepare([open.id]);},[scope,open?.id,cvId,cardCvChoice]);
  const allItems=unique([...items.map(item=>item.id),...(cache?.focusedItem?[cache.focusedItem.id]:[])]).map(id=>cache?.focusedItem?.id===id?cache.focusedItem:items.find(item=>item.id===id)).filter(Boolean);
  const shown=allItems.filter(item=>filter==='new'?item.unread:filter==='high'?item.fit?.priority==='high':true);
- const selectedReviews=selectionIds.map(id=>visiblePreviews[id]),batchDirty=selectionIds.some(id=>isDirty(id)),batchReady=selectionIds.length>0&&selectedReviews.every((review,index)=>review?.readyForReview&&review.reviews?.length&&review.cvVersionId===cardCV(selectionIds[index])&&sourceMatches(selectionIds[index],review))&&!batchDirty&&selectionIds.every(id=>!TERMINAL.has(visibleResults[id]?.status));
- const batchSent=selectionIds.length>0&&selectionIds.every(id=>visibleResults[id]?.status==='sent');
  const activeOpen=open?.scope===scope?allItems.find(item=>item.id===open.id):null,activeReview=activeOpen?visiblePreviews[activeOpen.id]:null,activeResult=activeOpen?visibleResults[activeOpen.id]:null;
- const activeReady=activeReview?.readyForReview&&activeReview.reviews?.length&&activeReview.cvVersionId===cardCV(activeOpen?.id)&&!isDirty(activeOpen?.id)&&sourceMatches(activeOpen?.id,activeReview);
- const labelResult=status=>status==='sent'?t('ارسال شد','Sent'):status==='sending'?t('در حال ارسال…','Sending…'):status==='delivery_unknown'?t('نتیجه نامشخص؛ دوباره ارسال نکنید','Unconfirmed; do not send again'):t('ارسال انجام نشد؛ نتیجه را بررسی کنید','Not sent; review the result');
+ const activeReady=canSend(activeOpen?.id,activeReview);
+ const labelResult=status=>status==='sent'?t('ارسال شد','Sent'):status==='sending'?t('در حال ارسال…','Sending…'):status==='delivery_unknown'?t('نتیجه نامشخص؛ دوباره ارسال نکنید','Unconfirmed; do not send again'):status==='partial'?t('فقط به بعضی گیرندگان ارسال شد','Sent to some recipients'):t('ارسال انجام نشد؛ نتیجه را بررسی کنید','Not sent; review the result');
  const missingText=value=>{const codes=Array.isArray(value)?value:[];return codes.length?codes.map(code=>codeText(code)).join(' '):codeText('needs_evidence');};
+ const number=value=>value.toLocaleString(interfaceLocale('fa-IR'));
+ const claimedRecipients=new Set(selectionIds.flatMap(id=>(visibleResults[id]?.items||[]).filter(row=>TERMINAL.has(row.status)).map(row=>row.recipient.toLowerCase())));
+ const batchRows=selectionIds.map(id=>{
+  const item=opportunity(id),review=visiblePreviews[id],result=visibleResults[id];
+  const title=item?.clinicName||item?.title||review?.subject||t('آگهی انتخاب‌شده','Selected opportunity');
+  const deliveries=[],duplicates=[];
+  const ready=canSend(id,review);
+  if(ready)for(const delivery of review.reviews){
+   const address=delivery.recipient.toLowerCase();
+   if(claimedRecipients.has(address))duplicates.push(delivery.recipient);
+   else{claimedRecipients.add(address);deliveries.push(delivery);}
+  }
+  const canPrepare=canUse(item)&&Boolean(cardCV(id))&&!ready&&!TERMINAL.has(result?.status);
+  const reason=result?labelResult(result.status):ready?'':!item?t('آگهی دیگر در این صفحه نیست.','This opportunity is no longer on this page.'):!canUse(item)?codeText(item.status):!cardCV(id)?codeText('cv_required'):isDirty(id)?t('ویرایش نامه را ذخیره کنید.','Save your letter edits.'):review?.missing?.length?missingText(review.missing):review?.readyForReview?codeText('review_changed'):t('نامه هنوز آماده نشده است.','The letter has yet to be prepared.');
+  return {id,title,review,result,deliveries,duplicates,canPrepare,reason};
+ });
+ const batchReady=batchRows.filter(row=>row.deliveries.length),batchPending=batchRows.filter(row=>row.canPrepare);
+ const firstPreparation=batchPending.some(row=>!row.review||row.review.cvVersionId!==cardCV(row.id));
+ const sentCount=batchRows.filter(row=>row.result?.status==='sent').length;
+ const batchSent=batchRows.length>0&&sentCount===batchRows.length;
+ const visibleBatch=batchReview?.scope===scope?batchReview:null;
  if(person!=='arash')return null;
  if(!cloud)return <section className="panel mail-opportunities" aria-label={t('فرصت‌های پیدا شده در ایمیل','Opportunities found in email')}><h3>{t('فرصت‌های پیدا شده در ایمیل','Opportunities found in email')}</h3><p className="section-help">{t('این بخش پس از ورود امن به حساب ابری، فرصت‌های خصوصی پیدا شده در Gmail خودتان را نشان می‌دهد.','After secure cloud sign-in, this section shows private opportunities found in your own Gmail.')}</p></section>;
  return <section className="panel mail-opportunities" id="mail-opportunities" aria-label={t('فرصت‌های پیدا شده در ایمیل','Opportunities found in email')}>
   <div className="mail-opportunities-heading"><div><h3><Bell size={20}/>{t('فرصت‌هایی که در ایمیل شما پیدا شده','Opportunities found in your email')}{cache?.unreadCount>0&&<span className="mail-opportunity-count">{cache.unreadCount.toLocaleString(interfaceLocale('fa-IR'))}</span>}</h3><p className="section-help">{t('پیام‌های کاری و اعلان‌های LinkedIn همین حساب اینجا به یک اقدام مشخص تبدیل می‌شوند: بررسی آگهی، بازبینی نامه و ارسال رزومه.','Job messages and LinkedIn alerts from this account become a clear next step: review the opportunity, check the letter and send your CV.')}</p></div><button type="button" className="secondary" disabled={Boolean(busyHere)||hasDirty} onClick={load}><RefreshCw size={15}/>{t('تازه‌سازی','Refresh')}</button></div>
-  <div className="mail-opportunities-controls"><label>{t('صندوق منبع و فرستنده','Source and sender mailbox')}<select aria-label={t('صندوق فرصت‌های ایمیلی','Email opportunity mailbox')} value={mailbox} disabled={Boolean(busyHere)||hasDirty} onChange={event=>setMailbox(event.target.value)}><option value="primary">{googleAccountLabel(person,'primary',connection?.state.email)}</option><option value="secondary">{googleAccountLabel(person,'secondary',secondaryConnection?.state.email)}</option></select></label><label>{t('رزومهٔ پیش‌فرض این صفحه','Default CV for this page')}<select aria-label={t('رزومهٔ فرصت‌های ایمیلی','Email opportunity CV')} value={cvId} disabled={Boolean(busyHere)||hasDirty} onChange={event=>changeCV(event.target.value)}><option value="" disabled={ownVersions.length>0}>{t('رزومه را انتخاب کنید','Select a CV')}</option>{ownVersions.map(version=><option key={version.id} value={version.id}>{cvLabel(version)}{(version.isDefault||version.is_default)?t(' · پیش‌فرض',' · Default'):''}</option>)}</select></label><label>{t('ترتیب نمایش','Sort opportunities')}<select aria-label={t('ترتیب فرصت‌های ایمیلی','Email opportunity order')} value={sort} disabled={Boolean(busyHere)||hasDirty} onChange={event=>changeSort(event.target.value)}><option value="ready">{t('ابتدا نامه‌های آماده و مراکزِ دارای اطلاعات','Ready letters and known practices first')}</option><option value="newest">{t('جدیدترین پیام‌ها','Newest messages first')}</option></select></label><label>{t('نمایش','Show')}<select value={filter} disabled={Boolean(busyHere)||hasDirty} onChange={event=>setFilter(event.target.value)}><option value="all">{t('همهٔ موارد','All items')}</option><option value="new">{t('تازه و خوانده‌نشده','New and unread')}</option><option value="high">{t('اولویت بررسی بیشتر','Higher review priority')}</option></select></label></div>
+  <div className="mail-opportunities-controls"><label>{t('صندوق منبع و فرستنده','Source and sender mailbox')}<select aria-label={t('صندوق فرصت‌های ایمیلی','Email opportunity mailbox')} value={mailbox} disabled={Boolean(busyHere)||hasDirty} onChange={event=>setMailbox(event.target.value)}><option value="primary">{googleAccountLabel(person,'primary',connection?.state.email)}</option><option value="secondary">{googleAccountLabel(person,'secondary',secondaryConnection?.state.email)}</option></select></label><label>{t('رزومهٔ پیش‌فرض این صفحه','Default CV for this page')}<select aria-label={t('رزومهٔ فرصت‌های ایمیلی','Email opportunity CV')} value={cvId} disabled={Boolean(busyHere)||hasDirty} onChange={event=>changeCV(event.target.value)}><option value="" disabled={ownVersions.length>0}>{t('رزومه را انتخاب کنید','Select a CV')}</option>{ownVersions.map(version=><option key={version.id} value={version.id}>{cvLabel(version)}{(version.isDefault||version.is_default)?t(' · پیش‌فرض',' · Default'):''}</option>)}</select></label><label>{t('ترتیب نمایش','Sort opportunities')}<select aria-label={t('ترتیب فرصت‌های ایمیلی','Email opportunity order')} value={sort} disabled={Boolean(busyHere)||hasDirty} onChange={event=>changeSort(event.target.value)}><option value="ready">{t('ابتدا نامه‌های آماده و مراکزِ دارای اطلاعات','Ready letters and known practices first')}</option><option value="newest">{t('جدیدترین پیام‌ها','Newest messages first')}</option></select></label><label>{t('نمایش','Show')}<select value={filter} disabled={Boolean(busyHere)||hasDirty} onChange={event=>{setFilter(event.target.value);setSelected({scope,ids:[]});}}><option value="all">{t('همهٔ موارد','All items')}</option><option value="new">{t('تازه و خوانده‌نشده','New and unread')}</option><option value="high">{t('اولویت بررسی بیشتر','Higher review priority')}</option></select></label></div>
   {cvChoice.scope===scope&&cvChoice.fallback&&<p className="section-help mail-opportunity-cv-fallback">{t('چون رزومهٔ پیش‌فرضی ثبت نشده، جدیدترین نسخهٔ همین حساب برای این صفحه انتخاب شد. رزومهٔ هر آگهی را می‌توانید کنار همان نامه عوض کنید.','No saved default CV is set, so this account’s latest version was selected for this page. You can change the CV beside each opportunity’s letter.')}</p>}
   {focusError?.scope===scope&&<div className="notice" role="alert">{t('این فرصت در حساب و صندوق انتخاب‌شده در دسترس نیست. وارد حساب مالک لینک شوید؛ حساب دیگر جایگزین آن نمی‌شود.','This opportunity is unavailable in the selected account and mailbox. Sign in to the account that owns this link; another account is never used as a substitute.')}</div>}
   {quotaError&&<div className="notice" role="status"><p>{storageDailyReadLimitNotice(quotaError,en)}</p></div>}
@@ -364,7 +399,7 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
    const cachedDraft=item.draft?.cvVersionId===selectedCV?item.draft:null,sourceChanged=Boolean(review?.requiresFreshReview||review?.evidenceHash&&cachedDraft?.evidenceHash&&review.evidenceHash!==cachedDraft.evidenceHash),dirty=isDirty(item.id);
    const letterProposal=review?.cvVersionId===selectedCV&&(review.body||review.message?.body)?review:cachedDraft?{...cachedDraft,...(review?.cvVersionId===selectedCV?review:{}),body:cachedDraft.body}:review;
    const outreachMode=letterProposal?.outreachMode||item.draft?.outreachMode||item.outreachMode;
-   const ready=review?.readyForReview&&review.reviews?.length&&review.cvVersionId===selectedCV&&!dirty&&!sourceChanged;
+   const ready=canSend(item.id,review);
    const recipients=review?.selectedRecipients||[],source=safeURL(item.sourceUrl),mailId=item.provenance?.gmailId;
    const gmailLink=/^[a-zA-Z0-9_-]{1,200}$/.test(mailId||'')&&google.email?'https://mail.google.com/mail/?authuser='+encodeURIComponent(google.email)+'#all/'+encodeURIComponent(mailId):null;
    return <article className={'mail-opportunity'+(focus?.id===item.id?' mail-opportunity-highlight':'')} id={'mail-opportunity-'+item.id} key={scope+':'+item.id}>
@@ -382,9 +417,51 @@ export function MailOpportunities({person,ownerId,connection,secondaryConnection
     </div>}
    </article>;
   })}</div>
-  {(offset>0||cache?.more)&&<nav className="mail-opportunity-pages" aria-label={t('صفحه‌های فرصت‌های ایمیلی','Email opportunity pages')}><button type="button" className="secondary" disabled={Boolean(busyHere)||hasDirty||offset===0} onClick={()=>{setPageState({scope,offset:Math.max(0,offset-25)});setOpen(null);}}>{t('صفحهٔ قبل','Previous page')}</button><span>{t('صفحهٔ ','Page ')}{(Math.floor(offset/25)+1).toLocaleString(interfaceLocale('fa-IR'))}</span><button type="button" className="secondary" disabled={Boolean(busyHere)||hasDirty||!cache?.more||!Number.isInteger(cache?.nextOffset)} onClick={()=>{setPageState({scope,offset:cache.nextOffset});setOpen(null);}}>{t('موارد قدیمی‌تر','Older items')}</button></nav>}
-  {batchReady&&selectionIds.length>1&&<section className="mail-opportunity-batch-review" aria-label={t('بازبینی نهایی آگهی‌های انتخاب‌شده','Final review of selected opportunities')}><h4>{t('پیش از ارسال گروهی، این موارد را مرور کنید','Review these items before sending the batch')}</h4><ol>{selectionIds.map(id=>{const review=visiblePreviews[id],item=allItems.find(value=>value.id===id);return <li key={id}><strong data-no-translate><MixedText>{item?.clinicName||item?.title||review.subject}</MixedText></strong><p><span>{t('فرستنده: ','Sender: ')}</span><bdi>{review.sender}</bdi></p><p><span>{t('گیرندگان: ','Recipients: ')}</span>{review.selectedRecipients.map(recipient=><bdi key={recipient}>{recipient} </bdi>)}</p><p>{t('رزومه: ','CV: ')}<span data-no-translate>{cvLabel(ownVersions.find(version=>version.id===review.cvVersionId))}</span></p><details><summary>{t('متن نامهٔ آمادهٔ ارسال','Prepared letter')}</summary><strong dir="ltr" data-no-translate>{review.subject}</strong><div className="mail-opportunity-letter" dir="ltr" data-no-translate>{review.body}</div></details></li>;})}</ol></section>}
+  {(offset>0||cache?.more)&&<nav className="mail-opportunity-pages" aria-label={t('صفحه‌های فرصت‌های ایمیلی','Email opportunity pages')}><button type="button" className="secondary" disabled={Boolean(busyHere)||hasDirty||offset===0} onClick={()=>{changePage(Math.max(0,offset-25));setOpen(null);}}>{t('صفحهٔ قبل','Previous page')}</button><span>{t('صفحهٔ ','Page ')}{(Math.floor(offset/25)+1).toLocaleString(interfaceLocale('fa-IR'))}</span><button type="button" className="secondary" disabled={Boolean(busyHere)||hasDirty||!cache?.more||!Number.isInteger(cache?.nextOffset)} onClick={()=>{changePage(cache.nextOffset);setOpen(null);}}>{t('موارد قدیمی‌تر','Older items')}</button></nav>}
+  {visibleBatch&&<dialog className="mail-opportunity-batch-dialog" ref={batchDialog} aria-labelledby="mail-opportunity-batch-title" onClose={()=>setBatchReview(null)}>
+   <div className="mail-opportunity-batch-review">
+    <h4 id="mail-opportunity-batch-title">{t('بازبینی نهایی آگهی‌های انتخاب‌شده','Final review of selected opportunities')}</h4>
+    <p>{visibleBatch.ready.length?t('نامه‌ها، گیرندگان و رزومه‌ها را پیش از ارسال مرور کنید.','Review the letters, recipients, and CVs before sending.'):t('وضعیت هر آگهی در این فهرست آمده است.','Check the status of each opportunity below.')}</p>
+    <ol>{visibleBatch.rows.map(row=><li key={row.id}>
+     <strong data-no-translate><MixedText>{row.title}</MixedText></strong>
+     {row.deliveries.length>0&&<>
+      <p>{t('رزومه','CV')} · <span data-no-translate>{cvLabel(ownVersions.find(version=>version.id===row.review.cvVersionId))}</span></p>
+      {row.deliveries.map(delivery=><div key={delivery.recipient} className="mail-opportunity-batch-delivery">
+       <p>{t('فرستنده','Sender')} · <bdi>{delivery.sender}</bdi></p>
+       <p>{t('گیرنده','Recipient')} · <bdi>{delivery.recipient}</bdi></p>
+       <details><summary>{t('متن نامه','Letter')}</summary><strong dir="ltr" data-no-translate>{delivery.subject}</strong><div className="mail-opportunity-letter" dir="ltr" data-no-translate>{delivery.body}</div></details>
+      </div>)}
+     </>}
+     {row.duplicates.map(address=><p key={address}>{t('گیرندهٔ مشترک گروه','Shared recipient in this batch')} · <bdi>{address}</bdi></p>)}
+     {row.reason&&<p role="status">{row.reason}</p>}
+     {row.result?.items?.map(outcome=><p key={outcome.recipient}><bdi>{outcome.recipient}</bdi> · {labelResult(outcome.status)}{outcome.code&&<> · {codeText(outcome.code)}</>}</p>)}
+    </li>)}</ol>
+   </div>
+   <footer>
+    <button type="button" className="secondary" autoFocus onClick={()=>batchDialog.current.close()}>{t('بازگشت','Back')}</button>
+    {visibleBatch.ready.length>0&&<button type="button" className="mail-opportunity-send" disabled={Boolean(busyHere)||hasDirty||Boolean(quotaError)} onClick={()=>send(visibleBatch.ready.map(row=>row.id),visibleBatch.ready)}><Send size={18}/>{t('تأیید و ارسال برای ','Confirm and send for ')}{number(visibleBatch.ready.length)}{t(' آگهی',' opportunities')}</button>}
+   </footer>
+  </dialog>}
   {!selectionIds.length&&activeOpen&&(activeReady||TERMINAL.has(activeResult?.status))&&<FloatingSendDock><div className="mail-opportunity-batch" role="region" aria-label={t('ارسال همین فرصت ایمیلی','Send this email opportunity')}><div><strong data-no-translate><MixedText>{activeOpen.clinicName||activeOpen.title}</MixedText></strong><small>{t('رزومه: ','CV: ')}<span data-no-translate>{cvLabel(ownVersions.find(version=>version.id===activeReview?.cvVersionId))}</span>{t('؛ گیرندگان: ','; recipients: ')}{Number(activeReview?.selectedRecipients?.length||0).toLocaleString(interfaceLocale('fa-IR'))}</small></div><button type="button" className="mail-opportunity-send" disabled={Boolean(busyHere)||hasDirty||TERMINAL.has(activeResult?.status)} onClick={()=>send([activeOpen.id])}>{TERMINAL.has(activeResult?.status)?<>{activeResult.status==='sent'?<Check size={18}/>:<RefreshCw size={18} className={activeResult.status==='sending'?'spin':''}/>} {labelResult(activeResult.status)}</>:<><Send size={18}/>{t('تأیید و ارسال ایمیل و رزومه','Confirm and send email and CV')}</>}</button></div></FloatingSendDock>}
-  {selectionIds.length>0&&<FloatingSendDock><div className="mail-opportunity-batch" role="region" aria-label={t('ارسال گروهی فرصت‌های ایمیلی','Email opportunity batch sending')}><div><strong>{selectionIds.length.toLocaleString(interfaceLocale('fa-IR'))}{t(' آگهی انتخاب شده',' opportunities selected')}</strong><small>{batchReady?t('نامه‌ها، گیرندگان و رزومه را در کارت‌های انتخاب‌شده مرور کنید.','Review the letters, recipients and CV in the selected cards.'):t('ابتدا نامهٔ اختصاصی و رزومهٔ هر مورد آماده می‌شود.','Each item’s tailored letter and CV are prepared first.')}</small></div><button type="button" className="mail-opportunity-send" disabled={Boolean(busyHere)||hasDirty||batchDirty||selectionIds.some(id=>!cardCV(id))||selectionIds.some(id=>TERMINAL.has(visibleResults[id]?.status))} onClick={()=>batchReady?send(selectionIds):prepare(selectionIds)}>{batchDirty?t('ابتدا ویرایش نامه‌ها را ذخیره کنید','Save the letter edits first'):batchSent?<><Check size={18}/>{t('ارسال شد','Sent')}</>:busyHere?.kind==='send'?<><RefreshCw size={18} className="spin"/>{t('در حال ارسال…','Sending…')}</>:busyHere?.kind==='prepare'?<><RefreshCw size={18} className="spin"/>{t('در حال آماده‌سازی…','Preparing…')}</>:<><Send size={18}/>{batchReady?t('تأیید و ارسال برای ','Confirm and send for '):t('آماده‌کردن نامه برای ','Prepare letters for ')}{selectionIds.length.toLocaleString(interfaceLocale('fa-IR'))}{t(' آگهی',' opportunities')}</>}</button><button type="button" className="text-button" disabled={Boolean(busyHere)} onClick={()=>setSelected({scope,ids:[]})}>{t('لغو انتخاب','Clear selection')}</button></div></FloatingSendDock>}
+  {batchRows.length>0&&<FloatingSendDock><div className="mail-opportunity-batch" role="region" aria-label={t('ارسال گروهی فرصت‌های ایمیلی','Email opportunity batch sending')}>
+   <div>
+    <strong>{number(batchRows.length)}{t(' آگهی انتخاب شده',' opportunities selected')}</strong>
+    <small aria-live="polite">
+     {[[batchReady.length,t('آمادهٔ ارسال','ready to send')],[sentCount,t('ارسال شد','sent')],[batchRows.length-batchReady.length-sentCount,t('نیازمند بررسی','need review')]].filter(([count])=>count>0).map(([count,label])=>number(count)+' '+label).join(' · ')}
+    </small>
+   </div>
+   {busyHere?.kind==='send'?<button type="button" className="mail-opportunity-send" disabled><RefreshCw size={18} className="spin"/>{labelResult('sending')}</button>:
+    busyHere?.kind==='prepare'?<button type="button" className="mail-opportunity-send" disabled><RefreshCw size={18} className="spin"/>{t('در حال آماده‌سازی…','Preparing…')}</button>:
+    hasDirty?<button type="button" className="mail-opportunity-send" disabled>{t('ابتدا ویرایش نامه‌ها را ذخیره کنید','Save the letter edits first')}</button>:
+    batchSent?<button type="button" className="mail-opportunity-send" disabled><Check size={18}/>{t('ارسال شد','Sent')}</button>:
+    batchReady.length>0&&!firstPreparation?<button type="button" className="mail-opportunity-send" disabled={Boolean(busyHere)||hasDirty||Boolean(quotaError)} onClick={()=>setBatchReview({scope,rows:batchRows,ready:batchReady})}><Send size={18}/>{t('بازبینی و ارسال برای ','Review and send for ')}{number(batchReady.length)}{t(' آگهی',' opportunities')}</button>:
+    batchPending.length>0&&<button type="button" className="mail-opportunity-send" disabled={Boolean(busyHere)||hasDirty||Boolean(quotaError)} onClick={()=>prepare(batchPending.map(row=>row.id))}>
+     <FileText size={18}/>{firstPreparation?t('آماده‌کردن نامه برای ','Prepare letters for '):t('بررسی دوبارهٔ ','Check again for ')}{number(batchPending.length)}{t(' آگهی',' opportunities')}
+    </button>}
+   {(batchReady.length===0||firstPreparation)&&<button type="button" className="text-button" disabled={Boolean(busyHere)} onClick={()=>setBatchReview({scope,rows:batchRows,ready:batchReady})}>{batchReady.length?t('بازبینی نامه‌های آماده','Review ready letters'):t('وضعیت آگهی‌ها','Opportunity status')}</button>}
+   {batchReady.length>0&&!firstPreparation&&batchPending.length>0&&<button type="button" className="text-button" disabled={Boolean(busyHere)||hasDirty||Boolean(quotaError)} onClick={()=>prepare(batchPending.map(row=>row.id))}>{t('بررسی دوبارهٔ موارد دیگر','Check remaining items again')}</button>}
+   <button type="button" className="text-button" disabled={Boolean(busyHere)} onClick={()=>setSelected({scope,ids:[]})}>{t('لغو انتخاب','Clear selection')}</button>
+  </div></FloatingSendDock>}
+
  </section>;
 }
