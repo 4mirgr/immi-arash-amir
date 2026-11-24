@@ -1,7 +1,7 @@
 import {interfaceLocale,useInterfaceLanguage} from './interface-locale.mjs';
 import {readCheckpoint,writeCheckpoint} from './workspace-checkpoint.mjs';
 import {googleAccountLabel} from './google-account-labels.mjs';
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   LayoutDashboard,
@@ -141,6 +141,10 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
   const [mailNotificationState,setMailNotificationState]=useState({scope:null,counts:{}});
   const mailNotificationScope=JSON.stringify([workspaceOwnerId||'',person,googleConnection.state.email||'',secondaryGoogleConnection.state.email||'']);
   const mailNotificationCount=mailNotificationState.scope===mailNotificationScope?Object.values(mailNotificationState.counts).reduce((sum,value)=>sum+(Number(value)||0),0):0;
+  const reportMailUnread=useCallback((count,mailbox)=>setMailNotificationState(previous=>{
+    const counts=previous.scope===mailNotificationScope?previous.counts:{};
+    return counts[mailbox]===count?previous:{scope:mailNotificationScope,counts:{...counts,[mailbox]:count}};
+  }),[mailNotificationScope]);
   const notify = (t) => {
     setToast(t);
     setTimeout(() => setToast(""), 4500);
@@ -712,7 +716,7 @@ function App({ cloud = false, initialPerson = "arash", workspaceOwnerId, onSignO
             </section></WorkspaceFold>
           )}
           {tab === "mail" && (
-            <>{arash&&<MailOpportunities person={person} ownerId={workspaceOwnerId} connection={googleConnection} secondaryConnection={secondaryGoogleConnection} cloud={cloud} focus={mailOpportunityFocus} onSettings={()=>setTab("settings")} notify={notify} onUnreadCount={(count,mailbox)=>setMailNotificationState(previous=>({scope:mailNotificationScope,counts:{...(previous.scope===mailNotificationScope?previous.counts:{}),[mailbox]:count}}))}/>}{!arash&&mailOpportunityFocus.id&&<p className="notice">{interfaceLanguage==='en'?'This private opportunity link is unavailable in this workspace. Sign in to its owner’s account.':'این پیوند خصوصی در این فضای کاری در دسترس نیست. با حساب مالک آن وارد شوید.'}</p>}<ClinicCorrespondence person={person} ownerId={workspaceOwnerId} connection={googleConnection} secondaryConnection={secondaryGoogleConnection} cloud={cloud} onSettings={()=>setTab("settings")} notify={notify} onReply={message=>{
+            <>{arash&&<MailOpportunities person={person} ownerId={workspaceOwnerId} connection={googleConnection} secondaryConnection={secondaryGoogleConnection} cloud={cloud} focus={mailOpportunityFocus} onSettings={()=>setTab("settings")} notify={notify} onUnreadCount={reportMailUnread}/>}{!arash&&mailOpportunityFocus.id&&<p className="notice">{interfaceLanguage==='en'?'This private opportunity link is unavailable in this workspace. Sign in to its owner’s account.':'این پیوند خصوصی در این فضای کاری در دسترس نیست. با حساب مالک آن وارد شوید.'}</p>}<ClinicCorrespondence person={person} ownerId={workspaceOwnerId} connection={googleConnection} secondaryConnection={secondaryGoogleConnection} cloud={cloud} onSettings={()=>setTab("settings")} notify={notify} onReply={message=>{
               setSelected([]);setFollowUpContext(null);
               const mailbox=message.mailbox === "secondary" ? "secondary" : "primary";
               setComposeMailbox(mailbox);if(mailbox === "secondary")secondaryGoogleConnection.refresh();

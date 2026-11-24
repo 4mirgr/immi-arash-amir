@@ -332,6 +332,8 @@ export const EN_CORE = Object.freeze({
   "همهٔ پیام‌های همگام‌شده": "All synced messages",
   "ترتیب نمایش": "Display order",
   "چینش ایمیل": "Sort emails",
+  "مرتبط‌تر، از تازه به قدیمی": "Most relevant first, newest within each group",
+  "بیشترین ارتباط": "Highest relevance score",
   "مرتبط‌ترین": "Most relevant",
   "جدیدترین": "Newest",
   "ویژه و اقدام‌پذیر": "Priority and actionable",

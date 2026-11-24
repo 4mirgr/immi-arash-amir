@@ -133,6 +133,8 @@ Google نیاز به اتصال دارد|Google connection required
 همهٔ اولویت‌ها|All priorities
 جدیدترین|Newest
 مرتبط‌ترین|Most relevant
+مرتبط‌تر، از تازه به قدیمی|Most relevant first, newest within each group
+بیشترین ارتباط|Highest relevance score
 بدون موضوع|No subject
 نامشخص|Unknown
 در انتظار|Pending

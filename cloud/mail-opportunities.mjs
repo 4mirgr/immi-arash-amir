@@ -283,7 +283,7 @@ export async function handleMailOpportunitiesRequest(request,env,context){
   const id=match[1],action=match[2];
   if(request.method==='GET'&&!id){
    const limit=Number(url.searchParams.get('limit')||25),offset=Number(url.searchParams.get('offset')||0),sort=url.searchParams.get('sort')||'ready';
-   if(!Number.isInteger(limit)||limit<1||limit>50||!Number.isInteger(offset)||offset<0||offset>10000)fail('invalid_pagination');if(!['ready','newest'].includes(sort))fail('invalid_sort');
+   if(!Number.isInteger(limit)||limit<1||limit>50||!Number.isInteger(offset)||offset<0||offset>10000)fail('invalid_pagination');if(!['relevant','ready','newest'].includes(sort))fail('invalid_sort');
    const now=Date.now(),freshProof="json_extract(data_json,'$.research.publicEmployerVerified')=1 AND (julianday(json_extract(data_json,'$.research.verification.checkedAt'))-2440587.5)*86400000 BETWEEN ? AND ?",
     unrestricted="status IN ('suggested','reviewed') AND coalesce(json_extract(data_json,'$.sourceUnavailable'),0)=0 AND coalesce(json_extract(data_json,'$.sourceReviewRequired'),0)=0 AND coalesce(json_extract(data_json,'$.publicationClosed'),0)=0 AND coalesce(json_array_length(json_extract(data_json,'$.sourceRestrictions')),0)=0 AND coalesce(json_extract(data_json,'$.sourceIncomplete'),0)=0 AND coalesce(json_extract(data_json,'$.historyGap'),0)=0 AND coalesce(json_extract(data_json,'$.fit.level1'),'')!='restricted' AND coalesce(json_extract(data_json,'$.fit.sponsorship'),'')!='restricted' AND coalesce(json_extract(data_json,'$.fit.registration'),'')!='restricted'",
     mode="CASE WHEN json_extract(data_json,'$.applicationSourceVerified')=1 THEN 'job_application' ELSE 'initial_enquiry' END",
@@ -291,7 +291,23 @@ export async function handleMailOpportunitiesRequest(request,env,context){
     informed="trim(coalesce(json_extract(data_json,'$.clinicName'),clinic_name,''))!='' AND coalesce(json_array_length(json_extract(data_json,'$.research.facts')),0)>0 AND coalesce(json_array_length(json_extract(data_json,'$.research.contactEvidence')),0)>0",
     // Compute rank over the whole owned pool before LIMIT/OFFSET. This is a
     // cached information order; every preview/send repeats the strict gate.
-    order=sort==='ready'?"CASE WHEN "+unrestricted+" THEN 0 ELSE 1 END,CASE WHEN "+freshProof+" THEN CASE WHEN "+prepared+" THEN 0 WHEN "+informed+" THEN 1 ELSE 2 END ELSE 3 END,received_at DESC,id":"received_at DESC,id";
+    readyOrder="CASE WHEN "+unrestricted+" THEN 0 ELSE 1 END,CASE WHEN "+freshProof+" THEN CASE WHEN "+prepared+" THEN 0 WHEN "+informed+" THEN 1 ELSE 2 END ELSE 3 END";
+   const fit=key=>`coalesce(json_extract(data_json,'$.fit.${key}'),json_extract(fit_json,'$.${key}'),'unknown')`;
+   const level1=fit('level1'),sponsorship=fit('sponsorship'),registration=fit('registration'),pesci=fit('pesci');
+   const relevantOrder=`CASE
+    WHEN status NOT IN ('suggested','reviewed')
+      OR coalesce(json_extract(data_json,'$.publicationClosed'),0)=1
+      OR coalesce(json_extract(data_json,'$.sourceUnavailable'),0)=1
+      OR coalesce(json_extract(data_json,'$.historyGap'),0)=1
+      OR coalesce(json_array_length(json_extract(data_json,'$.sourceRestrictions')),0)>0
+      OR julianday(json_extract(data_json,'$.closesAt'))<julianday('now')
+      OR 'restricted' IN (${level1},${sponsorship},${registration}) THEN 4
+    WHEN ${level1}='supported' AND ${sponsorship}='supported' THEN 0
+    WHEN ${level1}='supported' THEN 1
+    WHEN ${sponsorship}='supported' OR ${pesci}='supported' THEN 2
+    ELSE 3 END`;
+   const rank=sort==='relevant'?relevantOrder:sort==='ready'?readyOrder:'';
+   const order=(rank?rank+',':'')+'received_at DESC,id';
    const rows=await all(env.GOOGLE_DB,'SELECT * FROM private_mail_opportunities WHERE owner_id=? AND google_sub=? ORDER BY '+order+' LIMIT ? OFFSET ?',owner,account.google_sub,...(sort==='ready'?[now-7*DAY,now+60000]:[]),limit+1,offset);
    const counts=await first(env.GOOGLE_DB,"SELECT count(*) AS total,sum(read_at IS NULL AND status NOT IN ('source_removed','dismissed')) AS unread FROM private_mail_opportunities WHERE owner_id=? AND google_sub=?",owner,account.google_sub);
    return json({items:rows.slice(0,limit).map(view),sort,more:rows.length>limit,nextOffset:rows.length>limit?offset+limit:null,unreadCount:Number(counts?.unread)||0,total:Number(counts?.total)||0,private:true,automaticSending:false});

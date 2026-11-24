@@ -275,7 +275,7 @@ export async function handleGoogleMailRequest(request,env,context,fetcher=fetch,
   if(!subject||!access.accessToken)throw new MailError(401,'reconnect_required');
   if(request.method==='GET'&&url.pathname==='/api/google/mail/messages'){
    const priority=url.searchParams.get('priority')||'all',q=(url.searchParams.get('q')||'').trim().toLowerCase(),scope=url.searchParams.get('scope')||'project',order=url.searchParams.get('order')||'relevant',topic=url.searchParams.get('topic')||'all';
-   if(!['all','strong','medium','weak'].includes(priority)||q.length>200||!['project','all'].includes(scope)||!['relevant','newest','special'].includes(order)||(topic!=='all'&&!PROJECT_TOPICS.has(topic)))throw new MailError(400,'invalid_filter');
+   if(!['all','strong','medium','weak'].includes(priority)||q.length>200||!['project','all'].includes(scope)||!['recent_relevant','relevant','newest','special'].includes(order)||(topic!=='all'&&!PROJECT_TOPICS.has(topic)))throw new MailError(400,'invalid_filter');
    const limit=Number(url.searchParams.get('limit')||50),offset=Number(url.searchParams.get('offset')||0);
    if(!Number.isInteger(limit)||limit<1||limit>100||!Number.isInteger(offset)||offset<0||offset>10000)throw new MailError(400,'invalid_pagination');
    // Owner and verified Google subject are mandatory. Relevance examines a bounded
@@ -286,7 +286,20 @@ export async function handleGoogleMailRequest(request,env,context,fetcher=fetch,
    const cached=(result.results||[]).map(r=>refreshCachedReplyRank(JSON.parse(r.data))),matches=await matchedClinicSenders(context,cached);
    const reviewed=cached.map(message=>({...message,projectRelevance:classifyProjectMessage(message,matches)}));
    const filtered=reviewed.filter(message=>(priority==='all'||message.priority===priority)&&(scope==='all'||message.projectRelevance.related)&&(topic==='all'||message.projectRelevance.topics.includes(topic)));
-   filtered.sort(order==='newest'?(a,b)=>b.dateTimestamp-a.dateTimestamp:order==='special'?(a,b)=>Number(b.projectRelevance.special)-Number(a.projectRelevance.special)||b.projectRelevance.score-a.projectRelevance.score||b.dateTimestamp-a.dateTimestamp:(a,b)=>b.projectRelevance.score-a.projectRelevance.score||b.dateTimestamp-a.dateTimestamp);
+   const byDate=(a,b)=>b.dateTimestamp-a.dateTimestamp||a.id.localeCompare(b.id);
+   const byRelevance=(a,b)=>b.projectRelevance.score-a.projectRelevance.score||byDate(a,b);
+   const relevanceTier=message=>{
+    if(!message.projectRelevance.related)return 0;
+    if(message.reasons?.includes('rejection_or_unavailable_position_signal'))return 1;
+    return message.priority==='strong'||message.projectRelevance.score>=70?2:1;
+   };
+   const orders={
+    recent_relevant:(a,b)=>relevanceTier(b)-relevanceTier(a)||byDate(a,b),
+    relevant:byRelevance,
+    newest:byDate,
+    special:(a,b)=>Number(b.projectRelevance.special)-Number(a.projectRelevance.special)||byRelevance(a,b),
+   };
+   filtered.sort(orders[order]);
    const state=await row(db,'SELECT last_synced_at,coverage,pending_ids,page_token FROM google_mail_sync WHERE owner_id=? AND google_sub=?',owner,subject);
    return json({messages:filtered.slice(offset,offset+limit),sync:{lastSyncedAt:state?.last_synced_at?new Date(state.last_synced_at).toISOString():null,coverage:state?.coverage||'not_synced',pendingCount:pendingIds(state?.pending_ids).length,moreHistory:!!state?.page_token},analysis:'rule_based',scope,order,topic,reviewedCacheWindow:cached.length,cacheWindowLimit:500,matchedWithinWindow:filtered.length,more:offset+limit<filtered.length,sourceMatching:{status:matches.status,candidateEmails:matches.candidateEmails||0,candidateDomains:matches.candidateDomains||0},sendingEnabled:false,limit,offset});
   }

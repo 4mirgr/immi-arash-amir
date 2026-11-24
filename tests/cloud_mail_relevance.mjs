@@ -34,6 +34,20 @@ test('project topics describe current text independently from response strength 
  const quoted=classifyProjectMessage(msg('q','Re: Hello','Thanks for writing.\nOn Tuesday Applicant wrote:\n> I am seeking supervision and a funded PhD research scholarship.'));
  assert(!quoted.topics.includes('supervision'));assert(!quoted.topics.includes('funding'));assert(!quoted.topics.includes('research'));
 });
+test('recent relevant mail sorts by date within relevance bands before pagination',async()=>{
+ const f=fixture();
+ f.seed(msg('older-strong','PESCI registration','Medical GP position with AHPRA registration and visa sponsorship available in Australia.',{dateTimestamp:100}));
+ f.seed(msg('newer-strong','AHPRA registration','An update on the AHPRA assessment.',{dateTimestamp:200}));
+ f.seed(msg('newer-general','PhD scholarship','Research funding',{dateTimestamp:300}));
+ f.seed(msg('refusal','PESCI registration and medical job application','No vacancies available at our Australian hospital.',{dateTimestamp:400,reasons:['rejection_or_unavailable_position_signal']}));
+ f.seed(msg('unrelated','Shopping coupon','Promo code for your purchase',{dateTimestamp:500}));
+ const read=async(offset,order='recent_relevant')=>(await f.call('messages?scope=all&order='+order+'&limit=2&offset='+offset)).json();
+ assert.deepEqual((await read(0)).messages.map(x=>x.id),['newer-strong','older-strong']);
+ assert.deepEqual((await read(2)).messages.map(x=>x.id),['refusal','newer-general']);
+ assert.deepEqual((await read(4)).messages.map(x=>x.id),['unrelated']);
+ assert.equal((await read(0,'newest')).messages[0].id,'unrelated');
+ assert.equal((await read(0,'relevant')).messages[0].id,'refusal');
+});
 test('topic filtering precedes bounded pagination and remains isolated by owner and mailbox',async()=>{
  const f=fixture();for(let n=0;n<5;n++)f.seed(msg('fund-'+n,'PhD scholarship','Research funding',{dateTimestamp:100+n}));
  f.seed(msg('job','Medical registrar position','Hospital recruitment with supervision',{dateTimestamp:200}));

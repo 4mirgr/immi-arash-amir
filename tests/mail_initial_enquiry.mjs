@@ -54,7 +54,7 @@ test('old Gmail leads can prepare an initial enquiry from owned read cache, whil
  const owned=await getOwnedMailOpportunityContext(f.env,owner,{id:row.id},async()=>Response.json(r),access);assert.equal(owned.outreachMode,'initial_enquiry');assert.equal(owned.sourceGmailId,'old');
  f.db.prepare("UPDATE private_mail_opportunities SET data_json=json_set(data_json,'$.historyGap',json('true')) WHERE id=?").run(row.id);await assert.rejects(()=>getOwnedMailOpportunityContext(f.env,owner,{id:row.id},async()=>Response.json(r),access),/requires_refresh/);
 });
-test('ready ordering ranks the full owner pool before pagination and newest remains selectable',async()=>{
+test('owner-wide opportunity orders keep readiness, fit groups, and newest distinct before pagination',async()=>{
  const f=fixture();for(let n=0;n<4;n++)await ingestMailOpportunities(f.env,context,[message('sort'+n,now-1000*n)],identity,{writingContext:writing,now});
  const rows=f.db.prepare('SELECT * FROM private_mail_opportunities ORDER BY received_at DESC').all();assert.equal(rows.length,1);
  // Distinct source IDs simulate several older owned findings; only the oldest
@@ -63,6 +63,16 @@ test('ready ordering ranks the full owner pool before pagination and newest rema
  const id='mop_'+String(3).padStart(32,'0'),data=proof({...lead,gmailId:'other3'}),draft=await prepareMailOpportunityDraft(data,writing,{now});f.db.prepare('UPDATE private_mail_opportunities SET data_json=?,draft_json=? WHERE id=?').run(JSON.stringify(data),JSON.stringify(draft),id);
  const list=async query=>(await handleMailOpportunitiesRequest(new Request('https://app.example.org/api/google/mail-opportunities?limit=1'+query),f.env,context)).json();
  const ready=await list('');assert.equal(ready.sort,'ready');assert.equal(ready.items[0].id,id);assert.equal(ready.more,true);assert.notEqual((await list('&sort=newest')).items[0].id,id);assert.notEqual((await list('&offset=1')).items[0].id,id);
+ const newest=template.id,stronger='mop_'+String(1).padStart(32,'0'),olderStrong='mop_'+String(2).padStart(32,'0');
+ const strongFit={level1:'supported',sponsorship:'supported',pesci:'unknown',registration:'unknown'};
+ const setFit=f.db.prepare("UPDATE private_mail_opportunities SET fit_json=?,data_json=json_set(data_json,'$.fit',json(?)) WHERE id=?");
+ for(const row of [stronger,olderStrong,newest])setFit.run(JSON.stringify(strongFit),JSON.stringify(strongFit),row);
+ f.db.prepare("UPDATE private_mail_opportunities SET data_json=json_set(data_json,'$.closesAt',?) WHERE id=?").run(new Date(now-86400000).toISOString(),newest);
+ assert.equal((await list('&sort=relevant')).items[0].id,stronger);
+ assert.equal((await list('&sort=relevant&offset=1')).items[0].id,olderStrong);
+ assert.equal((await list('&sort=relevant&offset=2')).items[0].id,id);
+ assert.equal((await list('&sort=relevant&offset=3')).items[0].id,newest);
+ assert.equal((await list('&sort=newest')).items[0].id,newest);
  const response=await handleMailOpportunitiesRequest(new Request('https://app.example.org/api/google/mail-opportunities?sort=invalid'),f.env,context);assert.equal(response.status,400);
 });
 test('initial enquiry and verified job application modes bind immutable owner-edit context independently',async()=>{

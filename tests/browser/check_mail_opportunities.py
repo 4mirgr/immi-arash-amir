@@ -110,7 +110,11 @@ def route(request):
         request.fulfill(json={"clinics": [], "profiles": [{"id": "arash", "name": "Synthetic Applicant", "cvText": "Synthetic own CV"}], "stations": [], "revision": "synthetic_revision", "settings": {}})
         return
     if path == "/api/google/status":
-        request.fulfill(json={"configured": True, "connected": True, "email": owner + "-" + mailbox + "@example.invalid", "capabilities": {"gmailRead": True, "gmailSend": True}})
+        state = {"configured": True, "connected": True, "email": owner + "-" + mailbox + "@example.invalid", "capabilities": {"gmailRead": True, "gmailSend": True}}
+        if scenario == "late_secondary_status" and mailbox == "secondary":
+            pending.append((request, state))
+        else:
+            request.fulfill(json=state)
         return
     if path in ["/api/drafts", "/api/google/mail/queue"]:
         request.fulfill(json=[] if path == "/api/drafts" else {"items": []})
@@ -135,7 +139,7 @@ def route(request):
             if scenario == "pages":
                 request.fulfill(json={"items": [item(first if offset == 0 else second, mailbox)], "unreadCount": 2, "more": offset == 0, "nextOffset": 25 if offset == 0 else None})
             elif scenario == "inline_order":
-                identifiers = [second, first] if query.get("sort", ["ready"])[0] == "ready" else [first]
+                identifiers = [first] if query.get("sort", ["relevant"])[0] == "newest" else [second, first]
                 request.fulfill(json={"items": [item(identifier, mailbox) for identifier in identifiers], "unreadCount": 2, "more": len(identifiers) == 1, "nextOffset": 25 if len(identifiers) == 1 else None})
             else:
                 request.fulfill(json={"items": [item(first, mailbox), item(second, mailbox)], "unreadCount": 2, "more": False})
@@ -567,16 +571,16 @@ with sync_playwright() as playwright:
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), "Inline mail editor overflows at " + str(width)
     assert not errors, errors
 
-    # Readiness ordering is requested BEFORE server pagination, rather than
+    # Relevance ordering is requested BEFORE server pagination, rather than
     # sorting only the current 25 results. Changing order keeps the open letter,
     # selected CV and existing review; unsaved text cannot be hidden by sorting.
     scenario = "inline_order"
     saved_edits.clear()
     page.goto(base)
     order = panel.get_by_label("ترتیب فرصت‌های ایمیلی", exact=True)
-    expect(order).to_have_value("ready")
+    expect(order).to_have_value("relevant")
     expect(cards.first).to_have_attribute("id", "mail-opportunity-" + second)
-    assert list_reads[-1]["sort"] == "ready"
+    assert list_reads[-1]["sort"] == "relevant"
     initial = page.locator("#mail-opportunity-" + second)
     initial.get_by_role("button", name="بررسی و ارسال ایمیل", exact=True).click()
     expect(initial.locator(".mail-opportunity-mode")).to_have_text("استعلام اولیهٔ همکاری")
@@ -633,6 +637,7 @@ with sync_playwright() as playwright:
     assert not [entry for entry in writes[before:] if entry["path"].endswith("/send")]
     # A fresh sign-in starts with correspondence even if the tab was previously
     # left on public opportunities. The toolbar and per-card action start visible.
+    scenario = "late_secondary_status"
     gate.goto(base + "/full.html")
     gate.evaluate("""() => {
         const owner = '22222222-2222-4222-8222-222222222222';
@@ -645,6 +650,13 @@ with sync_playwright() as playwright:
     gate.get_by_role("button", name="ورود امن", exact=True).click()
     expect(gate.locator("#mail-opportunities")).to_be_visible()
     expect(gate.locator(".mail-opportunity-toolbar-badge")).to_have_text("۲")
+    assert pending, "Secondary mailbox status did not overlap the saved primary notification count"
+    scenario = "normal"
+    for request, data in pending:
+        request.fulfill(json=data)
+    pending.clear()
+    gate.wait_for_timeout(200)
+    expect(gate.locator(".mail-opportunity-toolbar-badge")).to_have_text("۲")
     first_action = gate.locator("#mail-opportunity-" + first + " .mail-opportunity-send")
     expect(first_action).to_be_visible()
     expect(first_action).to_be_enabled()
@@ -656,4 +668,4 @@ with sync_playwright() as playwright:
 
 server.shutdown()
 workspace.cleanup()
-print("PASS private mail opportunities: owner/mailbox isolation, own default/latest CV and per-card mixed-CV batches, mixed readiness, shared-recipient deduplication, acknowledged partial delivery, visible editable letters, source-bound saved receipts, stale-edit rebase, failed-save retention, ready/newest server ordering without losing open letters, initial enquiry labels, green sends, English/mobile; synthetic transport only.")
+print("PASS private mail opportunities: owner/mailbox isolation, own default/latest CV and per-card mixed-CV batches, mixed readiness, shared-recipient deduplication, acknowledged partial delivery, visible editable letters, source-bound saved receipts, stale-edit rebase, failed-save retention, relevant/ready/newest server ordering without losing open letters, initial enquiry labels, green sends, English/mobile; synthetic transport only.")
