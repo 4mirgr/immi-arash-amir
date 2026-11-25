@@ -27,6 +27,31 @@ test('new first-party and workforce pages retain real text, contacts and uncerta
   assert.equal(row.sponsorship,undefined);assert.equal(row.supervision,undefined);
  }
 });
+test('GPAP recruitment survives large inert publisher markup without importing hidden promises',()=>{
+ const source=defs.find(item=>item.id==='reviewed-gpap-img-program-eoi');
+ const body=content(source).replace('</body>','<script type="application/json">'+JSON.stringify({layout:'x'.repeat(1050000),claim:'Level 1 supervision is guaranteed. Hidden contact: invented@example.invalid'})+'</script></body>');
+ assert(new TextEncoder().encode(body).length>1000000);
+ const [row]=normalize(source,body);
+ assert.equal(row.kind,'employment_register');assert.match(row.title,/expression of interest/);
+ assert.equal(row.publishedAt,null);assert.equal(row.closingAt,null);assert.equal(row.status,undefined);
+ assert.equal(row.supervision,undefined);assert.equal(row.sponsorship,undefined);
+ assert.match(row.fullText,/IMG support may be available, subject to registration requirements/);
+ assert(!row.fullText.includes('supervision is guaranteed'));assert(!row.fullText.includes('invented@example.invalid'));
+ assert(row.contactEvidence.some(contact=>contact.value==='recruit@example.invalid'&&contact.sourceURL===source.feedUrl));
+ assert(row.fullText.length<=20000);assert(row.summary.length<=2800);
+});
+test('reviewed HTML is bounded by the collector byte ceiling, including multibyte markup',()=>{
+ const source=defs.find(item=>item.id==='reviewed-gpap-img-program-eoi');
+ const shell=content(source).replace('</body>','<script type="application/json"></script></body>');
+ const pad=3000000-new TextEncoder().encode(shell).length;
+ const body=shell.replace('</script>','x'.repeat(pad)+'</script>');
+ assert.equal(new TextEncoder().encode(body).length,3000000);
+ assert.equal(normalize(source,body).length,1);
+ for(const extra of ['x','é'])assert.throws(()=>normalize(source,body.replace('</script>',extra+'</script>')),e=>e.code==='reviewed_gp_source_body_too_large');
+ const multibyte=shell.replace('</script>','é'.repeat(Math.ceil(pad/2)+1)+'</script>');
+ assert(multibyte.length<3000000);assert(new TextEncoder().encode(multibyte).length>3000000);
+ assert.throws(()=>normalize(source,multibyte),e=>e.code==='reviewed_gp_source_body_too_large');
+});
 test('dynamic text preserves negative requirements and ignores old research quotes and hidden claims',async()=>{
  const source=active.find(s=>s.id==='reviewed-alba-health-img');const body=content(source,true).replace('</body>','<p hidden>Level 1 supervision is available.</p><script>apply("evil@example.invalid")</script></body>');
  const [row]=await normalizeSourceRecords(source,body);assert.match(row.fullText,/do not have any positions for PESCI or Level 1/);assert(!row.fullText.includes('Level 1 supervision is available'));assert(!row.fullText.includes('evil@example.invalid'));assert(!row.fullText.includes('We can provide support and supervision to eligible'));
@@ -51,6 +76,21 @@ test('fresh source pages flow through normal collection while missing HTTP pages
  const receipt=await collectRegisteredSources(f.env,async(url,options)=>{calls.push({url,options});if(url.endsWith('/robots.txt'))return new Response('',{status:404});const source=active.find(s=>s.feedUrl===url);return source.id===active[1].id?new Response('Not found',{status:404}):new Response(content(source),{headers:{etag:'"synthetic"'}});});
  assert.equal(receipt.sources.length,3);assert.equal(receipt.sourceBudget,3);assert.equal(calls.length,6);assert.equal(receipt.imported,2);assert.equal(receipt.sources[1].status,'failed');assert.equal(f.db.prepare('SELECT count(*) n FROM opportunity_editions').get().n,2);
  const rows=f.db.prepare('SELECT data FROM opportunity_editions').all().map(r=>JSON.parse(r.data));assert(rows.every(row=>row.status==='unknown'));assert(rows.some(row=>row.kind==='employment_register'));
+});
+test('the collector imports a large GPAP page as one uncertain enquiry within existing request budgets',async()=>{
+ const source=defs.find(item=>item.id==='reviewed-gpap-img-program-eoi'),start=allActive.findIndex(s=>s.id===source.id),f=fixture(start),calls=[];
+ const body=content(source).replace('</body>','<script type="application/json">'+JSON.stringify({layout:'x'.repeat(1050000)})+'</script></body>');
+ const receipt=await collectRegisteredSources(f.env,async(url,options)=>{
+  calls.push(url);assert.equal(options.redirect,'manual');
+  if(url.endsWith('/robots.txt'))return new Response('User-agent: *\nDisallow: /account/');
+  return url===source.feedUrl?new Response(body):new Response('Not found',{status:404});
+ });
+ const own=receipt.sources.find(row=>row.sourceId===source.id);assert.equal(own.status,'updated');assert.equal(own.imported,1);
+ assert.equal(receipt.sourceBudget,3);assert.equal(receipt.recordBudget,100);assert(calls.length<=6);
+ assert(calls.indexOf('https://www.gpap.com.au/robots.txt')<calls.indexOf(source.feedUrl));
+ const rows=f.db.prepare('SELECT status,data FROM opportunity_editions WHERE source_id=?').all(source.id);assert.equal(rows.length,1);assert.equal(rows[0].status,'unknown');
+ const row=JSON.parse(rows[0].data);assert.equal(row.kind,'employment_register');assert.equal(row.publishedAt,null);assert.equal(row.closingAt,null);
+ assert.match(row.fullText,/subject to registration requirements/);assert(!row.fullText.includes('"layout"'));
 });
 
 test('an HTTP 200 closure notice replaces the existing edition status without inventing a deadline',async()=>{

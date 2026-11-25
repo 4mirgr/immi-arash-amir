@@ -1,6 +1,6 @@
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {ArrowLeft,Mail,RefreshCw,Search} from 'lucide-react';
-import {api} from './api';
+import {api,apiRetryAt,storageDailyReadLimitNotice} from './api';
 import {googleAccountLabel} from './google-account-labels.mjs';
 import {interfaceLocale,useInterfaceLanguage} from './interface-locale.mjs';
 import {MixedText} from './mixed-text';
@@ -13,8 +13,24 @@ const labels={
  follow_up_limit_reached:['برای این مکاتبه پیگیری قبلی ثبت شده است؛ پاسخ و نتیجهٔ آن را بررسی کنید.','A follow-up is already recorded for this conversation. Review its outcome before further contact.'],superseded_by_newer_thread:['مکاتبهٔ جدیدتری با همین مرکز وجود دارد؛ همان مکاتبه را دنبال کنید.','A newer conversation exists with this clinic. Continue with that conversation.'],thread_reading_incomplete:['خواندن این رشته هنوز کامل نشده است؛ ابتدا دریافت Gmail را ادامه دهید.','This conversation has not been read completely. Continue the Gmail review first.'],thread_refresh_required:['وضعیت پاسخ‌ها نیاز به بازخوانی دارد؛ ابتدا Gmail را دوباره بررسی کنید.','Reply information needs refreshing. Review Gmail again first.'],message_date_required:['تاریخ نامه مشخص نیست و موعد پیگیری تعیین نمی‌شود.','The message date is unavailable, so a follow-up date cannot be set.'],
  newer_application_exists:['نامهٔ جدیدتری برای همین مرکز پیدا شده است؛ مکاتبهٔ جدید را دنبال کنید.','A newer application to this clinic was found. Continue with the newer conversation.'],follow_up_limit:['در این رشته نامهٔ پیگیری فرستاده شده است؛ پیش از تماس بیشتر نتیجه را بررسی کنید.','A follow-up has already been sent in this thread. Review its outcome before further contact.'],contact_history_limit:['بررسی سابقهٔ این مخاطب کامل نیست؛ ابتدا دریافت Gmail را ادامه دهید.','This contact’s correspondence history is incomplete. Continue the Gmail review first.'],contact_stopped_do_not_contact:['این مرکز قبلاً درخواست کرده تماس بیشتری نگیرید.','This clinic has previously asked not to be contacted again.'],contact_stopped_rejected:['پاسخ منفی از همین مرکز در مکاتبهٔ دیگری پیدا شده است؛ ابتدا دلیل آن را بررسی کنید.','A decline from this clinic was found in another conversation. Review its reason first.'],contact_stopped_bounced:['ایمیل قبلی به این مخاطب تحویل نشده است؛ آدرس منتشرشدهٔ مرکز باید بررسی شود.','A previous message to this contact was not delivered. The clinic’s published address needs checking.'],
  follow_up_new_correspondence_requires_review:['مکاتبهٔ تازه‌ای از این مرکز پیدا شد؛ ابتدا Gmail را دوباره بخوانید و پاسخ را بررسی کنید. پیش‌نویس پیگیری آماده یا ارسال نشد.','New correspondence from this clinic was found. Refresh Gmail and review it first. No follow-up draft was prepared or sent.'],follow_up_signature_required:['نام و اطلاعات تماس در امضای نامه کامل نیست؛ آن را در تنظیمات نامه‌های همین پروفایل تکمیل کنید.','Your letter signature needs a name and complete contact details. Complete it in this profile’s letter settings.'],thread_manual_review_required:['این رشته طولانی است و به بررسی مستقیم در Gmail نیاز دارد.','This conversation is too long for this review and needs checking directly in Gmail.'],
+ reply_received:['پاسخ مرکز','Clinic reply'],
+ follow_up_reply_received:['پاسخ تازه‌ای پیدا شد. ابتدا آن را در همین رشته بررسی کنید.','A new reply was found. Review it in the conversation first.'],
+ review_offer_and_requirements:['متن پیشنهاد را بخوانید و ظرفیت نظارت Level 1، سوپروایزر، مدارک PESCI و اسپانسرشیپ را از کارفرما مکتوب بپرسید.','Read the offer and ask the employer to confirm Level 1 capacity, the supervisor, PESCI documentation and visa sponsorship in writing.'],
+ arrange_interview:['زمان گفت‌وگو را هماهنگ کنید و سؤال‌های مربوط به نظارت و اسپانسرشیپ را آماده کنید.','Arrange the discussion and prepare your questions about supervision and sponsorship.'],
+ prepare_requested_documents:['مدارک خواسته‌شده را از متن پاسخ استخراج کنید و پیش از پیوست، نسخهٔ هر مدرک را بررسی کنید.','Check the reply for the requested documents and verify each version before attaching it.'],
+ read_and_respond:['پاسخ مرکز را بخوانید و در همین رشته به پرسش‌های آن پاسخ دهید.','Read the clinic’s reply and address its questions in this thread.'],
+ read_acknowledgement:['رسید دریافت نامه را بررسی کنید و منتظر پاسخ مسئول جذب بمانید.','Check the acknowledgement and wait for the recruiting contact’s reply.'],
+ check_return_date:['تاریخ بازگشت مخاطب را در پاسخ خودکار بررسی کنید.','Check the contact’s return date in the automatic reply.'],
 };
 const closed=new Set(['rejected','bounced','do_not_contact']);
+const replyPriority=['offer_mentioned','interview','documents_requested','reply_received'];
+const replyActions={offer_mentioned:'review_offer_and_requirements',interview:'arrange_interview',documents_requested:'prepare_requested_documents',reply_received:'read_and_respond'};
+const priority=item=>{
+ if(item.contactStop||closed.has(item.status))return 6;
+ const index=replyPriority.indexOf(item.status);
+ return index>=0?index:item.followUp?.eligible?4:5;
+};
+const REFRESH_INTERVAL=5*60*1000;
 const dateNumber=value=>{const number=typeof value==='number'?value:Date.parse(value||'');return Number.isFinite(number)&&number>0?number:0;};
 const permissionError=code=>/not_connected|reconnect_required|gmail_(?:read_)?scope|invalid_grant/.test(code);
 
@@ -27,14 +43,22 @@ export function ClinicCorrespondence({person,ownerId,connection,secondaryConnect
  const accountScope=JSON.stringify([ownerId||'',person,mailbox,google.email||'']),generation=useRef({key:accountScope,id:0});
  if(generation.current.key!==accountScope)generation.current={key:accountScope,id:generation.current.id+1};
  const scope=JSON.stringify([accountScope,generation.current.id]);
- const scopeRef=useRef(scope),flight=useRef(null),mounted=useRef(true);scopeRef.current=scope;
+ const scopeRef=useRef(scope),flight=useRef(null),mounted=useRef(true),retry=useRef({scope:null,until:0});scopeRef.current=scope;
  const [snapshot,setSnapshot]=useState(null),[busy,setBusy]=useState(null),[error,setError]=useState(null),[lastRead,setLastRead]=useState(null),snapshotRef=useRef(null);snapshotRef.current=snapshot;
- const current=snapshot?.scope===scope?snapshot.data:null,busyHere=busy?.scope===scope?busy.kind:'',errorHere=error?.scope===scope?error.code:null;
+ const current=snapshot?.scope===scope?snapshot.data:null,busyHere=busy?.scope===scope?busy.kind:'',requestError=error?.scope===scope?error:null,errorHere=requestError?.code;
+ const onCooldown=()=>retry.current.scope===scope&&retry.current.until>Date.now();
+ const coolingDown=onCooldown();
+ function reportError(kind,e){
+  if(!mounted.current||scopeRef.current!==scope)return;
+  const until=apiRetryAt(e);
+  if(until>Date.now())retry.current={scope,until};
+  setError({scope,kind,code:e.code||e.message||'temporary_failure',retryAt:until?new Date(until).toISOString():undefined});
+ }
  const path=`google/clinic-correspondence?profile=${encodeURIComponent(person)}&mailbox=${mailbox}&limit=50`;
  const named=code=>labels[code]?.[english?1:0]||t('نیازمند بررسی متن مکاتبه','Review the correspondence');
  const date=value=>{const number=dateNumber(value);return number?new Date(number).toLocaleString(interfaceLocale('fa-IR'),{timeZone:'Asia/Tehran',dateStyle:'medium',timeStyle:'short'}):t('زمان ثبت نشده','Date unavailable');};
  const load=useCallback(async()=>{
-  if(!cloud||!google.connected||flight.current?.scope===scope)return;
+  if(!cloud||!google.connected||flight.current?.scope===scope||onCooldown())return;
   const operation={scope};flight.current=operation;setBusy({scope,kind:'load'});
   try{
    const requestedPages=snapshotRef.current?.scope===scope?Math.min(4,snapshotRef.current.pages||1):1;
@@ -46,29 +70,29 @@ export function ClinicCorrespondence({person,ownerId,connection,secondaryConnect
    }
    setSnapshot({scope,pages,data:{...result,items:[...loaded.values()],coverage:{...result.coverage,...(loadedMessages?{loadedMessages}:{})}}});setLastRead({scope,time:Date.now()});setError(previous=>previous?.scope===scope&&previous.kind==='sync'?previous:null);
   }
-  catch(e){if(mounted.current&&scopeRef.current===scope)setError({scope,kind:'load',code:e.message||'temporary_failure'});}
+  catch(e){reportError('load',e);}
   finally{if(flight.current===operation)flight.current=null;if(mounted.current&&scopeRef.current===scope)setBusy(null);}
  },[cloud,google.connected,scope,path]);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  useEffect(()=>{setFilter('all');setQuery('');setPage(0);setError(null);setBusy(null);load();},[scope,load]);
- useEffect(()=>{if(!cloud||!google.connected)return;const refresh=()=>{if(document.visibilityState==='visible'&&navigator.onLine!==false)load();};const timer=setInterval(refresh,60000);return()=>clearInterval(timer);},[cloud,google.connected,load]);
+ useEffect(()=>{if(!cloud||!google.connected)return;const refresh=()=>{if(document.visibilityState==='visible'&&navigator.onLine!==false)load();};const timer=setInterval(refresh,REFRESH_INTERVAL);return()=>clearInterval(timer);},[cloud,google.connected,load]);
  async function synchronize(){
-  if(flight.current?.scope===scope)return;const operation={scope};flight.current=operation;setBusy({scope,kind:'sync'});setError(null);
+  if(flight.current?.scope===scope||onCooldown())return;const operation={scope};flight.current=operation;setBusy({scope,kind:'sync'});setError(null);
   try{await api(`google/clinic-correspondence/sync?profile=${encodeURIComponent(person)}&mailbox=${mailbox}`,{method:'POST',body:'{}'});if(!mounted.current||scopeRef.current!==scope)return;}
-  catch(e){if(mounted.current&&scopeRef.current===scope)setError({scope,kind:'sync',code:e.message||'temporary_failure'});}
+  catch(e){reportError('sync',e);}
   finally{if(flight.current===operation)flight.current=null;if(mounted.current&&scopeRef.current===scope){setBusy(null);await load();}}
  }
  async function prepare(item){
-  if(flight.current?.scope===scope)return;const operation={scope};flight.current=operation;setBusy({scope,kind:item.id});setError(null);
+  if(flight.current?.scope===scope||onCooldown())return;const operation={scope};flight.current=operation;setBusy({scope,kind:item.id});setError(null);
   try{const draft=await api(`google/clinic-correspondence/draft?profile=${encodeURIComponent(person)}&mailbox=${mailbox}`,{method:'POST',body:JSON.stringify({threadId:item.threadId})});if(!mounted.current||scopeRef.current!==scope)return;onPrepare?.({...draft,mailbox});notify?.(t('پیش‌نویس پیگیری آماده شد؛ متن، گیرنده و پیوست را پیش از ارسال بررسی کنید.','The follow-up draft is ready. Review its text, recipient and attachment before sending.'));}
-  catch(e){if(mounted.current&&scopeRef.current===scope)setError({scope,code:e.message||'temporary_failure'});}
+  catch(e){reportError('prepare',e);}
   finally{if(flight.current===operation)flight.current=null;if(mounted.current&&scopeRef.current===scope)setBusy(null);}
  }
  async function loadMore(){
-  const previous=snapshotRef.current;if(previous?.scope!==scope||!previous.data.hasMore||previous.pages>=4||!Number.isInteger(previous.data.nextOffset)||flight.current?.scope===scope)return;
+  const previous=snapshotRef.current;if(previous?.scope!==scope||!previous.data.hasMore||previous.pages>=4||!Number.isInteger(previous.data.nextOffset)||flight.current?.scope===scope||onCooldown())return;
   const operation={scope};flight.current=operation;setBusy({scope,kind:'more'});setError(null);
   try{const result=await api(path+'&offset='+previous.data.nextOffset);if(!mounted.current||scopeRef.current!==scope)return;const combined=new Map((previous.data.items||[]).map(item=>[item.id,item]));for(const item of result.items||[])combined.set(item.id,item);setSnapshot({scope,pages:previous.pages+1,data:{...result,items:[...combined.values()],coverage:{...result.coverage,loadedMessages:Number(previous.data.coverage?.loadedMessages||0)+Number(result.coverage?.loadedMessages||0)}}});}
-  catch(e){if(mounted.current&&scopeRef.current===scope)setError({scope,kind:'load',code:e.message||'temporary_failure'});}
+  catch(e){reportError('load',e);}
   finally{if(flight.current===operation)flight.current=null;if(mounted.current&&scopeRef.current===scope)setBusy(null);}
  }
  const items=Array.isArray(current?.items)?current.items:[],coverage=current?.coverage||{},reader=coverage.reader||coverage.history||coverage;
@@ -76,23 +100,37 @@ export function ClinicCorrespondence({person,ownerId,connection,secondaryConnect
  const unreadableCount=Number(reader.unreadableMessageCount??reader.unreadableCount??0),historyPendingCount=Number(reader.historyPendingCount||0),threadPendingCount=Number(reader.pendingThreadMessageCount||0),failedThreadCount=Number(reader.failedThreadCount||0);
  const archiveComplete=reader.archiveComplete===true,historyGap=reader.historyGapRequiresReview===true,historyRecovery=reader.historyRecoveryActive===true,historyCurrent=reader.historyCaughtUp===true&&!historyGap&&!historyRecovery&&!historyPendingCount;
  const fullReadingComplete=reader.fullReadingComplete===true&&archiveComplete&&historyCurrent&&!unreadableCount&&!threadPendingCount&&!failedThreadCount&&!Number(reader.pendingMessageCount||0);
- const matching=items.filter(item=>filter==='waiting'?item.status==='waiting':filter==='action'?Boolean(item.followUp?.eligible)||['documents_requested','interview','offer_mentioned','reply_received'].includes(item.status):filter==='closed'?closed.has(item.status):true).filter(item=>([item.clinicLabel,item.recipient,item.subject].filter(Boolean).join(' ')).toLowerCase().includes(query.toLowerCase().trim()));
+ const needsAttention=items.filter(item=>priority(item)<=4).length;
+ const matching=items.filter(item=>filter==='waiting'?item.status==='waiting'&&!item.contactStop:filter==='action'?priority(item)<=4:filter==='closed'?priority(item)===6:true)
+  .filter(item=>[item.clinicLabel,item.recipient,item.subject].filter(Boolean).join(' ').toLowerCase().includes(query.toLowerCase().trim()))
+  .sort((a,b)=>priority(a)-priority(b)||dateNumber(b.updatedAt||b.lastReceivedAt||b.lastSentAt)-dateNumber(a.updatedAt||a.lastReceivedAt||a.lastSentAt));
+ const nextStep=item=>{
+  if(item.contactStop)return named('contact_stopped_'+item.contactStop);
+  if(closed.has(item.status))return named('stop_contact');
+  if(replyActions[item.status])return named(replyActions[item.status]);
+  if(item.status==='acknowledgement')return named('read_acknowledgement');
+  if(item.status==='out_of_office')return named('check_return_date');
+  if(item.followUp?.eligible)return named('due');
+  return named(labels[item.followUp?.reason]?item.followUp.reason:'wait_for_reply');
+ };
  const visiblePage=Math.min(page,Math.max(0,Math.ceil(matching.length/limit)-1)),visible=matching.slice(visiblePage*limit,(visiblePage+1)*limit);
  const knownCode=String(errorHere||''),reportCode=/^[a-z0-9_/-]{1,100}$/i.test(knownCode)?knownCode:'request_failed',needsConsent=permissionError(knownCode),actionError=labels[knownCode]||labels[knownCode.replace(/^follow_up_/,'')];
  const activityIsNewer=!dateNumber(reader.lastSyncedAt)||!dateNumber(coverage.activity?.checkedAt)||dateNumber(coverage.activity.checkedAt)>=dateNumber(reader.lastSyncedAt);
  const backgroundError=String(reader.lastError||(activityIsNewer?coverage.activity?.code:'')||''),backgroundNeedsConsent=permissionError(backgroundError),backgroundReportCode=/^[a-z0-9_/-]{1,100}$/i.test(backgroundError)?backgroundError:'background_review_failed';
  return <section className="panel clinic-correspondence" aria-label={t('پیگیری مکاتبات کلینیک‌ها','Clinic correspondence')}>
-  <div className="clinic-correspondence-heading"><div><h3><Mail size={20}/>{t('مکاتبه با کلینیک‌ها؛ از اولین نامه تا پاسخ','Clinic conversations, from application to reply')}</h3><p className="section-help">{t('پیام‌های همین Gmail به‌تدریج بررسی می‌شوند؛ اینجا فقط مکاتبات مرتبط با کلینیک‌ها، پاسخ آن‌ها و قدم بعدی هر مرکز را می‌بینید. فهرست کامل صندوق شخصی در این بخش نمایش داده نمی‌شود.','Messages from this Gmail account are reviewed gradually. This section shows clinic-related conversations, replies and the next step for each clinic, rather than the full personal mailbox.')}</p></div><button type="button" className="secondary" disabled={Boolean(busyHere)||!cloud||!google.connected} onClick={synchronize}><RefreshCw size={15} className={busyHere==='sync'?'spin':''}/>{busyHere==='sync'?t('در حال خواندن بخشی از سابقه…','Reading the next part of the history…'):t('خواندن و ادامهٔ بررسی Gmail','Read and continue the Gmail review')}</button></div>
+  <div className="clinic-correspondence-heading"><div><h3><Mail size={20}/>{t('مکاتبه با کلینیک‌ها؛ از اولین نامه تا پاسخ','Clinic conversations, from application to reply')}</h3><p className="section-help">{t('پیام‌های همین Gmail به‌تدریج بررسی می‌شوند؛ اینجا فقط مکاتبات مرتبط با کلینیک‌ها، پاسخ آن‌ها و قدم بعدی هر مرکز را می‌بینید. فهرست کامل صندوق شخصی در این بخش نمایش داده نمی‌شود.','Messages from this Gmail account are reviewed gradually. This section shows clinic-related conversations, replies and the next step for each clinic, rather than the full personal mailbox.')}</p></div><button type="button" className="secondary" disabled={Boolean(busyHere)||coolingDown||!cloud||!google.connected} onClick={synchronize}><RefreshCw size={15} className={busyHere==='sync'?'spin':''}/>{busyHere==='sync'?t('در حال خواندن بخشی از سابقه…','Reading the next part of the history…'):t('خواندن و ادامهٔ بررسی Gmail','Read and continue the Gmail review')}</button></div>
   <div className="clinic-correspondence-controls">
    <label>{t('صندوق مکاتبات','Mailbox')}<select value={mailbox} onChange={e=>setMailbox(e.target.value)} aria-label={t('صندوق مکاتبات کلینیک‌ها','Clinic correspondence mailbox')}><option value="primary">{googleAccountLabel(person,'primary',connection?.state.email)}</option><option value="secondary">{googleAccountLabel(person,'secondary',secondaryConnection?.state.email)}</option></select></label>
    <label>{t('نمایش مکاتبات','Show conversations')}<select aria-label={t('نمایش مکاتبات','Show conversations')} value={filter} onChange={e=>{setFilter(e.target.value);setPage(0);}}><option value="all">{t('همهٔ وضعیت‌ها','All statuses')}</option><option value="action">{t('نیازمند رسیدگی','Needs attention')}</option><option value="waiting">{t('منتظر پاسخ','Awaiting a reply')}</option><option value="closed">{t('پاسخ منفی و عدم پیگیری','Declined or do not contact')}</option></select></label>
    <label>{t('تعداد نمایش','Show up to')}<select aria-label={t('تعداد نمایش','Show up to')} value={limit} onChange={e=>{setLimit(Number(e.target.value));setPage(0);}}>{[10,25,50].map(n=><option key={n} value={n}>{n.toLocaleString(interfaceLocale('fa-IR'))}</option>)}</select></label>
    <label className="clinic-correspondence-search">{t('پیداکردن مرکز','Find a clinic')}<span><Search size={16}/><input aria-label={t('پیداکردن مرکز','Find a clinic')} value={query} onChange={e=>{setQuery(e.target.value);setPage(0);}} placeholder={t('نام، ایمیل یا موضوع نامه','Name, email or subject')}/></span></label>
   </div>
+  {current&&needsAttention>0&&<button type="button" className="secondary" aria-pressed={filter==='action'} title={t('شمار مکاتبات بارشدهٔ همین صندوق','Count of loaded conversations in this mailbox')} onClick={()=>{setFilter(filter==='action'?'all':'action');setPage(0);}}>{t('نیازمند رسیدگی','Needs attention')} · {needsAttention.toLocaleString(interfaceLocale('fa-IR'))}</button>}
   {google.email&&<p className="clinic-correspondence-account"><bdi data-no-translate>{google.email}</bdi><small>{t('فقط مکاتبات همین حساب','Only this account’s correspondence')}</small></p>}
   {backgroundError&&<div className="notice" role="alert" data-background-review-error><p>{backgroundNeedsConsent?t('بررسی خودکار Gmail به رسیدگی به دسترسی همین صندوق نیاز دارد. مکاتبات قبلی همچنان نمایش داده می‌شوند؛ از تنظیمات، اتصال و مجوز خواندن را بررسی کنید.','The automatic Gmail review needs attention to this mailbox’s access. Previously read conversations remain visible; check its connection and reading permission in settings.'):t('آخرین نوبت بررسی خودکار Gmail کامل نشد. مکاتبات خوانده‌شده حفظ شده‌اند؛ این اختلال به معنی قطع اتصال Google نیست و نوبت بعدی دوباره بررسی می‌شود.','The last automatic Gmail review did not complete. Previously read conversations are preserved. This failure does not establish that Google is disconnected; a later run will check again.')}</p><small>{t('کد قابل گزارش: ','Report code: ')}<bdi>{backgroundReportCode}</bdi></small>{backgroundNeedsConsent&&<button type="button" className="secondary" onClick={onSettings}>{t('بررسی اتصال همین حساب','Check this account’s connection')}<ArrowLeft size={15}/></button>}</div>}
   {!google.connected&&!google.stale&&<div className="notice"><p>{t('برای خواندن سابقه، Gmail متعلق به همین کاربر باید متصل باشد. حساب پزشک دیگر جایگزین آن نمی‌شود.','Connect this user’s own Gmail to read its history. The other doctor’s account is never used as a substitute.')}</p><button type="button" className="secondary" onClick={onSettings}>{t('بررسی اتصال همین حساب','Check this account’s connection')}<ArrowLeft size={15}/></button></div>}
-  {errorHere&&<div className="notice" role="alert"><p>{actionError?actionError[english?1:0]:needsConsent?t('Google برای این صندوق تأیید مجوز می‌خواهد. از تنظیمات، اتصال همین صندوق را بررسی کنید.','Google requires permission for this mailbox. Check this mailbox’s connection in settings.'):t('اطلاعات تازه دریافت نشد؛ مکاتبات قبلی همین حساب حفظ شده‌اند. کمی بعد دوباره بررسی کنید.','The latest information could not be loaded. Previously loaded conversations for this account are preserved; try again shortly.')}</p><small>{t('کد قابل گزارش: ','Report code: ')}<bdi>{reportCode}</bdi></small>{needsConsent&&<button type="button" className="secondary" onClick={onSettings}>{t('بررسی مجوز Gmail','Check Gmail permission')}</button>}</div>}
+  {errorHere==='storage_daily_read_limit'&&<p className="notice" role="status">{storageDailyReadLimitNotice(requestError,english)}</p>}
+  {errorHere&&errorHere!=='storage_daily_read_limit'&&<div className="notice" role="alert"><p>{actionError?actionError[english?1:0]:needsConsent?t('Google برای این صندوق تأیید مجوز می‌خواهد. از تنظیمات، اتصال همین صندوق را بررسی کنید.','Google requires permission for this mailbox. Check this mailbox’s connection in settings.'):t('اطلاعات تازه دریافت نشد؛ مکاتبات قبلی همین حساب حفظ شده‌اند. کمی بعد دوباره بررسی کنید.','The latest information could not be loaded. Previously loaded conversations for this account are preserved; try again shortly.')}</p><small>{t('کد قابل گزارش: ','Report code: ')}<bdi>{reportCode}</bdi></small>{needsConsent&&<button type="button" className="secondary" onClick={onSettings}>{t('بررسی مجوز Gmail','Check Gmail permission')}</button>}</div>}
   {current&&<details className="clinic-correspondence-coverage"><summary>{t('چه مقدار از سابقه بررسی شده؟','How much history has been reviewed?')}</summary>
    {fullReader?<>
     <p data-reader-state={fullReadingComplete?'complete':'incomplete'}><strong>{fullReadingComplete?t('بررسی این نوبت تکمیل شد؛ تغییرات تازه در نوبت‌های بعدی بررسی می‌شوند.','This reading pass is complete. New changes are checked in subsequent runs.'):t('بررسی کامل این نوبت هنوز تأیید نشده است.','Full reading for this pass has not been confirmed yet.')}</strong></p>
@@ -124,13 +162,13 @@ export function ClinicCorrespondence({person,ownerId,connection,secondaryConnect
    <summary><div><strong dir="auto" data-no-translate><MixedText>{item.clinicLabel||item.recipient||item.subject}</MixedText></strong><small dir="auto" data-no-translate><MixedText>{item.subject||''}</MixedText></small></div><span className={'status '+(closed.has(item.status)?'red':item.followUp?.eligible?'':'amber')}>{named(item.status)}</span><span className="clinic-conversation-chevron" aria-hidden="true">⌄</span></summary>
    <div className="clinic-conversation-content"><div className="clinic-conversation-dates"><span>{t('آخرین ارسال: ','Last sent: ')}{date(item.lastSentAt)}</span><span>{t('آخرین پاسخ: ','Last reply: ')}{item.lastReceivedAt?date(item.lastReceivedAt):t('پاسخی در محدودهٔ بررسی پیدا نشد','No reply found in the reviewed history')}</span></div>
     <div className="clinic-conversation-signals">{[['level1',t('سوپرویژن Level 1','Level 1 supervision')],['sponsorship',t('اسپانسرشیپ ویزای کار','Work visa sponsorship')],['pesci',t('مدارک و موقعیت PESCI','PESCI position and documents')]].map(([key,title])=>{const signal=item.signals?.[key]||{};return <div key={key} className={'clinic-conversation-signal signal-'+(signal.status||'unknown')}><strong>{title}</strong><span>{named(signal.status||'unknown')}</span>{signal.excerpt&&<small dir="auto" data-no-translate><MixedText>{signal.excerpt}</MixedText></small>}</div>;})}</div>
-    <div className="clinic-conversation-next"><strong>{t('قدم بعدی','Next step')}</strong><p>{closed.has(item.status)?named('stop_contact'):item.followUp?.eligible?named('due'):labels[item.followUp?.reason]?named(item.followUp.reason):item.lastReceivedAt?named('review_reply'):named('wait_for_reply')}</p>{item.followUp?.dueAt&&<small>{t('موعد پیشنهادی پیگیری: ','Suggested follow-up date: ')}{date(item.followUp.dueAt)}</small>}<div className="clinic-conversation-actions">{item.followUp?.eligible&&<button type="button" className="primary" disabled={Boolean(busyHere)||!google.connected} onClick={()=>prepare(item)}>{busyHere===item.id?t('در حال بررسی آخرین پاسخ…','Checking the latest reply…'):t('آماده‌کردن پیگیری برای بازبینی','Prepare a follow-up for review')}<ArrowLeft size={15}/></button>}{item.replyMessage&&!closed.has(item.status)&&!item.contactStop&&<button type="button" className="secondary" disabled={Boolean(busyHere)||!google.connected} onClick={()=>onReply?.({...item.replyMessage,mailbox})}>{t('نوشتن پاسخ در همین رشته','Write a reply in this thread')}<ArrowLeft size={15}/></button>}</div></div>
+    <div className="clinic-conversation-next"><strong>{t('قدم بعدی','Next step')}</strong><p>{nextStep(item)}</p>{item.followUp?.dueAt&&<small>{t('موعد پیشنهادی پیگیری: ','Suggested follow-up date: ')}{date(item.followUp.dueAt)}</small>}<div className="clinic-conversation-actions">{item.followUp?.eligible&&<button type="button" className="primary" disabled={Boolean(busyHere)||coolingDown||!google.connected} onClick={()=>prepare(item)}>{busyHere===item.id?t('در حال بررسی آخرین پاسخ…','Checking the latest reply…'):t('آماده‌کردن پیگیری برای بازبینی','Prepare a follow-up for review')}<ArrowLeft size={15}/></button>}{item.replyMessage&&item.status!=='waiting'&&!closed.has(item.status)&&!item.contactStop&&<button type="button" className="secondary" disabled={Boolean(busyHere)||!google.connected} onClick={()=>onReply?.({...item.replyMessage,mailbox})}>{t('نوشتن پاسخ در همین رشته','Write a reply in this thread')}<ArrowLeft size={15}/></button>}</div></div>
     {item.timelineLimited&&<p className="section-help">{t('برای جمع‌وجور ماندن این نما، تنها ۴۰ پیام آخر این رشته نمایش داده می‌شود.','To keep this view compact, only the last 40 messages in this conversation are shown.')}</p>}
     <ol className="clinic-conversation-timeline" aria-label={t('سابقهٔ نامه و پاسخ','Application and reply history')}>{(item.timeline||[]).map(message=><li key={message.id} className={'clinic-timeline-'+message.direction}><div><span>{message.direction==='sent'?t('ارسال‌شده','Sent'):t('دریافت‌شده','Received')}</span><time>{date(message.date)}</time></div><small dir="auto" data-no-translate><MixedText>{message.direction==='sent'?message.to:message.from}</MixedText></small><p dir="auto" data-no-translate><MixedText>{message.excerpt||message.snippet||''}</MixedText></p></li>)}</ol>
    </div>
   </details>)}</div>
   {matching.length>limit&&<nav className="clinic-correspondence-pagination" aria-label={t('صفحه‌های مکاتبات','Conversation pages')}><button type="button" className="secondary" disabled={Boolean(busyHere)||visiblePage===0} onClick={()=>setPage(visiblePage-1)}>{t('صفحهٔ قبل','Previous page')}</button><span>{t('صفحهٔ ','Page ')}{(visiblePage+1).toLocaleString(interfaceLocale('fa-IR'))}{t(' از ',' of ')}{Math.ceil(matching.length/limit).toLocaleString(interfaceLocale('fa-IR'))}</span><button type="button" className="secondary" disabled={Boolean(busyHere)||(visiblePage+1)*limit>=matching.length} onClick={()=>setPage(visiblePage+1)}>{t('صفحهٔ بعد','Next page')}</button></nav>}
-  {current?.hasMore&&(snapshot?.pages||1)<4&&<button type="button" className="secondary" disabled={Boolean(busyHere)||!google.connected} onClick={loadMore}>{busyHere==='more'?t('در حال دریافت مکاتبات بیشتر…','Loading more conversations…'):t('دریافت ۵۰ رشتهٔ قدیمی‌تر از حافظه','Load 50 older threads from the cache')}</button>}
+  {current?.hasMore&&(snapshot?.pages||1)<4&&<button type="button" className="secondary" disabled={Boolean(busyHere)||coolingDown||!google.connected} onClick={loadMore}>{busyHere==='more'?t('در حال دریافت مکاتبات بیشتر…','Loading more conversations…'):t('دریافت ۵۰ رشتهٔ قدیمی‌تر از حافظه','Load 50 older threads from the cache')}</button>}
   {current?.hasMore&&(snapshot?.pages||1)>=4&&<p className="section-help">{t('این نما حداکثر ۲۰۰ رشتهٔ اخیر را بررسی می‌کند. سابقهٔ Gmail همچنان به‌تدریج خوانده می‌شود؛ این سقف به معنی پایان مکاتبات نیست.','This view covers up to 200 recent threads. Gmail history continues to be read gradually; this display limit does not mean there are no older conversations.')}</p>}
  </section>;
 }

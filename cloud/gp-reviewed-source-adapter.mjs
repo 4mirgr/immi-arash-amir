@@ -3,6 +3,10 @@
 import candidates from './gp-reviewed-discovery-sources.json' with {type:'json'};
 import {visiblePageText} from './public-page-worker.mjs';
 import {extractPublicContacts} from './public-contact-extraction.mjs';
+// Match the collector's existing raw-response ceiling: publisher layout/scripts
+// can exceed 1 MB even when the visible recruitment content is small.
+// Visible text, contact extraction and stored evidence keep their own bounds.
+const MAX_BODY_BYTES=3000000;
 export class ReviewedGpSourceError extends Error {constructor(code){super(code);this.code=code;}}
 const fail=code=>{throw new ReviewedGpSourceError(code);};
 function definition(source){
@@ -14,7 +18,7 @@ export const GP_REVIEWED_SOURCE_DEFINITIONS=Object.freeze(candidates.map(definit
 const registry=new Map(GP_REVIEWED_SOURCE_DEFINITIONS.map(source=>[source.id,source]));
 export function normalizeReviewedGpSourceRecords(input,body){
  const source=registry.get(input?.id);if(!source?.executable||input.adapter!==source.adapter)fail('reviewed_gp_source_not_registered');
- if(typeof body!=='string'||new TextEncoder().encode(body).length>1000000)fail('reviewed_gp_source_body_too_large');
+ if(typeof body!=='string'||new TextEncoder().encode(body).length>MAX_BODY_BYTES)fail('reviewed_gp_source_body_too_large');
  if(!/<html\b/i.test(body)||!/<\/html\s*>/i.test(body))fail('invalid_reviewed_gp_source_html');
  let content=visiblePageText(body).text;
  if(/verify (?:that )?you are (?:a )?human|checking your browser|access denied|sign in to continue|attention required.{0,30}cloudflare|just a moment/i.test(content.slice(0,1500)))fail('reviewed_gp_access_challenge');

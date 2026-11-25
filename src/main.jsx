@@ -496,7 +496,7 @@ export default function App({ cloud = false, initialPerson = "arash", workspaceO
                 : "نسخهٔ پایه · سرور داده در دسترس نیست. برای دریافت اطلاعات واقعی، API را اجرا کنید.")}
             </div>
           )}
-          {tab === "overview" && arash && <ArashHome onNavigate={setTab} online={online} googleConnected={googleConnection.state.connected} leadCount={clinics.length} draftCount={drafts.length} hasCV={!!profile?.cvText}/>}
+          {tab === "overview" && arash && <ArashHome onNavigate={setTab} online={online} googleMailboxes={[["primary",googleConnection.state],["secondary",secondaryGoogleConnection.state]]} leadCount={clinics.length} draftCount={drafts.length} hasCV={!!profile?.cvText}/>}
           {tab === "overview" && !arash && <AmirHome onNavigate={setTab}/>}
           {tab === "opportunities" && <JobOpportunitiesPanel key={person} workspaceOwnerId={workspaceOwnerId} person={person} notify={notify} onOpenSettings={()=>setTab("settings")} />}
           {tab === "opportunities" && (

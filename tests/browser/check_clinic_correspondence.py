@@ -60,6 +60,9 @@ def route(request):
         if scenario == "defer" and person == "arash":
             deferred.append((request, response(person, mailbox, " OLD RESPONSE")))
             return
+        if scenario == "quota":
+            request.fulfill(status=503, json={"error":"storage_daily_read_limit","retryAfterSeconds":720})
+            return
         data = response(person, mailbox)
         if scenario in ["archive_gap", "unreadable_only", "full_complete", "inconsistent_complete"]:
             data["coverage"]["reader"].update({"archiveComplete": True, "backfillComplete": True, "pendingMessageCount": 0, "pendingThreadMessageCount": 0, "historyPendingCount": 0, "historyCaughtUp": True})
@@ -116,26 +119,41 @@ with sync_playwright() as playwright:
     expect(progress.locator('[data-reader-state="incomplete"]')).to_contain_text("هنوز تأیید نشده")
     expect(progress).to_contain_text("Spam و Trash")
     progress.locator("summary").click()
-    cards.first.locator("summary").click()
-    expect(cards.first.get_by_role("button", name="آماده‌کردن پیگیری برای بازبینی", exact=True)).to_be_visible()
-    expect(cards.first.get_by_text("اسپانسرشیپ ویزای کار", exact=True)).to_be_visible()
-    cards.first.get_by_role("button", name="آماده‌کردن پیگیری برای بازبینی", exact=True).click()
+    waiting=cards.filter(has_text="منتظر پاسخ")
+    replied=cards.filter(has_text="درخواست مدارک")
+    expect(cards.first).to_contain_text("درخواست مدارک")
+    expect(panel.get_by_role("button", name="نیازمند رسیدگی · ۲", exact=True)).to_be_visible()
+    waiting.locator("summary").click()
+    expect(waiting.get_by_role("button", name="آماده‌کردن پیگیری برای بازبینی", exact=True)).to_be_visible()
+    expect(waiting.get_by_text("اسپانسرشیپ ویزای کار", exact=True)).to_be_visible()
+    waiting.get_by_role("button", name="آماده‌کردن پیگیری برای بازبینی", exact=True).click()
     expect(page.locator("[data-draft]")).to_contain_text('"kind":"follow_up"')
     draft = json.loads(page.locator("[data-draft]").inner_text())
     assert draft["mailbox"] == "primary" and draft["reviewRequired"] is True
     assert draft["followUpContext"]["messageId"] == "messageSent"
     assert len(writes) == 1 and writes[0][0].endswith("/draft"), writes
-    cards.nth(1).locator("summary").click()
-    expect(cards.nth(1).get_by_role("button", name="آماده‌کردن پیگیری برای بازبینی", exact=True)).to_have_count(0)
-    cards.nth(1).get_by_role("button", name="نوشتن پاسخ در همین رشته", exact=True).click()
+    replied.locator("summary").click()
+    expect(replied).to_contain_text("مدارک خواسته‌شده را از متن پاسخ استخراج کنید")
+    expect(replied.get_by_role("button", name="آماده‌کردن پیگیری برای بازبینی", exact=True)).to_have_count(0)
+    replied.get_by_role("button", name="نوشتن پاسخ در همین رشته", exact=True).click()
     expect(page.locator("[data-reply]")).to_contain_text('"id":"messageReceived"')
 
     scenario = "failure"
     panel.get_by_role("button", name="خواندن و ادامهٔ بررسی Gmail", exact=True).click()
     expect(panel.get_by_role("alert")).to_contain_text("gmail_unavailable")
     expect(cards).to_have_count(2)
-    assert cards.first.get_attribute("open") is not None, "Polling discarded the open conversation"
+    assert waiting.get_attribute("open") is not None, "Polling discarded the open conversation"
+    scenario = "quota"
+    page.clock.run_for(300001)
+    expect(panel.get_by_role("status").filter(has_text="سهمیهٔ رایگان")).to_be_visible()
+    expect(cards).to_have_count(2)
+    expect(panel.get_by_role("button", name="خواندن و ادامهٔ بررسی Gmail", exact=True)).to_be_disabled()
+    before_quota = len(reads)
+    page.clock.run_for(600000)
+    assert len(reads) == before_quota, reads[before_quota:]
     scenario = "normal"
+    page.clock.run_for(300001)
+    expect(panel.get_by_role("button", name="خواندن و ادامهٔ بررسی Gmail", exact=True)).to_be_enabled()
     page.evaluate("window.__connection({connected:true,stale:true})")
     expect(cards).to_have_count(2)
 
@@ -175,9 +193,9 @@ with sync_playwright() as playwright:
     scenario = "normal"
 
     panel.get_by_role("combobox", name="صندوق مکاتبات کلینیک‌ها", exact=True).select_option("secondary")
-    expect(cards.first.locator("summary strong")).to_have_text("arash secondary clinic")
-    cards.first.locator("summary").click()
-    cards.first.get_by_role("button", name="آماده‌کردن پیگیری برای بازبینی", exact=True).click()
+    expect(cards.first.locator("summary strong")).to_have_text("arash secondary clinic replied")
+    waiting.locator("summary").click()
+    waiting.get_by_role("button", name="آماده‌کردن پیگیری برای بازبینی", exact=True).click()
     expect(page.locator("[data-draft]")).to_contain_text('"mailbox":"secondary"')
     assert writes[-1][2] == "secondary"
 
@@ -187,10 +205,10 @@ with sync_playwright() as playwright:
     panel.get_by_role("button", name="خواندن و ادامهٔ بررسی Gmail", exact=True).click()
     page.wait_for_function("document.querySelector('.clinic-correspondence-heading button').disabled")
     page.evaluate("window.__owner('amir')")
-    expect(cards.first.locator("summary strong")).to_have_text("amir primary clinic")
+    expect(cards.first.locator("summary strong")).to_have_text("amir primary clinic replied")
     scenario = "normal"
     page.evaluate("window.__owner('arash')")
-    expect(cards.first.locator("summary strong")).to_have_text("arash secondary clinic")
+    expect(cards.first.locator("summary strong")).to_have_text("arash secondary clinic replied")
     for request, data in deferred:
         request.fulfill(json=data)
     expect(panel.get_by_text("OLD RESPONSE", exact=False)).to_have_count(0)
@@ -207,7 +225,7 @@ with sync_playwright() as playwright:
     expect(cards).to_have_count(1)
     expect(cards.first.locator("summary strong")).to_have_text("Synthetic older clinic")
     before = len(reads)
-    page.clock.run_for(61000)
+    page.clock.run_for(301000)
     page.wait_for_function("window.__cacheReads >= " + str(before + 2))
     page.wait_for_function("!document.querySelector('.clinic-correspondence-heading button').disabled")
     expect(cards.first.locator("summary strong")).to_have_text("Synthetic older clinic")

@@ -1,4 +1,5 @@
-import {interfaceLocale} from './interface-locale.mjs';
+import {interfaceLocale,useInterfaceLanguage} from './interface-locale.mjs';
+import {googleAccountLabel} from './google-account-labels.mjs';
 import React from 'react';
 import {ArrowLeft,BriefcaseBusiness,GraduationCap,Mail,FileText,ChevronDown,ChevronLeft,ShieldCheck,Activity} from 'lucide-react';
 import './arash-workspace-simple.css';
@@ -18,7 +19,12 @@ export function ArashNavigation({items,tab,onNavigate}){
   <details className="nav-fold neon-amber" open={['sources','automation','settings'].includes(tab)||undefined}><summary><span className="neon-marker"/>منابع، اتصال‌ها و ابزارها<ChevronDown size={15}/></summary>{items.filter(([id])=>['sources','automation','settings'].includes(id)).map(item)}</details>
  </nav>;
 }
-export function ArashHome({onNavigate,online,googleConnected,leadCount,draftCount,hasCV}){
+export function ArashHome({onNavigate,online,googleMailboxes,leadCount,draftCount,hasCV}){
+ const english=useInterfaceLanguage()==='en';
+ const t=(fa,en)=>english?en:fa;
+ const readable=googleMailboxes.filter(([,state])=>state.connected&&state.capabilities?.gmailRead===true);
+ const senders=googleMailboxes.filter(([,state])=>state.connected&&state.capabilities?.gmailSend===true);
+ const mailStatus=readable.length?t('خواندن Gmail فعال است','Gmail reading enabled'):t('خواندن Gmail نیاز به اتصال یا مجوز دارد','Gmail reading requires a connection or permission');
  return <div className="arash-home">
   <div className="arash-start glass-panel"><div><span className="eyebrow">مسیر کاری شما در استرالیا</span><h2>فرصت مناسب را پیدا کنید و درخواست بفرستید</h2><p>آگهی را باز کنید، نامه و رزومه را ببینید و از همان‌جا ایمیل بفرستید.</p></div><span className="home-identity"><ShieldCheck size={17}/> فضای شخصی دکتر انتظار</span></div>
   <div className="arash-route-grid arash-job-first">
@@ -26,10 +32,10 @@ export function ArashHome({onNavigate,online,googleConnected,leadCount,draftCoun
   </div>
   <div className="arash-workflow"><span className="nav-caption">بعد از پیدا کردن فرصت</span><div className="arash-quick-grid">
    <button className="arash-quick glass-panel neon-amber" onClick={()=>onNavigate('cv')}><FileText size={23}/><span><strong>۱. رزومه را آماده کنید</strong><small>{hasCV?'بررسی نسخه‌ها و دانلود رزومه':'تکمیل اطلاعات و ساخت نسخهٔ رزومه'}</small></span><ChevronLeft size={17}/></button>
-   <button className="arash-quick glass-panel neon-cyan" onClick={()=>onNavigate('mail')}><Mail size={23}/><span><strong>۲. مکاتبه و پاسخ‌ها</strong><small>{googleConnected?'Gmail شما متصل است؛ پیام‌های مرتبط را بررسی کنید':'ابتدا Google خودتان را متصل کنید'}</small></span><ChevronLeft size={17}/></button>
+   <button className="arash-quick glass-panel neon-cyan" onClick={()=>onNavigate('mail')}><Mail size={23}/><span><strong>۲. مکاتبه و پاسخ‌ها</strong><small>{mailStatus}</small></span><ChevronLeft size={17}/></button>
    <button className="arash-quick glass-panel neon-violet" onClick={()=>onNavigate('pesci')}><GraduationCap size={23}/><span><strong>۳. تمرین و آمادگی PESCI</strong><small>تمرین بالینی و آمادگی برای مصاحبه</small></span><ChevronLeft size={17}/></button>
   </div></div>
-  {!googleConnected&&<button type="button" className="secondary arash-connect-action" onClick={()=>onNavigate('settings')}><Mail size={17}/>بررسی اتصال Gmail و تقویم</button>}
-  <WorkspaceFold title="وضعیت داده‌ها و ابزارهای من" hint="وضعیت اتصال و آمار بانک شخصی؛ برای دیدن باز کنید" tone="cyan"><div className="arash-health-grid"><div><Activity size={18}/><strong>{online?'ارتباط با سرور برقرار است':'ارتباط با سرور برقرار نیست'}</strong><small>وضعیت اتصال سایت؛ نشان‌دهندهٔ اجرای جست‌وجو نیست</small></div><div><Mail size={18}/><strong>{googleConnected?'Google همین حساب متصل است':'Google نیاز به اتصال دارد'}</strong><small>{draftCount.toLocaleString(interfaceLocale('fa-IR'))} پیش‌نویس ذخیره‌شده؛ ارسال‌شده محسوب نمی‌شود</small></div><div><BriefcaseBusiness size={18}/><strong>{leadCount.toLocaleString(interfaceLocale('fa-IR'))} سرنخ در بانک مراکز</strong><small>اطلاعات تماس؛ آگهی باز یا جاب‌آفر تأییدشده نیست</small></div></div><button className="text-button" onClick={()=>onNavigate('settings')}>رفتن به اتصال‌ها و تنظیمات <ArrowLeft size={15}/></button></WorkspaceFold>
+  {(!readable.length||!senders.length)&&<button type="button" className="secondary arash-connect-action" onClick={()=>onNavigate('settings')}><Mail size={17}/>{t('بررسی مجوزهای Gmail','Check Gmail permissions')}</button>}
+  <WorkspaceFold title="وضعیت داده‌ها و ابزارهای من" hint="وضعیت اتصال و آمار بانک شخصی؛ برای دیدن باز کنید" tone="cyan"><div className="arash-health-grid"><div><Activity size={18}/><strong>{online?'ارتباط با سرور برقرار است':'ارتباط با سرور برقرار نیست'}</strong><small>وضعیت اتصال سایت؛ نشان‌دهندهٔ اجرای جست‌وجو نیست</small></div><div><Mail size={18}/><strong>{mailStatus}</strong>{readable.length>0&&<small>{t('صندوق‌های قابل خواندن','Readable mailboxes')} · {readable.map(([slot,state])=><bdi key={slot}>{googleAccountLabel('arash',slot,state.email)} </bdi>)}</small>}{senders.length>0&&<small>{t('صندوق‌های دارای مجوز ارسال','Mailboxes with sending permission')} · {senders.map(([slot,state])=><bdi key={slot}>{googleAccountLabel('arash',slot,state.email)} </bdi>)}</small>}<small>{draftCount.toLocaleString(interfaceLocale('fa-IR'))} پیش‌نویس ذخیره‌شده؛ ارسال‌شده محسوب نمی‌شود</small></div><div><BriefcaseBusiness size={18}/><strong>{leadCount.toLocaleString(interfaceLocale('fa-IR'))} سرنخ در بانک مراکز</strong><small>اطلاعات تماس؛ آگهی باز یا جاب‌آفر تأییدشده نیست</small></div></div><button className="text-button" onClick={()=>onNavigate('settings')}>رفتن به اتصال‌ها و تنظیمات <ArrowLeft size={15}/></button></WorkspaceFold>
  </div>;
 }

@@ -1,6 +1,8 @@
 # Start here: project handoff
 
-Updated 2026-11-24. This is a recovery guide for a human or another AI. The repository is public: preserve rules, architecture, public research and release evidence here; retrieve private state only through the owner's authorized storage. Git is not a backup of the doctors' accounts.
+Updated 2026-11-25. This is a recovery guide for a human or another AI. The repository is public: preserve rules, architecture, public research and release evidence here; retrieve private state only through the owner's authorized storage. Git is not a backup of the doctors' accounts.
+
+The correspondence review orders loaded threads by offer language, interview, documents, other actual replies, and due follow-up. Contact stops take precedence. The attention count covers the loaded mailbox window and does not stand for a full-Gmail count. The next steps are review guidance and never grant send approval. Cached clinic correspondence polls every five minutes when visible and online, and honors the selected mailbox's retry deadline. General inbox selection retains recent-relevant ordering on mailbox changes. Arash's overview shows Gmail reading and sending permissions per owned mailbox. Reviewed public GP pages use the collector's three-megabyte UTF-8 ceiling, preserving the EOI and evidence limits.
 
 AUS starts with a small self-contained HTML sign-in shell and an independent auth entry. The verified workspace and its stylesheet load after successful membership verification. The translation catalog loads when needed. Hashed sign-in dependencies are preloaded in parallel and no application fonts are required at sign-in. Keep the exact auth/recovery path and the independent same-origin gateway. The browser build test stalls public assets and enforces the sign-in transfer budget.
 
