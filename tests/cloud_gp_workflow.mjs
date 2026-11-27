@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {assessFiveTier,readGpGoalMode,handleGpWorkflowRequest as route} from '../cloud/gp-workflow.mjs';
+import {EN_WORKFLOWS} from '../src/locales/en-workflows.mjs';
 
 test('explicit applicant-direction and pre-application barriers cap fit even with sponsorship wording',()=>{
  const vacancy={title:'General Practitioner',country:'AU',url:'https://example.invalid/careers'};
@@ -15,6 +16,7 @@ test('explicit applicant-direction and pre-application barriers cap fit even wit
   const assessment=assessFiveTier({...vacancy,fullText:'Visa sponsorship is available. International medical graduates are welcome. '+gate},'employment');
   assert.equal(assessment.tier,1,gate);
   assert.equal(assessment.matrix.find(row=>row.id===id).status,'restricted',gate);
+  assert(EN_WORKFLOWS[assessment.reasons[0]],gate);
  }
 });
 
