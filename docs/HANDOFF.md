@@ -1,6 +1,8 @@
 # Start here: project handoff
 
-Updated 2026-11-25. This is a recovery guide for a human or another AI. The repository is public: preserve rules, architecture, public research and release evidence here; retrieve private state only through the owner's authorized storage. Git is not a backup of the doctors' accounts.
+Updated 2026-11-27 UTC. This recovery guide records project rules, architecture, public research and release evidence. Retrieve private state through each owner's authorized storage.
+
+The [November 27 audit](AUDIT-2026-11-27.fa.md) covers LinkedIn and local GP discovery, job-fit barriers and public reader repairs. The public search tools work separately from the scheduled Gmail alert lane. Public opportunity suggestions use employment fit and keep a published prior-PESCI or onshore prerequisite attached to the individual role.
 
 The correspondence review orders loaded threads by offer language, interview, documents, other actual replies, and due follow-up. Contact stops take precedence. The attention count covers the loaded mailbox window and does not stand for a full-Gmail count. The next steps are review guidance and never grant send approval. Cached clinic correspondence polls every five minutes when visible and online, and honors the selected mailbox's retry deadline. General inbox selection retains recent-relevant ordering on mailbox changes. Arash's overview shows Gmail reading and sending permissions per owned mailbox. Reviewed public GP pages use the collector's three-megabyte UTF-8 ceiling, preserving the EOI and evidence limits.
 

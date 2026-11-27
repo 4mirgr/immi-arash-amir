@@ -29,7 +29,7 @@ export function assessFiveTier(source,goalMode='pesci_readiness',at=Date.now()){
  const title=text(item.title),roleText=[title,text(item.summary),text(item.fullText)].join('\n').slice(0,60000);
  const parts=roleText.replace(/<[^>]*>/g,' ').split(/(?<=[.!?;])\s+|\n+/).map(s=>s.trim()).filter(s=>s&&s.length<=600);
  const uncertain=/\b(?:no|not|cannot|can't|unable|without|may|might|could|subject to|if|potential(?:ly)?)\b/i;
- const rangeEvidence=parts.filter(s=>/\blevel\s*1\s*(?:[-–—]|to|or)\s*2\s*(?:clinical\s+)?supervision\b/i.test(s)&&!uncertain.test(s)).slice(0,2);
+ const rangeEvidence=parts.filter(s=>/\blevel\s*1\s*(?:[-–—]|to|or)\s*(?:level\s*)?[2-4]\s*(?:clinical\s+)?supervision\b|\b(?:clinical\s+)?supervision\s+(?:is\s+)?(?:available|offered|provided)\s+(?:from\s+)?level\s*1\s*(?:[-–—]|to|or)\s*(?:level\s*)?[2-4]\b/i.test(s)&&!uncertain.test(s)).slice(0,2);
  // Team size and registrar teaching are useful context, never proof that an
  // approved Level 1 supervisor is available to this particular applicant.
  const teamEvidence=parts.filter(s=>!uncertain.test(s)&&/\b(?:teaching practice|training practice|registrar training|GP registrars?|multidisciplinary team|established (?:clinical )?team|team of (?:[2-9]|[1-9]\d+) (?:GPs?|doctors)|(?:[2-9]|[1-9]\d+) (?:GPs?|doctors))\b/i.test(s)).slice(0,3);
@@ -38,6 +38,9 @@ export function assessFiveTier(source,goalMode='pesci_readiness',at=Date.now()){
  const closing=Date.parse(item.closingAt||item.closing_at||''),published=Date.parse(item.publishedAt||item.published_at||'');
  const unavailable=['closed','source_removed','future'].includes(item.status)||(Number.isFinite(closing)&&closing<=at)||(Number.isFinite(published)&&published>at);
  const clearRestrictions=['level1','img','supervision'].filter(key=>signals[key]?.status==='restricted');
+ const supervisorHire=fit.barriers.find(item=>item.code==='supervisor_hire');
+ const priorPesci=fit.barriers.find(item=>item.code==='pesci_before_application');
+ const resident=fit.barriers.find(item=>item.code==='australian_residence_required');
  // Employment support and clinical supervision are different commitments. A
  // refusal of visa support is a barrier only for the employer-supported goal;
  // silence and ordinary candidate prerequisites must not become refusals.
@@ -51,10 +54,19 @@ export function assessFiveTier(source,goalMode='pesci_readiness',at=Date.now()){
  const onlyFellowshipEvidence=parts.filter(s=>!/\b(?:not required|not essential|not mandatory|preferred|working towards|non[- ]VR|not(?:\s+\w+){0,3}\s+only|not restricted to|not limited to)\b/i.test(s)&&(/\b(?:FRACGP|FACRRM)\b[^.!?;]{0,35}\bonly\b|\bonly\b[^.!?;]{0,50}\b(?:FRACGP|FACRRM)\b/i.test(s)||/\b(?:only VR GPs?|VR GPs? only|VR status (?:is )?required|must (?:have|hold) VR status)\b/i.test(s))).slice(0,2);
  const fellowshipRestriction=onlyFellowshipEvidence.length>0||(signals.registration?.excerpts||[]).some(e=>e.status==='restricted'&&/\b(?:FRACGP|FACRRM)\b/i.test(e.text)&&!/\b(?:preferred|not required|not essential|not mandatory|working towards)\b/i.test(e.text));
  let tier=2,reasons=[];
- if(unavailable||nonGp||clearRestrictions.length||fellowshipRestriction||employmentSponsorshipBarrier){tier=1;reasons.push(unavailable?'این آگهی برای اقدام فعلی در دسترس نیست، مهلتش گذشته یا هنوز زمان انتشارش نرسیده است؛ این به معنی تعطیلی کلینیک نیست.':nonGp?'عنوان این آگهی برای نقش GP نیست؛ بهتر است موقعیت پزشکی مناسب همان مجموعه را پیدا کنیم.':employmentSponsorshipBarrier?'منبع، حمایت ویزای کاری را صریحاً رد کرده است؛ این موقعیت فعلاً با هدف شغلِ همراه با حمایت کارفرما سازگار نیست.':'در متن، مانع مشخصی دربارهٔ نظارت، پذیرش IMG یا مدرک Fellowship آمده است؛ پیش از درخواست باید آن را روشن کنیم.');}
+ if(unavailable||nonGp||supervisorHire||priorPesci||resident||clearRestrictions.length||fellowshipRestriction||employmentSponsorshipBarrier){
+  tier=1;
+  if(unavailable)reasons.push('این آگهی برای اقدام فعلی در دسترس نیست یا مهلتش گذشته است.');
+  if(nonGp)reasons.push('عنوان این آگهی برای نقش GP نیست.');
+  if(supervisorHire)reasons.push('مرکز برای این سمت، پزشکی را می‌خواهد که خودش سوپروایزر باشد.');
+  if(priorPesci)reasons.push('آگهی قبولی PESCI را پیش از بررسی درخواست می‌خواهد.');
+  if(resident)reasons.push('آگهی می‌خواهد متقاضی از قبل در استرالیا مستقر باشد.');
+  if(employmentSponsorshipBarrier)reasons.push('منبع، حمایت ویزای کاری کارفرما را صریحاً رد کرده است.');
+  if(clearRestrictions.length||fellowshipRestriction)reasons.push('در آگهی شرط مشخصی دربارهٔ نظارت، پذیرش IMG یا مدرک Fellowship آمده است.');
+ }
  else if(roleRelevant&&known.level1&&known.img&&known.pesci&&known.sponsorship){tier=5;reasons.push('متن منبع از پذیرش IMG، نظارت Level 1، همراهی برای PESCI و اسپانسرشیپ ویزا صحبت می‌کند؛ این مورد ارزش پیگیری سریع دارد.');}
  else if(roleRelevant&&(known.level1&&known.img||known.img&&known.supervision&&(known.pesci||teamEvidence.length))){tier=4;reasons.push(known.level1?'برای IMG و نظارت Level 1 شواهد خوبی داریم؛ می‌توان درخواست اختصاصی آماده کرد و شرایط باقی‌مانده را از مرکز پرسید.':'منبع از پذیرش IMG و نظارت برای متقاضی می‌گوید و نشانهٔ آموزش یا حمایت PESCI دارد؛ سطح دقیق نظارت را کتبی بپرسید.');}
- else if(roleRelevant&&(Object.values(known).some(Boolean)||rangeEvidence.length||potentialSupervision.length)){tier=3;reasons.push(rangeEvidence.length&&!known.level1?'در متن به بازهٔ Level 1–2 اشاره شده است؛ ظرفیت واقعی Level 1 هنوز تأیید نشده و باید از مرکز پرسیده شود.':'این موقعیت به مسیر GP مربوط است و نشانه‌ای از حمایت دارد؛ چند پرسش مشخص می‌تواند وضعیت آن را روشن کند.');}
+ else if(roleRelevant&&(Object.values(known).some(Boolean)||rangeEvidence.length||potentialSupervision.length)){tier=3;reasons.push(rangeEvidence.length&&!known.level1?'منبع بازه‌ای از نظارت را ذکر می‌کند که Level 1 را هم در بر می‌گیرد؛ ظرفیت این سطح برای همین سمت هنوز تأیید نشده است.':'این موقعیت به مسیر GP مربوط است و نشانه‌ای از حمایت دارد؛ چند پرسش مشخص می‌تواند وضعیت آن را روشن کند.');}
  else reasons.push(roleRelevant?'خدمات GP با مسیر آرش مرتبط است، اما هنوز نشانهٔ کافی دربارهٔ پذیرش IMG و حمایت Level 1/PESCI نداریم.':'اطلاعات فعلی برای شناخت نقش و شرایط مرکز کافی نیست؛ ابتدا اصل موقعیت را بررسی کنیم.');
  if(!known.sponsorship&&tier>1)reasons.push(signals.sponsorship.status==='restricted'?'منبع اسپانسرشیپ ویزا را رد کرده است. در حالت آمادگی PESCI این مورد حذف نمی‌شود، اما برای شروع کار باید حق کار جداگانه حل شود.':'اسپانسرشیپ ویزا در منبع روشن نیست؛ نبود این اطلاعات، رد شدن درخواست یا نبود حمایت را ثابت نمی‌کند.');
  if(tier>1&&!known.level1&&!rangeEvidence.length)reasons.push(teamEvidence.length?'تیم یا آموزش در مرکز معرفی شده، ولی این به‌تنهایی ظرفیت نظارت Level 1 را ثابت نمی‌کند.':'ظرفیت واقعی نظارت Level 1 مشخص نیست؛ آن را مستقیماً از مدیر مرکز بپرسید.');
@@ -75,17 +87,18 @@ export function assessFiveTier(source,goalMode='pesci_readiness',at=Date.now()){
  }
  const labels={1:'مانع مشخص برای اقدام فعلی',2:'اطلاعات ناکافی؛ اول تحقیق کنیم',3:'قابل پیگیری با چند پرسش',4:'تناسب خوب برای پیگیری',5:'تناسب قوی؛ پیگیری در اولویت'};
  const sourceUrl=https(item.url||item.sourceUrl);
- const evidence=[...Object.entries(signals).flatMap(([field,signal])=>(signal.excerpts||[]).map(e=>({field,status:e.status,quote:e.text,url:sourceUrl}))),...rangeEvidence.map(quote=>({field:'level1_range',status:'potential',quote,url:sourceUrl})),...teamEvidence.map(quote=>({field:'team_training',status:'supported',quote,url:sourceUrl})),...potentialSupervision.map(quote=>({field:'supervision',status:'potential',quote,url:sourceUrl})),...onlyFellowshipEvidence.map(quote=>({field:'registration',status:'restricted',quote,url:sourceUrl}))].slice(0,22);
+ const evidence=[...fit.barriers.map(({field,text:quote})=>({field,status:'restricted',quote,url:sourceUrl})),...Object.entries(signals).flatMap(([field,signal])=>(signal.excerpts||[]).map(e=>({field,status:e.status,quote:e.text,url:sourceUrl}))),...rangeEvidence.map(quote=>({field:'level1_range',status:'potential',quote,url:sourceUrl})),...teamEvidence.map(quote=>({field:'team_training',status:'supported',quote,url:sourceUrl})),...potentialSupervision.map(quote=>({field:'supervision',status:'potential',quote,url:sourceUrl})),...onlyFellowshipEvidence.map(quote=>({field:'registration',status:'restricted',quote,url:sourceUrl}))].slice(0,22);
  const statuses={supported:'در متن آمده',restricted:'شرط یا محدودیت صریح',potential:'احتمالی؛ نیاز به تأیید',not_stated:'هنوز مشخص نیست',informational:'اطلاعات تکمیلی'};
  const matrixRow=(id,label,status,rows=[],note='')=>({id,label,status,statusLabel:statuses[status],evidence:rows.map(e=>({quote:e.quote||e.text||e,url:sourceUrl,status:e.status||status})),...(note?{note}:{})});
- const matrix=[matrixRow('gp_role','مرتبط‌بودن نقش با GP',nonGp?'restricted':roleRelevant?'supported':'not_stated',roleRelevant&&!nonGp?[{quote:title||parts.find(s=>/\b(?:general practice|GP)\b/i.test(s))||'',status:'supported'}]:[]),
-  ...['level1','img','pesci','supervision'].map(id=>matrixRow(id,{level1:'ظرفیت نظارت Level 1',img:'پذیرش پزشک IMG',pesci:'همراهی برای PESCI',supervision:'نظارت برای متقاضی'}[id],signals[id].status==='not_stated'&&((id==='level1'&&rangeEvidence.length)||(id==='supervision'&&potentialSupervision.length))?'potential':signals[id].status,evidence.filter(e=>e.field===id||(id==='level1'&&e.field==='level1_range')).slice(0,3))),
+ const matrix=[matrixRow('gp_role','مرتبط‌بودن نقش با GP',nonGp||supervisorHire?'restricted':roleRelevant?'supported':'not_stated',supervisorHire?evidence.filter(x=>x.field==='role'):roleRelevant&&!nonGp?[{quote:title||parts.find(s=>/\b(?:general practice|GP)\b/i.test(s))||'',status:'supported'}]:[]),
+  ...['level1','img','pesci','supervision'].map(id=>matrixRow(id,{level1:'ظرفیت نظارت Level 1',img:'پذیرش پزشک IMG',pesci:'همراهی برای PESCI',supervision:'نظارت برای متقاضی'}[id],id==='pesci'&&priorPesci?'restricted':signals[id].status==='not_stated'&&((id==='level1'&&rangeEvidence.length)||(id==='supervision'&&potentialSupervision.length))?'potential':signals[id].status,evidence.filter(e=>e.field===id||(id==='level1'&&e.field==='level1_range')).slice(0,3))),
   matrixRow('registration','مدرک یا ثبت پزشکی موردنیاز',fellowshipRestriction?'restricted':signals.registration.status,evidence.filter(e=>e.field==='registration').slice(0,3),'شرط آگهی را باید با مدارک واقعی آرش جداگانه تطبیق داد؛ این امتیاز تأیید صلاحیت شخصی نیست.'),
   matrixRow('team_training','تیم و محیط آموزشی',teamEvidence.length?'supported':'not_stated',teamEvidence.map(quote=>({quote,status:'supported'})),'وجود تیم یا آموزش، جای تأیید سوپروایزر همین سمت را نمی‌گیرد.'),
   matrixRow('sponsorship','اسپانسرشیپ ویزا',signals.sponsorship.status,evidence.filter(e=>e.field==='sponsorship').slice(0,3),goalMode==='employment'?'برای این هدف، حمایت ویزای کاریِ کارفرما لازم است؛ پذیرش نظارت بالینی به‌تنهایی کافی نیست.':'در هدف آمادگی PESCI شرط حذف نیست؛ برای شروع کار باید جداگانه روشن شود.'),
+  ...(resident?[matrixRow('residence','محل اقامت هنگام درخواست','restricted',evidence.filter(e=>e.field==='residence'))]:[]),
   matrixRow('source_currency','وضعیت آگهی برای اقدام',unavailable?'restricted':'not_stated',[],'باز بودن آگهی و فعال‌بودن کلینیک باید جداگانه بررسی شوند؛ ظاهر یا سن وب‌سایت ملاک تعطیلی نیست.'),
   matrixRow('geography','موقعیت، MMM و DPA','informational',[],'MMM1 حذف نمی‌شود. DPA اطلاعات تکمیلی است و به‌تنهایی منطقهٔ rural یا ظرفیت نظارت را ثابت نمی‌کند.')];
- return {tier,stars:tier,maxStars:5,label:labels[tier],reasons:reasons.slice(0,3),nextSteps,unknowns:[...new Set([...fit.unknowns,...(signals.sponsorship.status==='not_stated'?['sponsorship']:[])])],evidence,matrix,goalMode,priorityWeight,eligibility:'not_assessed',meaning:'source_evidence_fit_not_acceptance_probability',profileContext:'gp_level1_pesci_route_only_no_private_cv_assessed',registrationCautions:[...CAUTIONS],sourceUrl,roleRelevant};
+ return {tier,stars:tier,maxStars:5,label:labels[tier],reasons:reasons.slice(0,3),nextSteps,unknowns:[...new Set([...fit.unknowns,...(signals.sponsorship.status==='not_stated'?['sponsorship']:[])])],evidence,matrix,goalMode,priorityWeight,eligibility:'not_assessed',meaning:'source_evidence_fit_not_acceptance_probability',profileContext:'gp_level1_pesci_route_only_no_private_cv_assessed',registrationCautions:[...CAUTIONS],sourceUrl,roleRelevant:roleRelevant&&!supervisorHire};
 }
 
 async function payload(request){

@@ -32,6 +32,17 @@ test('registers, unsupported jurisdictions, stale/closed ads and explicit Level 
  const f=fixture();f.ad({kind:'employment_register'});f.ad({title:'General Practitioner expression of interest'});f.ad({country:'IT'});f.ad({profileScope:'amir'});f.ad({trust:'unofficial'});f.ad({seenAt:'2020-01-01T00:00:00Z'});f.ad({closingAt:'2020-01-01T00:00:00Z'});f.ad({title:'GP Practice Manager'});f.ad({fullText:'General practitioner vacancy. We cannot provide Level 1 supervision. jobs@example.invalid'});const okay=f.ad();
  const response=await (await f.call()).json();assert.deepEqual(response.suggestions.map(x=>x.id),[okay]);
 });
+test('employment suggestions exclude explicit pre-PESCI, supervisor and sponsorship barriers',async()=>{
+ const f=fixture();
+ const ad=fullText=>f.ad({country:'AU',fullText:fullText+' Apply to '+crypto.randomUUID()+'@example.invalid.'});
+ ad('Applicants must have passed PESCI before applying. Visa sponsorship is available.');
+ ad('We are seeking an experienced GP with the capacity to provide Level 1 supervision.');
+ ad('Level 1 supervision is available. Visa sponsorship is not available.');
+ ad('We cannot accommodate doctors who require Level 1 supervision.');
+ const candidate=ad('Level 1 supervision is available. Successful applicants must pass PESCI before starting work.');
+ const result=await (await f.call()).json();
+ assert.deepEqual(result.suggestions.map(item=>item.id),[candidate]);
+});
 test('central network recipients and existing preparations do not repeat in a suggested batch',async()=>{
  const f=fixture();f.ad({email:'network@example.invalid'});f.ad({email:'network@example.invalid'});const prepared=f.ad({email:'prepared@example.invalid'});
  f.priv.prepare('INSERT INTO mail_automation_jobs VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(crypto.randomUUID(),'arash-owner',prepared,'prepared@example.invalid','primary','draft','{}',null,'2026-01-01','2026-01-01','2026-01-01');

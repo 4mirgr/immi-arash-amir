@@ -46,7 +46,7 @@ async function recurringSuggestions(env,context,current,cadence){
  for(let i=0;i<rows.length;i++){
   const row=rows[i],item=enriched[i],original=parse(row.data);
   if(!actionable(row)||item.kind==='employment_register'||/\b(?:expression(?:s)? of interest|talent (?:pool|register)|employment register)\b/i.test(item.title||''))continue;
-  const assessment=assessFiveTier(item,'pesci_readiness',stamp);if(assessment.tier===1||!assessment.roleRelevant)continue;
+  const assessment=assessFiveTier(item,'employment',stamp);if(assessment.tier===1||!assessment.roleRelevant)continue;
   // Only the current ad text supplies recipients. Related-page contact evidence
   // and private uploaded spreadsheets are deliberately not recipients here.
   const recipients=publishedRecipients(item);if(!recipients.length)continue;
@@ -64,7 +64,7 @@ async function recurringSuggestions(env,context,current,cadence){
   ]);
  }
  const blocked=new Set([...suppressed.map(x=>x.email),...prior.map(x=>x.recipient),...prepared.map(x=>x.recipient)].map(x=>String(x).toLowerCase())),preparedIds=new Set(prepared.map(x=>x.opportunity_id));
- const ranked=candidates.filter(x=>!preparedIds.has(x.id)&&x.recipients.every(email=>!blocked.has(email))).sort((a,b)=>b.stars-a.stars||Number(b.firstParty)-Number(a.firstParty)||(Date.parse(b.publishedAt)||0)-(Date.parse(a.publishedAt)||0)||a.id.localeCompare(b.id));
+ const ranked=candidates.filter(x=>!preparedIds.has(x.id)&&x.recipients.every(email=>!blocked.has(email))).sort((a,b)=>b.stars-a.stars||b.priorityWeight-a.priorityWeight||Number(b.firstParty)-Number(a.firstParty)||(Date.parse(b.publishedAt)||0)-(Date.parse(a.publishedAt)||0)||a.id.localeCompare(b.id));
  const selected=[],used=new Set();for(const candidate of ranked){if(candidate.recipients.some(email=>used.has(email)))continue;candidate.recipients.forEach(email=>used.add(email));const {recipients,priorityWeight,...view}=candidate;selected.push({...view,publishedRecipientCount:recipients.length,reviewRequired:true});if(selected.length>=current.dailyLimit)break;}
  return {profileId:context.profileId,cadence,periodKey,nextRefreshAt,timeZone,windowStart,windowEnd,publicationFallback:'first_seen_only_when_publication_missing',generatedAt:at.toISOString(),suggestions:selected,availableCount:ranked.length,candidateWindow:rows.length,candidateLimit:180,batchLimit:current.dailyLimit,automaticSending:false,reviewRequired:true,coverage:'bounded_fresh_registered_advertisements_only',refresh:'recomputed_on_read_from_scheduled_discovery',exclusions:['owner_suppression','previous_or_uncertain_delivery_across_both_mailboxes','existing_preparation','closed_future_stale','employment_registers','duplicate_network_recipient'],importedClinicLeadsIncluded:false};
 }

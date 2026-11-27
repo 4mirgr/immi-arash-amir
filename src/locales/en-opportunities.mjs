@@ -953,5 +953,20 @@ export const EN_OPPORTUNITIES = Object.freeze({
   "پیوند Facebook ناشر در metadata صفحهٔ رسمی فرصت‌های تاسمانی منتشر شده است.": "The publisher's Facebook link is published in the official Tasmanian opportunities page metadata.",
   "فقط پیوند ناشر تأیید شد، نه پست‌ها یا وضعیت فرصت‌ها؛ دسترسی شبکه ممکن است محدود یا نیازمند login باشد.": "Only the publisher link was verified, not posts or opportunity status. Network access may be restricted or require login.",
   "پیوند LinkedIn ناشر در metadata رسمی صفحهٔ GP تأیید شد؛ مسیر دستی اطلاعیه و شناخت تیم سازمان.": "The publisher's LinkedIn link was verified in official GP-page metadata; a manual route for announcements and learning about the organization.",
-  "پست‌ها، کانکشن‌ها و پیام‌های LinkedIn در این مرحله جمع‌آوری نشده‌اند؛ هویت یا اختیار supervision اشخاص از پروفایل استنباط نمی‌شود.": "LinkedIn posts, connections and messages were not collected at this stage; a profile does not establish a person's identity or supervisory authority."
+  "پست‌ها، کانکشن‌ها و پیام‌های LinkedIn در این مرحله جمع‌آوری نشده‌اند؛ هویت یا اختیار supervision اشخاص از پروفایل استنباط نمی‌شود.": "LinkedIn posts, connections and messages were not collected at this stage; a profile does not establish a person's identity or supervisory authority.",
+  "فرصت‌های کاری LinkedIn": "LinkedIn job opportunities",
+  "شهر یا منطقه، اختیاری": "City or region, optional",
+  "مثلاً Townsville": "For example, Townsville",
+  "عبارت Level 1": "Level 1 wording",
+  "عبارت visa sponsorship": "Visa sponsorship wording",
+  "این گزینه‌ها واژه‌های جست‌وجو را تغییر می‌دهند و هیچ سرنخ ذخیره‌شده‌ای را حذف نمی‌کنند. نبودن عبارت Level 1 یا sponsorship در متن، به‌تنهایی نشانهٔ نامناسب‌بودن مرکز نیست؛ باید از کارفرما پرسید.": "These options change search wording; they do not remove any saved leads. Missing Level 1 or sponsorship wording alone does not rule out a practice; ask the employer.",
+  "برای شروع، جست‌وجوی گستردهٔ GP را در محدودهٔ انتخاب‌شده باز کنید. واژه‌های دقیق‌تر در پیوند جداگانه‌اند تا آگهی‌هایی که Level 1 یا sponsorship را صریح ننوشته‌اند از جست‌وجوی اولیه کنار نروند.": "Start with a broad GP search in the selected area. A separate link adds specific terms, so the initial search still includes advertisements that do not explicitly mention Level 1 or sponsorship.",
+  "محدودهٔ LinkedIn Jobs:": "LinkedIn Jobs location:",
+  "جست‌وجوی گسترده در LinkedIn Jobs": "Broad search on LinkedIn Jobs",
+  "LinkedIn Jobs با واژه‌های انتخابی": "LinkedIn Jobs with selected terms",
+  "این پیوند در خود LinkedIn باز می‌شود و ممکن است ورود بخواهد. بازکردن جست‌وجو به معنی اتصال حساب، خواندن همهٔ نتایج یا واردشدن آگهی‌ها به بانک سایت نیست.": "This link opens LinkedIn itself and may require sign-in. Opening a search does not connect an account, read every result or import advertisements into this site.",
+  "عبارت گستردهٔ LinkedIn Jobs": "Broad LinkedIn Jobs query",
+  "عبارت LinkedIn Jobs با واژه‌های انتخابی": "LinkedIn Jobs query with selected terms",
+  "جست‌وجوی آگهی‌های عمومی LinkedIn در وب": "Search public LinkedIn job pages on the web",
+  "جست‌وجوی پست‌های عمومی LinkedIn در وب": "Search public LinkedIn posts on the web"
 });

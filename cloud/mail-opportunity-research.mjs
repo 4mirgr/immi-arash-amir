@@ -60,19 +60,19 @@ function employerName(record){
 /** Only actual primary-page employment wording can restrict this position. */
 export function assessMailResearchSource(record,row,now=Date.now()){
  const fullText=typeof record.text==='string'?record.text.slice(0,50000):'',sourceURL=record.finalUrl||record.url,checkedAt=new Date(now).toISOString();
- const assessment=assessOpportunityFit({title:row.title||record.title,country:'AU',opportunityType:'job',fullText,url:sourceURL},'arash'),restrictions=[];
+ const assessment=assessOpportunityFit({title:record.title||row.title,country:'AU',opportunityType:'job',fullText,url:sourceURL},'arash'),restrictions=[];
  // "No sponsorship required" describes a requirement, not an employer's
  // explicit refusal to sponsor. Preserve any separate actual refusal.
  const sponsorship=assessment.signals.sponsorship;
  if(sponsorship){const excerpts=sponsorship.excerpts.filter(item=>!/^\s*(?:no|without)\s+(?:(?:work\s+)?visa\s+|employer\s+)?sponsorship\s+(?:(?:is|will be)\s+)?(?:required|needed|necessary)\s*[.!?]?\s*$/i.test(item.text));assessment.signals.sponsorship={...sponsorship,excerpts,status:excerpts.some(item=>item.status==='restricted')?'restricted':excerpts.some(item=>item.status==='supported')?'supported':'not_stated'};}
  const parts=fullText.split(/\n+|(?<=[.!?;])\s+/).map(part=>part.trim()).filter(part=>part.length>=3&&part.length<=1200);
  const add=(code,quote)=>{if(!restrictions.some(item=>item.code===code))restrictions.push({code,sourceURL,quote:text(quote,600),checkedAt});};
+ for(const barrier of assessment.barriers)add('source_'+barrier.code,barrier.text);
  const closure=/\b(?:applications?\s+(?:(?:for\s+(?:this|the)\s+(?:GP\s+)?(?:position|role)\s+)?(?:are|is|have|has)\s+)?(?:now\s+|been\s+)?closed|(?:this\s+)?(?:GP\s+)?(?:position|vacancy|role|job)\s+(?:(?:has\s+been|is|was)\s+)?(?:filled|closed|withdrawn)|(?:this\s+)?(?:position|vacancy|role|job)\s+(?:is\s+)?no\s+longer\s+(?:available|open)|(?:we\s+are\s+)?(?:not|no\s+longer)\s+(?:currently\s+)?(?:recruiting|hiring)\s+(?:GPs?|general practitioners?))\b/i;
  for(const clause of parts){
   if(closure.test(clause)&&!/\b(?:vaccinations?|immunisations?|immunizations?|patient intake|appointments?)\b/i.test(clause))add('source_applications_closed',clause);
   if(!/\b(?:not required|not essential|not mandatory|preferred|working towards|non[- ]VR|not restricted|not limited)\b/i.test(clause)&&(/\b(?:FRACGP|FACRRM)\b[^.!?;]{0,40}\bonly\b|\bonly\b[^.!?;]{0,40}\b(?:FRACGP|FACRRM)\b|\b(?:VR GPs? only|only VR GPs?|must (?:have|hold) VR status)\b/i.test(clause)))add('source_registration_restricted',clause);
   if(!/\b(?:not required|not essential|preferred|working towards|non[- ]VR)\b/i.test(clause)&&/\b(?:seeking|recruiting|looking for|require)\b[^.!?;]{0,80}\b(?:a\s+)?(?:Vocationally Registered\s*(?:\(VR\))?|VR)\s+GP\b/i.test(clause))add('source_registration_restricted',clause);
-  if(/\b(?:must|need to|required to)\s+(?:reside|live|be based)\s+in Australia\b/i.test(clause))add('source_australian_residence_required',clause);
  }
  // Qualifications listed under an explicit applicant/requirements heading are
  // requirements even when each bullet does not repeat "must" or "required".
@@ -80,7 +80,7 @@ export function assessMailResearchSource(record,row,now=Date.now()){
  const qualifications=requirementSection.split(/\n+|(?<=[.!?;])\s+/).map(part=>part.trim()).filter(Boolean);
  const restrictedQualification=qualifications.find(part=>/\b(?:FRACGP|FACRRM|Vocational Registration)\b/i.test(part)&&!/(?:not required|not essential|not mandatory|preferred|working towards|non[- ]VR)/i.test(part));
  if(restrictedQualification)add('source_registration_restricted',restrictedQualification);
- const residence=qualifications.find(part=>/\b(?:reside|live|be based)\s+in Australia\b/i.test(part));if(residence)add('source_australian_residence_required',residence);
+ const residence=qualifications.find(part=>/\b(?:reside|live|be based)\s+in Australia\b/i.test(part)&&!/\b(?:not|before (?:commencement|commencing|starting)|after relocation|when commencing)\b/i.test(part));if(residence)add('source_australian_residence_required',residence);
  const registration=restrictions.find(item=>item.code==='source_registration_restricted');
  if(registration)assessment.signals.registration={...assessment.signals.registration,status:'restricted',excerpts:[{text:registration.quote,status:'restricted',reason:'stated_qualification_prerequisite'},...(assessment.signals.registration?.excerpts||[])].slice(0,3)};
  for(const field of ['level1','sponsorship','registration','img','supervision'])if(assessment.signals[field]?.status==='restricted')add('source_'+field+'_restricted',assessment.signals[field].excerpts.find(item=>item.status==='restricted')?.text||'');

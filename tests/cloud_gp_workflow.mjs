@@ -4,6 +4,20 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {assessFiveTier,readGpGoalMode,handleGpWorkflowRequest as route} from '../cloud/gp-workflow.mjs';
 
+test('explicit applicant-direction and pre-application barriers cap fit even with sponsorship wording',()=>{
+ const vacancy={title:'General Practitioner',country:'AU',url:'https://example.invalid/careers'};
+ for(const [gate,id] of [
+  ['We cannot accommodate doctors who require Level 1 supervision.','level1'],
+  ['Candidates must have passed PESCI before applying.','pesci'],
+  ['Applicants must currently live in Australia.','residence'],
+  ['We are seeking an experienced general practitioner with the capacity to provide Level 1 supervision.','gp_role']
+ ]){
+  const assessment=assessFiveTier({...vacancy,fullText:'Visa sponsorship is available. International medical graduates are welcome. '+gate},'employment');
+  assert.equal(assessment.tier,1,gate);
+  assert.equal(assessment.matrix.find(row=>row.id===id).status,'restricted',gate);
+ }
+});
+
 const id='opp_'+'a'.repeat(32),otherId='opp_'+'b'.repeat(32),foreignId='opp_'+'c'.repeat(32),origin='https://workspace.example';
 const owner={userId:'owner-arash',profileId:'arash'},other={userId:'other-arash',profileId:'arash'};
 const source={country:'AU',opportunityType:'job',title:'General Practitioner',status:'open',url:'https://clinic.example/jobs',fullText:'Level 1 supervision is available. International medical graduates are welcome. We provide clinical supervision for IMGs. PESCI support is available.'};

@@ -1,7 +1,11 @@
 import {extractPublicContacts} from './public-contact-extraction.mjs';
 import {reconcileScheduledContactCoverage} from './contact-coverage.mjs';
 import {storePublicReading,PUBLIC_PAGE_REFRESH_MS,PUBLIC_PAGE_RETRY_MS} from './public-page-store.mjs';
+import {reviewedGpRecruitmentMarkup,reviewedGpRecruitmentText} from './gp-reviewed-recruitment-scope.mjs';
 const AGENT='MasirUniversityDiscovery/1.0',MAX_BODY=1000000;
+// This reviewed GP recruitment page can exceed 1 MB of inert layout scripts. Keep
+// the usual ceiling everywhere else, including redirects and URL variants.
+const LARGE_REVIEWED_GP_URL='https://www.gpap.com.au/img-jobs',LARGE_REVIEWED_GP_MAX_BODY=3000000;
 export const PUBLIC_PAGE_REQUEST_LIMIT=6;
 export const PUBLIC_PAGE_HTTP_TIMEOUT_MS=10000;
 export const PUBLIC_PAGE_ROBOTS_TIMEOUT_MS=8000;
@@ -20,7 +24,7 @@ export function robotsAllows(text,target){
 }
 async function bounded(response,limit){if(Number(response.headers.get('Content-Length')||0)>limit){await response.body?.cancel();error('body_too_large');}const reader=response.body?.getReader();if(!reader)error('empty_text');let text='',bytes=0;const decoder=new TextDecoder();try{for(;;){const {done,value}=await reader.read();if(done)break;bytes+=value.length;if(bytes>limit){await reader.cancel();error('body_too_large');}text+=decoder.decode(value,{stream:true});}return text+decoder.decode();}finally{reader.releaseLock();}}
 // Bounded static markup filtering, not a browser CSS/layout engine.
-function withoutHiddenMarkup(html){
+export function withoutHiddenMarkup(html){
  const tags=/<\/?([a-z][\w:-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,stack=[],voids=new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
  let out='',cursor=0,hidden=0,match;
  while((match=tags.exec(html))){
@@ -54,6 +58,17 @@ export function visiblePageText(html){
   .split(/\r?\n/).map(line=>line.replace(/\s+/g,' ').trim()).filter(Boolean).join('\n');
  return {title,text:body.slice(0,50000),partial:body.length>50000};
 }
+function contactMarkupWithoutInertScripts(html){
+ // Keep hidden/container boundaries intact. In particular, removing a nested
+ // template or noscript with a flat regex could expose its remaining text.
+ return html.replace(/<!--[\s\S]*?-->|<(script|style)\b((?:[^>"']|"[^"]*"|'[^']*')*)>[\s\S]*?<\/\1\s*>/gi,(block,tag,attributes)=>{
+  if(tag?.toLowerCase()==='script'){
+   const attrs=[...attributes.matchAll(/([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g)];
+   if(attrs.some(attr=>attr[1].toLowerCase()==='type'&&(attr[2]??attr[3]??attr[4]??'').toLowerCase()==='application/ld+json'))return block;
+  }
+  return ' ';
+ });
+}
 export async function readQueuedPage(row,fetcher=fetch,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),requestBudget={remaining:PUBLIC_PAGE_REQUEST_LIMIT}){
  const record={id:row.id,url:row.url,title:'',text:'',status:'fetch_failed',readAt:new Date().toISOString(),limitations:['Server HTML/text extraction only; dynamic content and hidden layout may require separate review.']};
  try{
@@ -84,9 +99,16 @@ export async function readQueuedPage(row,fetcher=fetch,sleep=ms=>new Promise(res
    const contentType=response.headers.get('Content-Type')||'';record.contentType=contentType;
    if(/application\/pdf/i.test(contentType)){await response.body?.cancel();error('pdf_reader_required');}
    if(!/text\/html|application\/xhtml|text\/plain/i.test(contentType)){await response.body?.cancel();error('unsupported_content');}
-   const body=await bounded(response,MAX_BODY),parsed=/html/i.test(contentType)?visiblePageText(body):{title:'',text:body.slice(0,50000),partial:body.length>50000};
+   const largeReviewedPage=row.country==='AU'&&url===LARGE_REVIEWED_GP_URL;
+   const body=await bounded(response,largeReviewedPage?LARGE_REVIEWED_GP_MAX_BODY:MAX_BODY),html=/html/i.test(contentType);
+   const parsed=html?visiblePageText(body):{title:'',text:body.slice(0,50000),partial:body.length>50000};
+   const scopedText=reviewedGpRecruitmentText(url,parsed.text),scoped=scopedText!==parsed.text;
+   if(scopedText===null)error('empty_text');
+   parsed.text=scopedText;
    if(!parsed.text.trim())error('empty_text');Object.assign(record,parsed,{status:parsed.partial?'read_partial':'read',finalUrl:url});
-   record.enrichment=extractPublicContacts({...(/html/i.test(contentType)?{html:body}:{text:parsed.text}),sourceURL:url,readAt:record.readAt});
+   const contactHtml=largeReviewedPage&&html?contactMarkupWithoutInertScripts(body):scoped&&html?reviewedGpRecruitmentMarkup(url,withoutHiddenMarkup(body)):body;
+   record.enrichment=extractPublicContacts({...(html?{html:contactHtml}:{text:parsed.text}),sourceURL:url,readAt:record.readAt});
+   if(largeReviewedPage&&contactHtml!==body)record.limitations.push('Inert scripts, styles and comments were omitted before bounded public contact extraction; JSON-LD and hidden-container checks remain in force.');
    if(parsed.partial)record.limitations.push('Only the first 50000 text characters were evaluated.');return record;
   }
  }catch(e){record.status=/^(invalid_url|body_too_large|empty_text|robots_blocked|robots_unavailable|crawl_delay_exceeds_budget|redirect_limit|access_denied|http_error|http_rejected|pdf_reader_required|unsupported_content|request_budget_exhausted)$/.test(e.message)?e.message:'fetch_failed';}

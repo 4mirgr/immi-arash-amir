@@ -3,18 +3,24 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {GP_REVIEWED_SOURCE_DEFINITIONS as defs,normalizeReviewedGpSourceRecords as normalize} from '../cloud/gp-reviewed-source-adapter.mjs';
+import {reviewedGpRecruitmentText} from '../cloud/gp-reviewed-recruitment-scope.mjs';
+import {readQueuedPage} from '../cloud/public-page-worker.mjs';
+import {assessFiveTier} from '../cloud/gp-workflow.mjs';
 import {SOURCE_REGISTRY,normalizeSourceRecords,collectRegisteredSources} from '../cloud/source-collectors.mjs';
 import {upsertOpportunityBatch} from '../cloud/opportunity-store.mjs';
 const active=defs.filter(s=>s.executable),allActive=SOURCE_REGISTRY.filter(s=>s.executable);
 const html=body=>'<html><head><title>Synthetic clinic careers</title></head><body>'+body+'</body></html>';
-function content(source,negative=false){return html(source.id==='reviewed-hwq-wembley-level1'?'<p>Publisher headquarters email publisher@example.invalid.</p><h2>Position Highlights:</h2><p>General Practitioner opportunity for International Medical Graduates requiring Level 1-2 supervision. AMC Certificate required. Eligibility for RACGP PESCI assessment.</p><h3>Practice Contact Details:</h3><p>Practice: Wembley Rd Medical Centre Contact: Synthetic contact Phone: 07 1234 5678 Email: apply@wrmc.au Website: www.wrmc.au</p><button>APPLY NOW!</button><p>Publisher elsewhere email publisher@example.invalid.</p>':'<h1>General Practitioner employment and training</h1><p>Our practice invites GP enquiries and international medical graduates to discuss the requirements of supervised general practice.</p><p>'+(negative?'We currently do not have any positions for PESCI or Level 1 supervision.':'IMG support may be available, subject to registration requirements.')+'</p><p>Email your CV to <a href="mailto:recruit@example.invalid">our recruitment team</a>.</p>');}
+function content(source,negative=false){
+ if(source.id==='reviewed-ausdocs-img-network')return html('<h2>General Expressions of Interest</h2><p>General enquiries.</p><p>Tell us about your training and we can discuss employment opportunities in our network.</p><h3>General Practitioner – International Interest</h3><p>Ausdocs Group</p><p>VIEW / APPLY</p><h3>Practice Nurse</h3><a href="mailto:nursing@example.invalid">Apply</a><h3>Career Enquiry</h3><p><a href="mailto:fixture@ausdocsgroup.com.au">fixture@ausdocsgroup.com.au</a></p>');
+ return html(source.id==='reviewed-hwq-wembley-level1'?'<p>Publisher headquarters email publisher@example.invalid.</p><h2>Position Highlights:</h2><p>General Practitioner opportunity for International Medical Graduates requiring Level 1-2 supervision. AMC Certificate required. Eligibility for RACGP PESCI assessment.</p><h3>Practice Contact Details:</h3><p>Practice: Wembley Rd Medical Centre Contact: Synthetic contact Phone: 07 1234 5678 Email: apply@wrmc.au Website: www.wrmc.au</p><button>APPLY NOW!</button><p>Publisher elsewhere email publisher@example.invalid.</p>':'<h1>General Practitioner employment and training</h1><p>Our practice invites GP enquiries and international medical graduates to discuss the requirements of supervised general practice.</p><p>'+(negative?'We currently do not have any positions for PESCI or Level 1 supervision.':'IMG support may be available, subject to registration requirements.')+'</p><p>Email your CV to <a href="mailto:recruit@example.invalid">our recruitment team</a>.</p>');
+}
 function fixture(position){
  const db=new DatabaseSync(':memory:');for(const file of ['opportunity-v2-schema.sql','source-registry-schema.sql'])db.exec(readFileSync(new URL('../cloud/'+file,import.meta.url),'utf8'));
  db.prepare("UPDATE source_collector_state SET position=? WHERE id='rotation'").run(position);
  const binding={prepare(sql){return{bind(...args){const st=db.prepare(sql);return{async first(){return st.get(...args)||null;},async all(){return{results:st.all(...args)};},async run(){return{success:true,meta:st.run(...args)};},_run(){return st.run(...args);}};}};},async batch(items){db.exec('BEGIN');try{for(const item of items)item._run();db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}}};return{db,env:{OPPORTUNITY_DB:binding}};
 }
 test('only reviewed successful collector HTTP pages activate; unavailable restriction source stays manual',()=>{
- assert.equal(active.length,12);assert.equal(new Set(defs.map(s=>s.id)).size,defs.length);assert.equal(defs.find(s=>s.id==='reviewed-ararat-level1-restriction').executable,false);
+ assert.equal(active.length,13);assert.equal(new Set(defs.map(s=>s.id)).size,defs.length);assert.equal(defs.find(s=>s.id==='reviewed-ararat-level1-restriction').executable,false);
  for(const source of defs){assert.equal(new URL(source.feedUrl).protocol,'https:');assert.deepEqual(source.allowedHosts,[new URL(source.feedUrl).hostname]);assert(source.reason);assert.equal(source.evidenceQuotes,undefined);assert.equal(source.publishedContacts,undefined);assert(SOURCE_REGISTRY.some(s=>s.id===source.id));}
 });
 test('new first-party and workforce pages retain real text, contacts and uncertainty instead of making offers',async()=>{
@@ -62,9 +68,45 @@ test('referral adapter isolates the practice contact and retains AMC/PESCI requi
  assert.throws(()=>normalize(source,html('General Practitioner jobs with no identifiable current practice section.')),e=>e.code==='reviewed_gp_job_section_missing');
 });
 test('network pages remain enquiry registers and cannot widen their host or fabricate a current vacancy',()=>{
- for(const source of active.filter(s=>s.kind==='employment_register')){const [row]=normalize({...source,feedUrl:'https://evil.invalid/',allowedHosts:['evil.invalid']},content(source));assert.equal(row.kind,'employment_register');assert.equal(row.url,source.feedUrl);assert.match(row.title,/expression of interest/);assert.equal(row.contactEvidence[0].sourceURL,source.feedUrl);}
+ for(const source of active.filter(s=>s.kind==='employment_register'&&s.id!=='reviewed-queen-street-img-training')){const [row]=normalize({...source,feedUrl:'https://evil.invalid/',allowedHosts:['evil.invalid']},content(source));assert.equal(row.kind,'employment_register');assert.equal(row.url,source.feedUrl);assert.match(row.title,/expression of interest/);assert.equal(row.contactEvidence[0].sourceURL,source.feedUrl);}
  assert.throws(()=>normalize({...active[0],id:'unregistered'},content(active[0])));assert.throws(()=>normalize({...active[0],adapter:'other'},content(active[0])));assert.throws(()=>normalize(defs.find(s=>s.id==='reviewed-ararat-level1-restriction'),content(defs.find(s=>s.id==='reviewed-ararat-level1-restriction'))));
  for(const bad of ['Not HTML',html('Access denied'), html('General Practitioner careers — verify you are human. '+ 'This page requires a browser challenge. '.repeat(8)), 'x'.repeat(1000001)])assert.throws(()=>normalize(active[1],bad));
+});
+test('mixed clinic careers page imports and re-reads only the supervised GP training enquiry',async()=>{
+ const source=defs.find(s=>s.id==='reviewed-queen-street-img-training');
+ const body=html('<h2>Practice Nurse</h2><p>Current AHPRA registration as a Registered Nurse required.</p><a href="mailto:nursing@example.invalid">Apply</a><h2>Training Doctors — GP Registrars</h2><p>Our training practice provides general practice experience and invites international medical graduates to enquire about GP recruitment and mentorship.</p><p>Supervision available from Level 1 to Level 4</p><a href="mailto:training@example.invalid">Apply / enquire</a><h2>Consulting Rooms for Allied Health</h2><a href="mailto:rental@example.invalid">Enquire</a>');
+ const [row]=normalize(source,body);
+ assert.equal(row.kind,'employment_register');assert.equal(row.closingAt,null);assert.equal(row.status,undefined);
+ assert.deepEqual(row.contactEvidence.map(contact=>contact.value),['training@example.invalid']);
+ assert(!/Registered Nurse|Consulting Rooms|nursing@|rental@/.test(row.fullText));
+ assert.match(row.fullText,/Level 1 to Level 4/);
+ const view=assessFiveTier({...row,fullText:row.fullText.replace(/\s+/g,' ')},'employment');
+ assert.equal(view.matrix.find(entry=>entry.id==='level1').status,'potential');
+ assert.equal(view.matrix.find(entry=>entry.id==='registration').status,'not_stated');
+ assert.equal(view.matrix.find(entry=>entry.id==='sponsorship').status,'not_stated');
+ const publicRead='Practice Nurse\nPESCI required\nTraining Doctors — GP Registrars\n'+('General practice training and supervision. '.repeat(5))+'\nSupervision available from Level 1 to Level 4\nSpace available\nNurse registration required';
+ assert(!/PESCI required|Nurse registration/.test(reviewedGpRecruitmentText(source.feedUrl,publicRead)));
+ assert.equal(reviewedGpRecruitmentText(source.feedUrl,'Generic GP advertisement'),null);
+ assert.equal(reviewedGpRecruitmentText('https://another.example.invalid/',publicRead),publicRead);
+ const read=await readQueuedPage({id:'queen-street',url:source.feedUrl,country:'AU',data:JSON.stringify({officialBases:source.allowedHosts})},async url=>url.endsWith('/robots.txt')?new Response(null,{status:404}):new Response(body,{headers:{'Content-Type':'text/html'}}));
+ assert.equal(read.status,'read');assert(!/Registered Nurse|Consulting Rooms/.test(read.text));
+ assert.deepEqual(read.enrichment.contacts.map(contact=>contact.value),['training@example.invalid']);
+});
+test('explicit expired and unavailable vacancy banners close only the vacancy',()=>{
+ const source=defs.find(s=>s.id==='reviewed-calwell-fmc-gp');
+ const body=notice=>html('<h1>General Practitioner</h1><p>'+notice+'</p><p>We are recruiting overseas general practitioners for our supervised training program and welcome PESCI applicants.</p>');
+ for(const notice of ['This job is no longer available.','This vacancy has expired.','This position is no longer open.'])assert.equal(normalize(source,body(notice))[0].status,'closed');
+ assert.equal(normalize(source,body('This website feature is no longer available.'))[0].status,undefined);
+});
+test('relocated Ausdocs publisher keeps the international enquiry and excludes other postings',async()=>{
+ const source=defs.find(s=>s.id==='reviewed-ausdocs-img-network'),body=content(source),[row]=normalize(source,body);
+ assert.equal(row.url,'https://ausdocsgroup.com.au/careers/');
+ assert.equal(row.kind,'employment_register');
+ assert.match(row.fullText,/International Interest/);
+ assert(!/Practice Nurse|nursing@/.test(row.fullText));
+ const read=await readQueuedPage({id:'ausdocs',url:source.feedUrl,country:'AU',data:JSON.stringify({officialBases:source.allowedHosts})},async url=>url.endsWith('/robots.txt')?new Response(null,{status:404}):new Response(body,{headers:{'Content-Type':'text/html'}}));
+ assert.equal(read.status,'read');
+ assert.deepEqual(read.enrichment.contacts.map(contact=>contact.value),['fixture@ausdocsgroup.com.au']);
 });
 test('registered rotation obeys robots before body fetch and keeps source/record budgets bounded',async()=>{
  const start=allActive.findIndex(s=>s.id===active[0].id),f=fixture(start),calls=[];

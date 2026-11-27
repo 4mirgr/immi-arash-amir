@@ -174,9 +174,9 @@
     "state": "QLD",
     "profileScope": "both",
     "trust": "official",
-    "feedUrl": "https://ausdocsgroup.com.au/work-with-us",
-    "evidenceUrl": "https://ausdocsgroup.com.au/work-with-us",
-    "portalUrl": "https://ausdocsgroup.com.au/work-with-us",
+    "feedUrl": "https://ausdocsgroup.com.au/careers/",
+    "evidenceUrl": "https://ausdocsgroup.com.au/careers/",
+    "portalUrl": "https://ausdocsgroup.com.au/careers/",
     "allowedHosts": [
       "ausdocsgroup.com.au"
     ],
@@ -187,54 +187,27 @@
     "opportunityType": "job",
     "kind": "employment_register",
     "adapter": "gp_reviewed_html",
-    "executable": false,
-    "configurationStatus": "reviewed_candidate_requires_adapter_and_runtime_check",
-    "reviewedAt": "2026-11-05",
+    "executable": true,
+    "configurationStatus": "verified_fixed_page",
+    "reviewedAt": "2026-11-27",
     "readEvidence": {
       "method": "exa_full_page_and_direct_http",
       "httpStatus": 200,
       "currentVacancyConfirmed": false,
       "closingAt": null
     },
-    "evidenceQuotes": [
-      {
-        "topic": "img",
-        "text": "We have a dedicated team working behind the scenes to support suitable International Medical Graduates (IMGs) to explore options with a number of our clinics.",
-        "sourceUrl": "https://ausdocsgroup.com.au/work-with-us"
-      },
-      {
-        "topic": "mmm_network",
-        "text": "we have accredited training clinics in MMM1 to MMM5 locations.",
-        "sourceUrl": "https://ausdocsgroup.com.au/work-with-us"
-      },
-      {
-        "topic": "conditional_supervision",
-        "text": "This means we carefully assess each candidate’s qualifications, skills, experience and support needs to ensure we can provide the right level of supervision and set both the doctor and the practice up for success.",
-        "sourceUrl": "https://ausdocsgroup.com.au/work-with-us"
-      }
-    ],
-    "publishedContacts": [
-      {
-        "type": "phone",
-        "value": "07 3392 2614",
-        "contactRole": "application",
-        "sourceUrl": "https://ausdocsgroup.com.au/work-with-us",
-        "quote": "Call us on (07) 3392 2614"
-      }
-    ],
-    "requirements": [
-      "Individual qualifications, skills, experience and support needs are assessed by the network."
-    ],
+    "evidenceQuotes": [],
+    "publishedContacts": [],
+    "requirements": [],
     "limitations": [
       "Network enquiry page, not one specific vacancy.",
-      "MMM1–5 is a claim about the network, not verified geography for an individual clinic.",
-      "No explicit Level1 or PESCI commitment; capacity must be confirmed for the named practice.",
-      "No application email was published in the page content read; use the official enquiry form or phone."
+      "The previous work-with-us URL returned 404; the publisher now lists International Interest on its careers page.",
+      "No current named host clinic, specific Level 1 or PESCI commitment, or visa sponsorship is established by this enquiry."
     ],
     "sourceType": "first_party_network_employment_register",
     "practiceManager": null,
     "relatedApplicationUrl": "https://ausdocs-external.applynow.net.au/jobs/AUSDOC01-general-practitioner-international-interest",
-    "url": "https://ausdocsgroup.com.au/work-with-us",
+    "url": "https://ausdocsgroup.com.au/careers/",
     "directHttpStatus": 200,
     "collectorUserAgentHttpStatus": 200,
     "activationAllowed": true
@@ -816,6 +789,28 @@
     ],
     "sourceType": "first_party_employment_program",
     "url": "https://www.gpap.com.au/img-jobs",
+    "directHttpStatus": 200,
+    "collectorUserAgentHttpStatus": 200,
+    "activationAllowed": true
+  },
+  {
+    "id": "reviewed-queen-street-img-training",
+    "name": "Queen Street Family Medical Centre — GP training enquiry",
+    "state": "NSW",
+    "trust": "official",
+    "feedUrl": "https://queenstreetfmc.com.au/careers.html",
+    "portalUrl": "https://queenstreetfmc.com.au/careers.html",
+    "allowedHosts": ["queenstreetfmc.com.au"],
+    "organizationName": "Queen Street Family Medical Centre",
+    "organizationDomain": "queenstreetfmc.com.au",
+    "location": "Campbelltown, NSW",
+    "title": "General Practitioner training enquiry — Queen Street Family Medical Centre",
+    "kind": "employment_register",
+    "reviewedAt": "2026-11-27",
+    "limitations": [
+      "First-party GP training enquiry for IMGs; the clinic lists a Level 1–4 range.",
+      "Current Level 1 place, named supervisor, offshore/pre-PESCI consideration and employer visa sponsorship are not stated."
+    ],
     "directHttpStatus": 200,
     "collectorUserAgentHttpStatus": 200,
     "activationAllowed": true

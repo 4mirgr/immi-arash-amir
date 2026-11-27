@@ -7,6 +7,49 @@ import {robotsAllows,readQueuedPage,dispatchPublicPageReading,visiblePageText} f
 function fixture(){const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../cloud/public-page-schema.sql',import.meta.url),'utf8'));db.exec(readFileSync(new URL('../cloud/public-page-enrichment-schema.sql',import.meta.url),'utf8'));let queries=0;const binding={prepare(sql){queries++;return {bind(...args){return {async first(){return db.prepare(sql).get(...args)||null;},async all(){return {results:db.prepare(sql).all(...args)};},run(){return {meta:db.prepare(sql).run(...args)};}};}};},async batch(items){db.exec('BEGIN');try{const results=items.map(s=>s.run());db.exec('COMMIT');return results;}catch(e){db.exec('ROLLBACK');throw e;}}};return {db,env:{OPPORTUNITY_DB:binding,PUBLIC_PAGE_READING_ENABLED:'true'},queries:()=>queries};}
 const row=(n=1,country='IT')=>({id:'page_'+String(n).padStart(32,'0'),url:'https://example.invalid/call-'+n,country,institutionIds:['university-1'],officialBases:['example.invalid'],labels:['Clinical research call']});
 const body='Clinical research scholarship. Applications are invited for a doctoral programme in medicine. Applicants must hold a relevant degree. Funding is subject to the full published call. Applications close on 30 November 2026. Read the full requirements before applying.';
+test('the exact reviewed GPAP page reads bounded large markup and extracts visible contacts after inert scripts',async()=>{
+ const sourceURL='https://www.gpap.com.au/img-jobs',r={...row(880,'AU'),url:sourceURL,officialBases:['gpap.com.au']};
+ const jsonld={'@context':'https://schema.org','@type':'JobPosting',hiringOrganization:{'@type':'Organization',name:'Synthetic GP Network'},applicationContact:{email:'structured@example.invalid'}};
+ const html='<html><head><script type="application/json">'+JSON.stringify({layout:'x'.repeat(1100000),unpublished:'inert@example.invalid'})+'</script><script>globalThis.GPAP_CONTACT_TEST_EXECUTED=true;</script><style>.unused{content:"style@example.invalid"}</style></head><body><main><h1>General practitioner employment enquiries</h1><p>Our synthetic network provides GP mentoring and community clinical services. Supervision and sponsorship must be confirmed for the specific clinic.</p><div hidden><p>hidden@example.invalid</p><script type="application/ld+json">{"@type":"Organization","email":"hidden-jsonld@example.invalid"}</script></div><template><template>Nested inert markup.</template>template@example.invalid</template><p>For GP applications, contact our recruitment team: <a href="mailto:published@example.invalid">Email recruitment</a></p><script type="application/ld+json">'+JSON.stringify(jsonld)+'</script></main></body></html>';
+ let calls=0;const result=await readQueuedPage({...r,data:JSON.stringify(r)},async(url,options)=>{
+  calls++;assert.equal(options.redirect,'manual');assert.equal(options.headers['User-Agent'],'MasirUniversityDiscovery/1.0');assert(!options.headers.Authorization);
+  return new Response(url.endsWith('/robots.txt')?'User-agent: *\nAllow: /':html,{headers:{'Content-Type':url.endsWith('/robots.txt')?'text/plain':'text/html'}});
+ });
+ assert.equal(result.status,'read');assert.equal(calls,2);assert.equal(result.finalUrl,sourceURL);
+ assert.match(result.text,/synthetic network provides GP mentoring/);assert(!result.text.includes('layout'));
+ const contacts=result.enrichment.contacts.map(contact=>contact.value);assert(contacts.includes('published@example.invalid'));assert(contacts.includes('structured@example.invalid'));
+ assert(!contacts.some(value=>/^(?:inert|style|hidden|hidden-jsonld|template)@/.test(value)));assert.equal(globalThis.GPAP_CONTACT_TEST_EXECUTED,undefined);
+ assert(result.enrichment.contacts.every(contact=>contact.sourceURL===sourceURL));assert.equal(result.enrichment.readAt,result.readAt);
+});
+test('the GPAP larger-response exception never expands other URLs or countries and remains byte bounded',async()=>{
+ const html='<html><script type="application/json">'+JSON.stringify({layout:'x'.repeat(1100000)})+'</script><main>Published clinical GP employment information.</main></html>';
+ for(const [url,country]of [['https://www.gpap.com.au/other','AU'],['https://www.gpap.com.au/img-jobs?extra=1','AU'],['https://www.gpap.com.au/img-jobs','IT'],['https://other.example.invalid/img-jobs','AU']]){
+  const r={...row(881,country),url,officialBases:[new URL(url).hostname]};
+  const result=await readQueuedPage({...r,data:JSON.stringify(r)},async target=>new Response(target.endsWith('/robots.txt')?'User-agent: *':html,{headers:{'Content-Type':target.endsWith('/robots.txt')?'text/plain':'text/html'}}));
+  assert.equal(result.status,'body_too_large',url+' '+country);
+ }
+ const r={...row(882,'AU'),url:'https://www.gpap.com.au/img-jobs',officialBases:['gpap.com.au']};
+ const oversized='<html><script>'+('界'.repeat(1000001))+'</script><main>Clinical GP employment information.</main></html>';
+ const result=await readQueuedPage({...r,data:JSON.stringify(r)},async url=>new Response(url.endsWith('/robots.txt')?'User-agent: *':oversized,{headers:{'Content-Type':url.endsWith('/robots.txt')?'text/plain':'text/html'}}));
+ assert.equal(result.status,'body_too_large');assert(!result.enrichment);
+});
+test('a GPAP redirect does not carry its larger body limit to another path',async()=>{
+ const r={...row(884,'AU'),url:'https://www.gpap.com.au/img-jobs',officialBases:['gpap.com.au']},calls=[];
+ const result=await readQueuedPage({...r,data:JSON.stringify(r)},async url=>{
+  calls.push(url);if(url.endsWith('/robots.txt'))return new Response('User-agent: *');
+  if(url===r.url)return new Response(null,{status:302,headers:{Location:'/other'}});
+  return new Response('<html><script>'+('x'.repeat(1100000))+'</script><main>Clinical GP careers.</main></html>',{headers:{'Content-Type':'text/html'}});
+ });
+ assert.equal(result.status,'body_too_large');assert.deepEqual(calls,['https://www.gpap.com.au/robots.txt',r.url,'https://www.gpap.com.au/other']);
+});
+test('large GPAP reads keep robots and the shared HTTP request budget authoritative',async()=>{
+ const r={...row(883,'AU'),url:'https://www.gpap.com.au/img-jobs',officialBases:['gpap.com.au']};let calls=0;
+ const denied=await readQueuedPage({...r,data:JSON.stringify(r)},async url=>{calls++;assert(url.endsWith('/robots.txt'));return new Response('User-agent: *\nDisallow: /img-jobs');});
+ assert.equal(denied.status,'robots_blocked');assert.equal(calls,1);
+ const budget={remaining:1};calls=0;
+ const limited=await readQueuedPage({...r,data:JSON.stringify(r)},async url=>{calls++;assert(url.endsWith('/robots.txt'));return new Response('User-agent: *');},async()=>{},budget);
+ assert.equal(limited.status,'request_budget_exhausted');assert.equal(calls,1);assert.equal(budget.remaining,0);
+});
 test('only actual reading produces owner-scoped extracted evidence; queued links do not',async()=>{const f=fixture(),r=row();await enqueuePublicPages(f.env.OPPORTUNITY_DB,[r]);assert.equal(f.db.prepare('SELECT count(*) n FROM public_page_evidence').get().n,0);await storePublicReading(f.env.OPPORTUNITY_DB,{...r,status:'read',readAt:new Date().toISOString(),title:'Clinical scholarship',text:body});const a=f.db.prepare('SELECT * FROM public_page_evidence').all();assert.equal(a.length,1);assert.equal(a[0].profile_id,'amir');assert.equal(JSON.parse(a[0].analysis).eligibility,'not_assessed');assert.equal(f.db.prepare('SELECT count(*) n FROM public_page_content').get().n,1);});
 test('repeat discovery keeps provenance and reading state, and unreadable replacement invalidates old claims',async()=>{const f=fixture(),r=row();await enqueuePublicPages(f.env.OPPORTUNITY_DB,[r]);await storePublicReading(f.env.OPPORTUNITY_DB,{...r,status:'read_partial',readAt:new Date().toISOString(),text:body});await enqueuePublicPages(f.env.OPPORTUNITY_DB,[{...r,institutionIds:['university-2']}]);const q=f.db.prepare('SELECT * FROM public_page_queue').get();assert.deepEqual(JSON.parse(q.data).institutionIds,['university-1','university-2']);assert.equal(q.status,'read_partial');await storePublicReading(f.env.OPPORTUNITY_DB,{...r,status:'robots_blocked',readAt:new Date().toISOString()});assert.equal(f.db.prepare('SELECT count(*) n FROM public_page_evidence').get().n,0);});
 test('Italy results cannot cross into Arash and section filtering uses actual evidence',async()=>{const f=fixture(),r=row();await enqueuePublicPages(f.env.OPPORTUNITY_DB,[r]);await storePublicReading(f.env.OPPORTUNITY_DB,{...r,status:'read',readAt:new Date().toISOString(),text:body});const req=q=>new Request('https://app.example/api/research/pages?'+q);assert.equal((await handlePublicPagesRequest(req('country=IT'),f.env,{userId:'b',profileId:'arash'})).status,403);const result=await(await handlePublicPagesRequest(req('country=IT&section=study'),f.env,{userId:'a',profileId:'amir'})).json();assert.equal(result.total,1);assert.equal(result.queue.read,1);assert(!JSON.stringify(result).includes('public_page_content'));assert.equal((await handlePublicPagesRequest(req('country=AU&profile=amir'),f.env,{userId:'b',profileId:'arash'})).status,403);});
