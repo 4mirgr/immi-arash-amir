@@ -25,6 +25,21 @@ test('a changing source or message invalidates the complete opportunity preview'
  const f=fixture({call:(path,body)=>path.includes('/preview')&&body.recipient.startsWith('two')?{opportunityId,presetId,cvVersionId,mailbox:'primary',sender:'sender@example.invalid',message:{subject:'Changed',body:'Changed source'},recipients:[{recipient:body.recipient,cvVersionId,attachmentName:'own-cv.docx'}],reviewHash:'changed'}:undefined});
  const prepared=await prepareRecipientBatch({api:f.api,person:'arash',plans:[plan()]});assert.equal(prepared.entries.length,0);assert.equal(prepared.blocked.length,2);assert(prepared.blocked.every(e=>e.reason==='application_changed_review_required'));
 });
+test('a changing cover letter PDF invalidates review before batch transport',async()=>{
+ const coverLetter='Synthetic practice-specific cover letter.',cvName='Synthetic CV.pdf';
+ const documents=hash=>[{name:cvName,mimeType:'application/pdf',hash:'a'.repeat(64),size:500},{name:'Synthetic Cover Letter.pdf',mimeType:'application/pdf',hash:hash.repeat(64),size:600}];
+ const preview=(body,hash)=>({opportunityId,presetId,cvVersionId,mailbox:'primary',sender:'sender@example.invalid',message:{subject:'Synthetic application',body:'Synthetic short email.'},coverLetter,attachments:documents(hash),recipients:[{recipient:body.recipient,cvVersionId,subject:'Synthetic application',attachmentName:cvName,status:'preview'}],reviewHash:'hash-'+body.recipient});
+ const drift=fixture({call:(path,body)=>path.includes('/preview')?preview(body,body.recipient.startsWith('one')?'b':'c'):undefined});
+ const rejected=await prepareRecipientBatch({api:drift.api,person:'arash',plans:[plan()]});
+ assert.equal(rejected.entries.length,0);assert(rejected.blocked.every(row=>row.reason==='application_changed_review_required'));
+ const changed=fixture({call:(path,body)=>{
+  if(path.includes('/preview'))return preview(body,'b');
+  if(path.includes('/queue'))return {opportunityId,mailbox:'primary',attachments:documents('c'),items:[{id:'queue-drift',recipient:body.recipient,sender:'sender@example.invalid',subject:'Synthetic application',cvVersionId,attachmentName:cvName,status:'queued',reused:false}]};
+ }});
+ const prepared=await prepareRecipientBatch({api:changed.api,person:'arash',plans:[plan()]});
+ const result=await sendRecipientBatch({api:changed.api,person:'arash',prepared,confirmReviewed:true});
+ assert.equal(result.results[0].reason,'application_changed_review_required');assert(result.stopped);assert(changed.calls.every(call=>!call.path.includes('/dispatch')));
+});
 test('send requires explicit review, pins every queued message, and consumes approval once',async()=>{
  const f=fixture(),prepared=await prepareRecipientBatch({api:f.api,person:'arash',plans:[plan()]});
  await assert.rejects(sendRecipientBatch({api:f.api,person:'arash',prepared}),/explicit_review_required/);assert.equal(f.calls.filter(c=>c.path.includes('/queue')).length,0);

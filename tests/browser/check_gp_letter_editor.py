@@ -26,15 +26,17 @@ P4 = 'Please let me know a convenient time to discuss how I can support your pra
 SIGNATURE = 'Kind regards,\nDr Synthetic Arash\nsynthetic@example.invalid\n+61 2 0000 0000'
 P2 = 'I am interested in Synthetic Clinic because its ongoing training would support the kind of collaborative general practice I hope to develop.'
 P3 = 'My experience managing acute and chronic conditions would help me contribute to careful assessment and continuity of patient care within your team.'
+SHORT = 'Dear Practice Manager,\n\nPlease find my CV and cover letter attached for your consideration.\n\n'+SIGNATURE
+DOCUMENTS = [{'name': 'Dr Arash Entezar – CV.pdf', 'mimeType': 'application/pdf', 'hash': '1' * 64, 'size': 2048}, {'name': 'Dr Arash Entezar – Cover Letter – Synthetic Clinic.pdf', 'mimeType': 'application/pdf', 'hash': '2' * 64, 'size': 3072}]
 
 
-def package(cv=CV, p2=P2, p3=P3, subject='Synthetic Clinic GP application', saved=False):
-    body = '\n\n'.join(['Dear Practice Manager,', P1, p2, p3, P4, SIGNATURE])
+def package(cv=CV, p2=P2, p3=P3, subject='Synthetic Clinic GP application', saved=False, p1=P1, p4=P4):
+    body = '\n\n'.join(['Dear Practice Manager,', p1, p2, p3, p4, SIGNATURE])
     result = {'profileId': 'arash', 'opportunityId': OPP, 'cvVersionId': cv,
             'variant': 'B', 'recommendedVariant': 'B', 'templateName': 'GP B — Independent practice enquiry',
-            'subjects': [subject, 'Second synthetic subject', 'Third synthetic subject'], 'body': body, 'previewBody': body,
-            'paragraphs': {'opening': P1, 'clinicReason': p2, 'candidateValue': p3, 'closing': P4},
-            'previewParagraphs': {'opening': P1, 'clinicReason': p2, 'candidateValue': p3, 'closing': P4},
+            'subjects': [subject, 'Second synthetic subject', 'Third synthetic subject'], 'body': body, 'previewBody': body, 'emailBody': SHORT,
+            'paragraphs': {'opening': p1, 'clinicReason': p2, 'candidateValue': p3, 'closing': p4},
+            'previewParagraphs': {'opening': p1, 'clinicReason': p2, 'candidateValue': p3, 'closing': p4},
             'suggestedSelection': {'clinicQuote': CQ, 'cvQuote': VQ},
             'clinicEvidenceCandidates': [{'text': CQ}], 'cvEvidenceCandidates': [{'text': VQ, 'cvScope': 'clinical_self_report'}],
             'connectionCandidates': [], 'recipients': ['clinic@example.invalid'],
@@ -103,7 +105,7 @@ function Harness(){const [version,setVersion]=useState(0),[compact,setCompact]=u
             if mode == 'error':
                 request.fulfill(status=409, json={'error': 'gp_letter_edit_context_changed'})
                 return
-            saved = package(payload['selection']['cvVersionId'], payload['clinicParagraph'], payload['valueParagraph'], payload['subject'], saved=True)
+            saved = package(payload['selection']['cvVersionId'], payload['clinicParagraph'], payload['valueParagraph'], payload['subject'], saved=True, p1=payload['openingParagraph'], p4=payload['closingParagraph'])
             saved['manualSubjectIndex'] = payload['subjectIndex']
             saved['subjects'][payload['subjectIndex']] = payload['subject']
             saved['restoredSelection'] = payload['selection']
@@ -114,6 +116,12 @@ function Harness(){const [version,setVersion]=useState(0),[compact,setCompact]=u
         elif path.endswith('/restore-edit'):
             assert payload == {'editedDraftId': EDIT}
             data = saved
+            if mode == 'restore_stale':
+                data = {**package(saved['cvVersionId']), 'editedDraftId': EDIT, 'ownerEditNeedsReview': True,
+                        'manualSubjectIndex': saved['manualSubjectIndex'], 'restoredSelection': saved['restoredSelection'],
+                        'savedEdit': {'subject': saved['subjects'][saved['manualSubjectIndex']],
+                                      'openingParagraph': saved['paragraphs']['opening'], 'clinicParagraph': saved['paragraphs']['clinicReason'],
+                                      'valueParagraph': saved['paragraphs']['candidateValue'], 'closingParagraph': saved['paragraphs']['closing']}}
         elif path.endswith('/apply-template'):
             assert payload['templateId'] == STYLE
             saved = package(payload['selection']['cvVersionId'], P2+' I would welcome the opportunity to learn from your team.', P3, saved=True)
@@ -125,12 +133,12 @@ function Harness(){const [version,setVersion]=useState(0),[compact,setCompact]=u
         elif path.endswith('/mail/preview'):
             assert payload['application']['editedDraftId'] == EDIT
             assert 'body' not in payload and 'subject' not in payload
-            data = {'opportunityId': OPP, 'mailbox': 'primary', 'presetId': PRESET, 'cvVersionId': payload['cvVersionId'], 'sender': 'synthetic@example.invalid', 'reviewHash': 'synthetic-hash', 'message': {'subject': saved['subjects'][0], 'body': saved['body']}, 'recipients': [{'recipient': 'clinic@example.invalid', 'subject': saved['subjects'][0], 'cvVersionId': payload['cvVersionId'], 'attachmentName': 'Synthetic CV.docx', 'status': 'preview'}], 'excluded': []}
+            data = {'opportunityId': OPP, 'mailbox': 'primary', 'presetId': PRESET, 'cvVersionId': payload['cvVersionId'], 'sender': 'synthetic@example.invalid', 'reviewHash': 'synthetic-hash', 'message': {'subject': saved['subjects'][0], 'body': SHORT}, 'coverLetter': saved['body'], 'attachments': DOCUMENTS, 'recipients': [{'recipient': 'clinic@example.invalid', 'subject': saved['subjects'][0], 'cvVersionId': payload['cvVersionId'], 'attachmentName': DOCUMENTS[0]['name'], 'attachments': DOCUMENTS, 'status': 'preview'}], 'excluded': []}
         elif path.endswith('/mail/queue'):
             assert payload['application']['editedDraftId'] == EDIT and payload['confirmReviewed'] is True
-            data = {'opportunityId': OPP, 'mailbox': 'primary', 'items': [{'id': QUEUE, 'status': 'queued', 'reused': False, 'recipient': 'clinic@example.invalid', 'sender': 'synthetic@example.invalid', 'cvVersionId': CV, 'subject': saved['subjects'][0], 'attachmentName': 'Synthetic CV.docx'}], 'excluded': []}
+            data = {'opportunityId': OPP, 'mailbox': 'primary', 'attachments': DOCUMENTS, 'items': [{'id': QUEUE, 'status': 'queued', 'reused': False, 'recipient': 'clinic@example.invalid', 'sender': 'synthetic@example.invalid', 'cvVersionId': CV, 'subject': saved['subjects'][0], 'attachmentName': DOCUMENTS[0]['name']}], 'excluded': []}
         elif path.endswith('/mail/dispatch'):
-            data = {'items': [{'id': QUEUE, 'status': 'sent', 'recipient': 'clinic@example.invalid', 'sender': 'synthetic@example.invalid'}]}
+            data = {'attachments': DOCUMENTS, 'items': [{'id': QUEUE, 'status': 'sent', 'recipient': 'clinic@example.invalid', 'sender': 'synthetic@example.invalid'}]}
         else:
             raise AssertionError('Unexpected synthetic endpoint '+method+' '+path)
         request.fulfill(json=data)
@@ -167,6 +175,10 @@ function Harness(){const [version,setVersion]=useState(0),[compact,setCompact]=u
         open_editor()
         expect(page.get_by_label('ویرایش بند دوم نامه', exact=True)).to_have_value(P2)
         expect(page.get_by_label('ویرایش بند سوم نامه', exact=True)).to_have_value(P3)
+        revised_opening = P1+' I would value a sustained contribution to the practice.'
+        revised_closing = 'I would welcome a discussion about your needs and my potential contribution.'
+        page.get_by_label('ویرایش بند اول نامه', exact=True).fill(revised_opening)
+        page.get_by_label('ویرایش بند چهارم نامه', exact=True).fill(revised_closing)
         revised = P2+' I would welcome the opportunity to work with your clinical team.'
         page.get_by_label('ویرایش بند دوم نامه', exact=True).fill(revised)
         expect(page.locator('.gp-letter-editor-dirty')).to_be_visible()
@@ -176,16 +188,21 @@ function Harness(){const [version,setVersion]=useState(0),[compact,setCompact]=u
         expect(page.get_by_label('ویرایش بند دوم نامه', exact=True)).to_have_value(revised)
         confirm()
         page.get_by_role('button', name='ذخیره روی نسخهٔ همین نامه', exact=True).click()
-        expect(page.locator('.gp-compact-letter pre')).to_contain_text(revised)
+        expect(page.locator('.gp-compact-letter .application-cover-preview pre')).to_contain_text(revised)
         expect(page.locator('.gp-letter-editor-saved')).to_be_visible()
-        assert P1 in page.locator('.gp-compact-letter pre').inner_text() and P4 in page.locator('.gp-compact-letter pre').inner_text() and SIGNATURE in page.locator('.gp-compact-letter pre').inner_text()
+        cover = page.locator('.gp-compact-letter .application-cover-preview pre').text_content()
+        assert revised_opening in cover and revised_closing in cover and SIGNATURE in cover
+        latest = [v for p, v in writes if p.endswith('/manual-edit')][-1]
+        assert latest['openingParagraph'] == revised_opening and latest['closingParagraph'] == revised_closing
         page.locator('.gp-compact-continue > button').click()
         expect(page.locator('.opportunity-mail')).to_be_visible()
         assert page.evaluate('window.__selection.editedDraftId') == EDIT
         page.locator('.send-action-dock-inline button').click()
-        expect(page.locator('.opportunity-mail-body')).to_have_text(saved['body'])
+        expect(page.locator('.opportunity-mail-body')).to_have_text(SHORT)
+        expect(page.locator('.application-cover-preview pre')).to_have_text(saved['body'])
+        expect(page.locator('.application-attachment-list li')).to_have_count(2)
         assert not [p for p, _ in writes if p.endswith('/queue') or p.endswith('/dispatch')]
-        page.get_by_role('checkbox', name='گیرندگان، متن و همین رزومه را بررسی کردم.', exact=True).check()
+        page.get_by_role('checkbox', name='گیرندگان، متن ایمیل و همهٔ پیوست‌های نمایش‌داده‌شده را بررسی کردم.', exact=True).check()
         page.locator('.send-action-dock-inline button').click()
         expect(page.locator('.send-action-dock-inline button')).to_contain_text('ارسال شد')
 
@@ -217,6 +234,21 @@ function Harness(){const [version,setVersion]=useState(0),[compact,setCompact]=u
         assert [v for p, v in writes if p.endswith('/manual-edit')][-1]['subjectIndex'] == 1
         assert page.evaluate('window.__draft.editedDraftId') == EDIT
 
+        # Changed canonical context preserves previous wording visibly, but
+        # the old receipt and earlier review cannot authorize another send.
+        mode = 'restore_stale'
+        old_opening, old_closing = saved['paragraphs']['opening'], saved['paragraphs']['closing']
+        reset(saved_id=EDIT)
+        expect(page.locator('.gp-letter-editor-dirty')).to_be_visible()
+        expect(page.get_by_label('ویرایش بند اول نامه', exact=True)).to_have_value(old_opening)
+        expect(page.get_by_label('ویرایش بند چهارم نامه', exact=True)).to_have_value(old_closing)
+        expect(page.locator('.gp-compact-continue > button')).to_be_disabled()
+        confirm()
+        page.get_by_role('button', name='ذخیره روی نسخهٔ همین نامه', exact=True).click()
+        expect(page.locator('.gp-letter-editor-saved')).to_be_visible()
+        assert 'editedDraftId' not in [v for p, v in writes if p.endswith('/manual-edit')][-1]
+        mode = 'success'
+
         # Existing templates request fresh clinic/CV reasoning. Failed saves
         # retain typed text, and discard restores the original current letter.
         reset()
@@ -225,7 +257,7 @@ function Harness(){const [version,setVersion]=useState(0),[compact,setCompact]=u
         page.locator('.gp-letter-template-tools > summary').click()
         page.get_by_label('انتخاب قالب شخصی نامه', exact=True).select_option(STYLE)
         page.get_by_role('button', name='نوشتن دوباره برای همین مرکز با این قالب', exact=True).click()
-        expect(page.locator('.gp-compact-letter pre')).to_contain_text('learn from your team')
+        expect(page.locator('.gp-compact-letter .application-cover-preview pre')).to_contain_text('learn from your team')
         open_editor()
         page.get_by_label('ویرایش بند دوم نامه', exact=True).fill(revised)
         mode = 'error'
@@ -277,4 +309,4 @@ function Harness(){const [version,setVersion]=useState(0),[compact,setCompact]=u
         browser.close()
     server.shutdown()
 
-print('PASS GP letter editor: in-place P2/P3, explicit replace/new adaptive template, fixed signature, saved artifact review/send, stale-owner/CV guards, error preservation, English and320/390/430/1440 reflow; synthetic transport only.')
+print('PASS GP letter editor: four editable paragraphs, immutable signature, replace/new adaptive template, short email + reviewed cover + two PDFs, stale-owner/CV guards, error preservation, bilingual narrow/large-font reflow; synthetic transport only.')

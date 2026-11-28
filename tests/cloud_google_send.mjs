@@ -193,3 +193,43 @@ test('follow-up-column upgrade preserves existing reply queues and keeps new rou
  db.exec(readFileSync(new URL('../cloud/google-send-followups.sql',import.meta.url),'utf8'));
  assert.equal(db.prepare('pragma table_info(google_send_queue)').all().filter(column=>column.name==='follow_up_context').length,1);
 });
+
+test('trusted GP applications freeze two encrypted PDFs and deliver short body plus exact Unicode filenames',async()=>{
+ const {buildGpApplicationEmail}=await import('../cloud/gp-mail-documents.mjs');
+ const f=await fixture(),practiceName='St Mary’s Practice',coverLetter='Dear Practice Manager,\n\nA distinct long cover letter describing the verified practice.\n\nKind regards,\nDr Arash Entezar';
+ const scoped={...f.arash,applicationDocuments:{practiceName,coverLetter}};
+ const input={...payload(),body:buildGpApplicationEmail({practiceName}),cvVersionId:ownCV};
+ const preview=await(await f.call('preview',input,scoped)).json();
+ assert.equal(preview.attachments.length,2);assert.equal(preview.attachments[0].name,'Dr Arash Entezar – CV.pdf');assert.equal(preview.attachments[1].name,'Dr Arash Entezar – Cover Letter – St Mary’s Practice.pdf');assert(!JSON.stringify(preview).includes('bytes'));
+ const queued=await(await f.call('queue',input,scoped)).json();assert.deepEqual(queued.attachments,preview.attachments);assert.deepEqual(queued.items[0].attachments,preview.attachments);
+ const row=f.db.prepare('select * from google_send_queue').get();assert.match(row.raw_mime,/^application-v1\./);assert(!row.raw_mime.includes('cover letter'));
+ const again=await(await f.call('queue',input,scoped)).json();assert.equal(again.items[0].id,queued.items[0].id);
+ const sent=await(await f.call('dispatch',{ids:[row.id]})).json();assert.equal(sent.items[0].status,'sent');
+ const raw=Buffer.from(JSON.parse(f.calls[0].options.body).raw,'base64url').toString('utf8');assert.equal((raw.match(/Content-Type: application\/pdf/g)||[]).length,2);assert(!raw.includes('wordprocessingml'));
+ const parts=raw.split(/--immi_[^\r\n]+\r\n/).slice(1,4);
+ assert.equal(Buffer.from(parts[0].split('\r\n\r\n')[1].trim(),'base64').toString('utf8'),input.body);
+ for(let i=0;i<2;i++){
+  const part=parts[i+1],header=part.split('\r\n\r\n')[0],segments=[...header.matchAll(/filename\*\d+\*=([^;\r\n]+)/g)].map(m=>m[1]).join('').replace(/^UTF-8''/,'');
+  assert.equal(decodeURIComponent(segments),preview.attachments[i].name);
+  const pdf=Buffer.from(part.split('\r\n\r\n')[1].trim(),'base64');assert.equal(pdf.length,preview.attachments[i].size);assert.equal(Buffer.from(await crypto.subtle.digest('SHA-256',pdf)).toString('hex'),preview.attachments[i].hash);
+ }
+ assert.match(Buffer.from(parts[2].split('\r\n\r\n')[1].trim(),'base64').toString('latin1'),/distinct long cover letter/);
+});
+test('GP documents cannot be supplied by client JSON or another owner and changed frozen content creates new queue',async()=>{
+ const f=await fixture(),input={...payload(),cvVersionId:ownCV},documents={practiceName:'Synthetic Practice',coverLetter:'Synthetic reviewed cover letter'};
+ assert.equal((await f.call('queue',{...input,applicationDocuments:documents})).status,400);
+ assert.equal((await f.call('queue',input,{...f.amir,applicationDocuments:documents})).status,403);
+ const scoped={...f.arash,applicationDocuments:documents};
+ assert.equal((await f.call('queue',payload(),scoped)).status,400);
+ assert.equal((await f.call('queue',{...input,replyContext:{messageId:'x'}},scoped)).status,400);
+ const a=await(await f.call('queue',input,scoped)).json(),b=await(await f.call('queue',input,{...scoped,applicationDocuments:{...documents,coverLetter:documents.coverLetter+' Changed.'}})).json();assert.notEqual(a.items[0].id,b.items[0].id);
+ const unsupported=await f.call('queue',input,{...scoped,applicationDocuments:{...documents,coverLetter:'فارسی'}});assert.equal(unsupported.status,422);assert.deepEqual(await unsupported.json(),{error:'gp_application_pdf_text_unsupported',document:'cover_letter'});
+});
+test('tampered GP PDF ciphertext and removed encryption prefix fail before Gmail transport',async()=>{
+ for(const mutate of [raw=>raw.slice(0,-4)+'AAAA',()=> 'MIME-Version: 1.0\r\n\r\nInjected']){
+  const f=await fixture(),scoped={...f.arash,applicationDocuments:{practiceName:'Synthetic Practice',coverLetter:'Synthetic cover'}};
+  const queued=await(await f.call('queue',{...payload(),cvVersionId:ownCV},scoped)).json(),row=f.db.prepare('select * from google_send_queue').get();
+  f.db.prepare('update google_send_queue set raw_mime=? where id=?').run(mutate(row.raw_mime),row.id);
+  const result=await(await f.call('dispatch',{ids:[queued.items[0].id]})).json();assert.equal(result.items[0].reason,'attachment_integrity_failed');assert.equal(f.calls.length,0);
+ }
+});

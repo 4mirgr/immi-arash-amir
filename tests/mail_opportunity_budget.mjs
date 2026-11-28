@@ -12,6 +12,7 @@ import {encryptGoogleSecret} from '../cloud/google-oauth.mjs';
 import {normalizeMessage} from '../cloud/google-mail.mjs';
 import {dispatchMailOpportunityNotifications} from '../cloud/telegram-notifications.mjs';
 import {seedVerifiedMailOpportunity} from './helpers/mail_opportunity_fixture.mjs';
+import {buildGpApplicationEmail} from '../cloud/gp-mail-documents.mjs';
 
 const owner='11111111-1111-4111-8111-111111111111',cvId='22222222-2222-4222-8222-222222222222';
 const origin='https://immi-arash-amir.dr-gerami-md.workers.dev';
@@ -144,7 +145,7 @@ test('a closure recorded during the final live Gmail source read blocks the atom
 
 test('concurrent own sender slots cannot reserve the same canonical application twice',async()=>{
  const f=await fixture(),primary=await f.seedOpportunity(),secondary=await f.seedOpportunity('secondary');assert.notEqual(primary.id,secondary.id);
- const enqueue=(item,slot)=>handleGoogleSendRequest(new Request(origin+'/api/google/mail/queue',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({mailOpportunityContext:{id:item.id,recipient:item.draft.recipients[0]},subject:item.draft.subject,body:item.draft.body,cvVersionId:cvId})}),f.env,f.context(slot),f.fetcher);
+ const enqueue=(item,slot)=>handleGoogleSendRequest(new Request(origin+'/api/google/mail/queue',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({mailOpportunityContext:{id:item.id,recipient:item.draft.recipients[0]},subject:item.draft.subject,body:buildGpApplicationEmail(item.draft.mailEnvelope),cvVersionId:cvId})}),f.env,{...f.context(slot),applicationDocuments:{practiceName:item.draft.mailEnvelope.practiceName,coverLetter:item.draft.body}},f.fetcher);
  const results=await Promise.all([enqueue(primary,'primary'),enqueue(secondary,'secondary')]);
  const rows=f.db.prepare('SELECT owner_id,status,mail_opportunity_context FROM google_send_queue').all();assert.equal(rows.length,1);assert.equal(rows[0].status,'queued');assert.equal(f.counts.sends,0);
  const payloads=await Promise.all(results.map(response=>response.json()));assert.equal(payloads.flatMap(value=>value.items||[]).length,1);assert(!JSON.stringify(payloads).includes('raw_mime'));

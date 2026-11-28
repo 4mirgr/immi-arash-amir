@@ -3,6 +3,7 @@ import { createDocx } from './docx.mjs';
 import { getOwnedMailReplyContext } from './google-mail.mjs';
 import { getOwnedClinicFollowUpContext } from './clinic-correspondence.mjs';
 import {getOwnedMailOpportunityContext} from './mail-opportunities.mjs';
+import {buildGpApplicationAttachments,buildGpApplicationEmail,GP_APPLICATION_DOCUMENT_VERSION,GpMailDocumentError} from './gp-mail-documents.mjs';
 
 const LIMIT = 20, MAX_MIME = 1400000, MAX_DRIVE_BYTES=1000000;
 const DRIVE='https://www.googleapis.com/drive/v3/files/';
@@ -22,8 +23,8 @@ const lines=value=>value.match(/.{1,76}/g)?.join('\r\n')||'';
 async function hash(value){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(value))),v=>v.toString(16).padStart(2,'0')).join('');}
 async function digestBytes(value){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',value)),v=>v.toString(16).padStart(2,'0')).join('');}
 async function queueKey(env){try{const raw=Uint8Array.from(atob(env.GOOGLE_TOKEN_KEY),c=>c.charCodeAt(0));if(raw.length!==32)throw Error();return await crypto.subtle.importKey('raw',raw,{name:'AES-GCM'},false,['encrypt','decrypt']);}catch{throw new SendError(503,'queue_encryption_not_configured');}}
-async function protectDriveMime(env,owner,raw){const iv=crypto.getRandomValues(new Uint8Array(12)),cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:encoder.encode('drive-mime:'+owner)},await queueKey(env),encoder.encode(raw));return 'drive-v1.'+b64(iv)+'.'+b64(new Uint8Array(cipher));}
-async function readQueuedMime(env,owner,value){if(!value.startsWith('drive-v1.'))return value;const parts=value.split('.');if(parts.length!==3)throw new SendError(409,'attachment_integrity_failed');try{const iv=Uint8Array.from(atob(parts[1]),c=>c.charCodeAt(0)),cipher=Uint8Array.from(atob(parts[2]),c=>c.charCodeAt(0));if(iv.length!==12)throw Error();return new TextDecoder('utf-8',{fatal:true}).decode(await crypto.subtle.decrypt({name:'AES-GCM',iv,additionalData:encoder.encode('drive-mime:'+owner)},await queueKey(env),cipher));}catch{throw new SendError(409,'attachment_integrity_failed');}}
+async function protectDriveMime(env,owner,raw,application=false){const iv=crypto.getRandomValues(new Uint8Array(12)),kind=application?'application':'drive',cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:encoder.encode(kind+'-mime:'+owner)},await queueKey(env),encoder.encode(raw));return kind+'-v1.'+b64(iv)+'.'+b64(new Uint8Array(cipher));}
+async function readQueuedMime(env,owner,value,application=false){if(application&&!value.startsWith('application-v1.'))throw new SendError(409,'attachment_integrity_failed');if(!value.startsWith('drive-v1.')&&!value.startsWith('application-v1.'))return value;const parts=value.split('.');if(parts.length!==3)throw new SendError(409,'attachment_integrity_failed');try{const iv=Uint8Array.from(atob(parts[1]),c=>c.charCodeAt(0)),cipher=Uint8Array.from(atob(parts[2]),c=>c.charCodeAt(0));if(iv.length!==12)throw Error();return new TextDecoder('utf-8',{fatal:true}).decode(await crypto.subtle.decrypt({name:'AES-GCM',iv,additionalData:encoder.encode((parts[0]==='application-v1'?'application':'drive')+'-mime:'+owner)},await queueKey(env),cipher));}catch{throw new SendError(409,'attachment_integrity_failed');}}
 async function driveBytes(response,max){if(Number(response.headers.get('content-length')||0)>max)throw new SendError(413,'drive_attachment_too_large');if(!response.body)throw new SendError(502,'drive_attachment_invalid_response');const reader=response.body.getReader(),chunks=[];let length=0;for(;;){const {value,done}=await reader.read();if(done)break;length+=value.length;if(length>max){await reader.cancel();throw new SendError(413,'drive_attachment_too_large');}chunks.push(value);}const bytes=new Uint8Array(length);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}return bytes;}
 async function driveResponse(fetcher,url,account){let response;try{response=await fetcher(url,{headers:{Authorization:'Bearer '+account.accessToken},redirect:'manual',signal:AbortSignal.timeout(15000)});}catch{throw new SendError(502,'drive_attachment_unavailable');}if(response.redirected||response.status>=300&&response.status<400){await response.body?.cancel();throw new SendError(502,'drive_attachment_redirect_rejected');}if(response.status===404)throw new SendError(404,'drive_attachment_not_found');if(response.status===401||response.status===403)throw new SendError(403,'drive_attachment_permission_required');if(!response.ok)throw new SendError(502,'drive_attachment_unavailable');return response;}
 async function driveAttachment(env,context,payload,account,fetcher){
@@ -51,7 +52,8 @@ async function body(request){if(Number(request.headers.get('Content-Length')||0)
 function dbFor(env){if(!env.GOOGLE_DB)throw new SendError(503,'google_storage_not_configured');return env.GOOGLE_DB;}
 function stmt(db,sql,...args){return db.prepare(sql).bind(...args);}
 async function all(db,sql,...args){return (await stmt(db,sql,...args).all()).results||[];}
-function publicItem(row){return {id:row.id,recipient:row.recipient,sender:row.google_email,subject:row.subject,status:row.status,createdAt:row.created_at,attemptedAt:row.attempted_at||null,gmailMessageId:row.gmail_message_id||null,cvVersionId:row.cv_version_id||null,attachmentName:row.attachment_name||null,replyThreadId:row.reply_thread_id||null,followUp:Boolean(row.follow_up_context),mailOpportunity:Boolean(row.mail_opportunity_context)};}
+function queuedApplicationAttachments(value){try{const files=JSON.parse(value);return Array.isArray(files)&&files.length===2&&files.every(file=>typeof file?.name==='string'&&file.name.length<=300&&file.mimeType==='application/pdf'&&/^[a-f0-9]{64}$/.test(file.hash)&&Number.isSafeInteger(file.size)&&file.size>0)?files:null;}catch{return null;}}
+function publicItem(row){const attachments=queuedApplicationAttachments(row.attachment_name);return {id:row.id,recipient:row.recipient,sender:row.google_email,subject:row.subject,status:row.status,createdAt:row.created_at,attemptedAt:row.attempted_at||null,gmailMessageId:row.gmail_message_id||null,cvVersionId:row.cv_version_id||null,attachmentName:attachments?.[0]?.name||row.attachment_name||null,...(attachments?{attachments}:{}),replyThreadId:row.reply_thread_id||null,followUp:Boolean(row.follow_up_context),mailOpportunity:Boolean(row.mail_opportunity_context)};}
 function rootOwner(context){return context.rootUserId||context.userId;}
 async function dispatchScheduleGuard(env,context,rows){
  const db=dbFor(env),exists=await stmt(db,"SELECT name FROM sqlite_master WHERE type='table' AND name='mail_scheduled_approvals' LIMIT 1").first();
@@ -77,12 +79,22 @@ function encodedSubject(subject){
   for(const char of subject){if(encoder.encode(part+char).length>42){words.push('=?UTF-8?B?'+utf8b64(part)+'?=');part='';}part+=char;}
   if(part)words.push('=?UTF-8?B?'+utf8b64(part)+'?=');return words.join('\r\n ');
 }
-function mime({sender,recipient,subject,text,attachment,messageId,reply}){
+function attachmentDisposition(name){
+ if(/^[\x20-\x7e]+$/.test(name)&&!/["\\\r\n]/.test(name))return `Content-Disposition: attachment; filename="${name}"`;
+ const fallback=name.normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[–—]/g,'-').replace(/[^a-zA-Z0-9 ._-]/g,'_').replace(/\.pdf$/i,'').slice(0,56)+'.pdf';
+ const encoded=Array.from(encoder.encode(name),byte=>'%'+byte.toString(16).toUpperCase().padStart(2,'0'));
+ const segments=[];for(let offset=0;offset<encoded.length;offset+=18)segments.push(encoded.slice(offset,offset+18).join(''));
+ // Put the extended value first: clients that keep only the first filename
+ // parameter still retain Unicode; older clients can use the ASCII fallback.
+ return 'Content-Disposition: attachment;\r\n '+segments.map((segment,index)=>`filename*${index}*=${index===0?"UTF-8''":''}${segment}`).join(';\r\n ')+`;\r\n filename="${fallback}"`;
+}
+function mime({sender,recipient,subject,text,attachment,attachments,messageId,reply}){
   const headers=[`From: ${sender}`,`To: ${recipient}`,`Subject: ${encodedSubject(subject)}`,`Message-ID: <${messageId}@immi-mail.invalid>`,'MIME-Version: 1.0'];
   if(reply)headers.push(`In-Reply-To: ${reply.rfcMessageId}`,`References: ${reply.rfcMessageId}`);
-  if(!attachment)return [...headers,'Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: base64','',lines(utf8b64(text)),''].join('\r\n');
+  const files=attachments|| (attachment?[attachment]:[]);
+  if(!files.length)return [...headers,'Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: base64','',lines(utf8b64(text)),''].join('\r\n');
   const boundary='immi_'+messageId.replaceAll('-','');
-  return [...headers,`Content-Type: multipart/mixed; boundary="${boundary}"`,'',`--${boundary}`,'Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: base64','',lines(utf8b64(text)),`--${boundary}`,`Content-Type: ${attachment.mimeType||'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}`,`Content-Disposition: attachment; filename="${attachment.name}"`,'Content-Transfer-Encoding: base64','',lines(b64(attachment.bytes)),`--${boundary}--`,''].join('\r\n');
+  return [...headers,`Content-Type: multipart/mixed; boundary="${boundary}"`,'',`--${boundary}`,'Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: base64','',lines(utf8b64(text)),...files.flatMap(file=>[`--${boundary}`,`Content-Type: ${file.mimeType||'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}`,attachmentDisposition(file.name),'Content-Transfer-Encoding: base64','',lines(b64(file.bytes))]),`--${boundary}--`,''].join('\r\n');
 }
 async function prepare(env,context,payload,fetcher){
   const allowed=['clinicIds','presetId','subject','body','cvVersionId','replyContext','followUpContext','mailOpportunityContext','driveFileId','driveAttachmentHash'];
@@ -92,6 +104,13 @@ async function prepare(env,context,payload,fetcher){
   const followingUp=payload.followUpContext!==undefined;
   const privateOpportunity=payload.mailOpportunityContext!==undefined;
   const replying=payload.replyContext!==undefined||followingUp;
+  const applicationDocuments=context.applicationDocuments;
+  const gpApplication=applicationDocuments!==undefined;
+  if(gpApplication){
+    if(context.profileId!=='arash')throw new SendError(403,'gp_application_workspace_required');
+    if(!applicationDocuments||typeof applicationDocuments!=='object'||Array.isArray(applicationDocuments)||Object.keys(applicationDocuments).some(key=>!['practiceName','coverLetter'].includes(key))||!validText(applicationDocuments.practiceName,200)||!validText(applicationDocuments.coverLetter,50000))throw new SendError(400,'invalid_gp_application_documents');
+    if(replying||payload.driveFileId||!payload.cvVersionId)throw new SendError(400,'gp_application_owned_cv_required');
+  }
   if(privateOpportunity&&(replying||payload.clinicIds!==undefined||payload.presetId!==undefined||payload.driveFileId!==undefined))throw new SendError(400,'select_one_application_context');
   if(followingUp&&payload.replyContext!==undefined)throw new SendError(400,'select_one_reply_context');
   const routing=followingUp?payload.followUpContext:payload.replyContext;
@@ -107,7 +126,10 @@ async function prepare(env,context,payload,fetcher){
     mailOpportunity=await getOwnedMailOpportunityContext(env,context.userId,payload.mailOpportunityContext,fetcher);
     if(mailOpportunity.googleSubject!==account.subject)throw new SendError(409,'mail_opportunity_account_changed');
     if(typeof mailOpportunity.applicationKey!=='string'||!mailOpportunity.applicationKey||mailOpportunity.applicationKey.length>5000)throw new SendError(409,'mail_opportunity_source_key_required');
-    if(payload.subject!==mailOpportunity.subject||payload.body!==mailOpportunity.body||payload.cvVersionId!==mailOpportunity.cvVersionId)throw new SendError(409,'mail_opportunity_draft_changed_review_required');
+    if(context.profileId==='arash'&&!gpApplication)throw new SendError(400,'gp_application_documents_required');
+    const expectedBody=gpApplication?buildGpApplicationEmail(mailOpportunity.mailEnvelope):mailOpportunity.body;
+    if(gpApplication&&(applicationDocuments.coverLetter!==mailOpportunity.body||applicationDocuments.practiceName!==mailOpportunity.mailEnvelope?.practiceName))throw new SendError(409,'mail_opportunity_draft_changed_review_required');
+    if(payload.subject!==mailOpportunity.subject||payload.body!==expectedBody||payload.cvVersionId!==mailOpportunity.cvVersionId)throw new SendError(409,'mail_opportunity_draft_changed_review_required');
     if(!mailbox(mailOpportunity.to))throw new SendError(409,'mail_opportunity_recipient_required');
   }
   if(replying){
@@ -129,12 +151,16 @@ async function prepare(env,context,payload,fetcher){
     const normalized=value=>value.replace(/^(?:\s*re\s*:\s*)+/i,'').trim().replace(/\s+/g,' ');
     if(typeof reply.subject!=='string'||normalized(subject)!==normalized(reply.subject))throw new SendError(400,'reply_subject_mismatch');
   }
-  let attachment=null,cvHash='';
+  let attachment=null,attachments=null,cvHash='';
   if(payload.cvVersionId){
     if(typeof payload.cvVersionId!=='string'||!UUID.test(payload.cvVersionId))throw new SendError(400,'invalid_cv_selection');
     const rows=await context.rest('immi_cv_versions',`?select=text,version&profile_id=eq.${context.profileId}&id=eq.${payload.cvVersionId}`);
     if(!rows[0]||typeof rows[0].text!=='string'||rows[0].text.length>200000)throw new SendError(404,'cv_not_found');
-    cvHash=await hash(rows[0].text);attachment={name:`cv-${context.profileId}-v${Number(rows[0].version)||1}.docx`,bytes:createDocx(rows[0].text)};
+    cvHash=await hash(rows[0].text);
+    if(gpApplication){
+      attachments=await buildGpApplicationAttachments({cvText:rows[0].text,practiceName:applicationDocuments.practiceName,coverLetter:applicationDocuments.coverLetter});
+      cvHash=await hash(JSON.stringify({version:GP_APPLICATION_DOCUMENT_VERSION,cvHash,cvVersionId:payload.cvVersionId,cvVersion:Number(rows[0].version)||1,attachments:attachments.map(({bytes,...meta})=>meta)}));
+    }else attachment={name:`cv-${context.profileId}-v${Number(rows[0].version)||1}.docx`,bytes:createDocx(rows[0].text)};
   }
   if(payload.driveFileId){attachment=await driveAttachment(env,context,payload,account,fetcher);cvHash='drive:'+attachment.hash;}
   let clinics;
@@ -157,33 +183,33 @@ async function prepare(env,context,payload,fetcher){
     const fingerprint=await hash(JSON.stringify({subject,body:text,recipient:email,cvHash,googleSubject:account.subject,googleEmail:account.email.toLowerCase(),...(reply?{reply:{messageId:reply.messageId,threadId:reply.threadId,rfcMessageId:reply.rfcMessageId}}:{}),...(followingUp?{kind:'clinic_follow_up'}:{}),...(mailOpportunity?{kind:'private_mail_opportunity',id:mailOpportunity.id,sourceGmailId:mailOpportunity.sourceGmailId}:{})}));
     const existing=await stmt(db,'SELECT * FROM google_send_queue WHERE owner_id=? AND fingerprint=?',context.userId,fingerprint).first();
     const id=existing?.id||crypto.randomUUID();
-    const raw=mime({sender:account.email,recipient:email,subject,text,attachment,messageId:id,reply});
+    const raw=mime({sender:account.email,recipient:email,subject,text,attachment,attachments,messageId:id,reply});
     if(encoder.encode(raw).length>MAX_MIME)throw new SendError(413,'mail_too_large');
     if(mailOpportunity&&!existing){
       const prior=await stmt(db,"SELECT id FROM google_send_queue WHERE owner_id IN (?,?) AND recipient=? AND json_extract(mail_opportunity_context,'$.applicationKey')=? AND status IN ('queued','sending','sent','delivery_unknown') LIMIT 1",rootOwner(context),rootOwner(context)+':secondary',email,await hash(mailOpportunity.applicationKey)).first();
       if(prior)throw new SendError(409,'mail_opportunity_already_prepared_or_sent');
     }
-    recipients.set(email,{id,email,subject,fingerprint,raw,existing,cvVersionId:payload.cvVersionId||null,attachmentName:attachment?.name||null,replyThreadId:reply?.threadId||null,followUpContext:followingUp?JSON.stringify({messageId:reply.messageId,threadId:reply.threadId,to:reply.to}):null,mailOpportunityContext:mailOpportunity?JSON.stringify({id:mailOpportunity.id,recipient:email,bodyHash:await hash(mailOpportunity.body),rootOwner:rootOwner(context),applicationKey:await hash(mailOpportunity.applicationKey),editedDraftId:mailOpportunity.editedDraftId||null}):null});
+    recipients.set(email,{id,email,subject,fingerprint,raw,existing,cvVersionId:payload.cvVersionId||null,attachmentName:attachments?JSON.stringify(attachments.map(({bytes,...meta})=>meta)):attachment?.name||null,replyThreadId:reply?.threadId||null,followUpContext:followingUp?JSON.stringify({messageId:reply.messageId,threadId:reply.threadId,to:reply.to}):null,mailOpportunityContext:mailOpportunity?JSON.stringify({id:mailOpportunity.id,recipient:email,bodyHash:await hash(mailOpportunity.body),rootOwner:rootOwner(context),applicationKey:await hash(mailOpportunity.applicationKey),editedDraftId:mailOpportunity.editedDraftId||null}):null});
   }
   const createdDay=now().slice(0,10);
   const reserved=Number((await stmt(db,'SELECT count(*) AS n FROM google_send_queue WHERE owner_id=? AND created_day=?',context.userId,createdDay).first()).n);
-  return {account,recipients:[...recipients.values()],excluded,createdDay,reserved,attachment:attachment?.source==='google_drive'?{name:attachment.name,mimeType:attachment.mimeType,size:attachment.size,hash:attachment.hash,source:attachment.source}:null};
+  return {account,recipients:[...recipients.values()],excluded,createdDay,reserved,...(attachments?{attachments:attachments.map(({bytes,...meta})=>meta)}:{}),attachment:attachment?.source==='google_drive'?{name:attachment.name,mimeType:attachment.mimeType,size:attachment.size,hash:attachment.hash,source:attachment.source}:null};
 }
-function preview(data){return {attachment:data.attachment,sender:data.account.email,recipients:data.recipients.map(item=>({recipient:item.email,subject:item.subject,existingId:item.existing?.id||null,status:item.existing?.status||'preview',cvVersionId:item.cvVersionId,attachmentName:item.attachmentName,replyThreadId:item.replyThreadId})),excluded:data.excluded,dailyLimit:LIMIT,reservedToday:data.reserved,newCount:data.recipients.filter(item=>!item.existing).length,quotaTimezone:'UTC',sendingAutomatic:false};}
+function preview(data){return {attachment:data.attachment,...(data.attachments?{attachments:data.attachments}:{}),sender:data.account.email,recipients:data.recipients.map(item=>({recipient:item.email,subject:item.subject,existingId:item.existing?.id||null,status:item.existing?.status||'preview',cvVersionId:item.cvVersionId,attachmentName:data.attachments?.[0]?.name||item.attachmentName,replyThreadId:item.replyThreadId})),excluded:data.excluded,dailyLimit:LIMIT,reservedToday:data.reserved,newCount:data.recipients.filter(item=>!item.existing).length,quotaTimezone:'UTC',sendingAutomatic:false};}
 async function enqueue(env,context,payload,fetcher){
   if(payload.driveFileId&&(typeof payload.driveAttachmentHash!=='string'||!/^([a-f0-9]{64})$/.test(payload.driveAttachmentHash)))throw new SendError(400,'drive_attachment_review_required');
   const db=dbFor(env),data=await prepare(env,context,payload,fetcher),items=[],excluded=[...data.excluded];
   for(const item of data.recipients){
     if(item.existing){items.push({...publicItem(item.existing),reused:true});continue;}
     // Each conditional insert reserves one daily slot atomically, including concurrent requests.
-    const storedMime=data.attachment?await protectDriveMime(env,context.userId,item.raw):item.raw;
+    const storedMime=data.attachment||data.attachments?await protectDriveMime(env,context.userId,item.raw,Boolean(data.attachments)):item.raw;
     const inserted=await stmt(db,`INSERT INTO google_send_queue(id,owner_id,profile_id,google_subject,google_email,fingerprint,recipient,subject,raw_mime,cv_version_id,attachment_name,reply_thread_id,follow_up_context,mail_opportunity_context,status,created_at,created_day)
       SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,? WHERE (SELECT count(*) FROM google_send_queue WHERE owner_id=? AND created_day=?)<?
       ON CONFLICT DO NOTHING RETURNING *`,item.id,context.userId,context.profileId,data.account.subject,data.account.email.toLowerCase(),item.fingerprint,item.email,item.subject,storedMime,item.cvVersionId,item.attachmentName,item.replyThreadId,item.followUpContext,item.mailOpportunityContext,now(),data.createdDay,context.userId,data.createdDay,LIMIT).first();
     const row=inserted||await stmt(db,'SELECT * FROM google_send_queue WHERE owner_id=? AND fingerprint=?',context.userId,item.fingerprint).first();
     if(row)items.push({...publicItem(row),reused:!inserted});else excluded.push({recipient:item.email,reason:item.mailOpportunityContext?'private_application_reserved_or_quota':'daily_quota_reached'});
   }
-  return {items,excluded,dailyLimit:LIMIT,automaticSending:false};
+  return {items,excluded,...(data.attachments?{attachments:data.attachments}:{}),dailyLimit:LIMIT,automaticSending:false};
 }
 async function dispatch(env,context,payload,fetcher){
   if(Object.keys(payload).some(key=>key!=='ids')||!Array.isArray(payload.ids)||payload.ids.length<1||payload.ids.length>5||payload.ids.some(id=>typeof id!=='string'||!UUID.test(id)))throw new SendError(400,'select_one_to_five_queue_items');
@@ -230,7 +256,7 @@ async function dispatch(env,context,payload,fetcher){
         results.push({id:row.id,status:'blocked_follow_up',reason:code});continue;
       }
     }
-    let rawMime;try{rawMime=await readQueuedMime(env,context.userId,row.raw_mime);}catch{await stmt(db,"UPDATE google_send_queue SET status='failed' WHERE owner_id=? AND id=? AND status='queued'",context.userId,row.id).run();results.push({id:row.id,status:'failed',reason:'attachment_integrity_failed'});continue;}
+    let rawMime;try{rawMime=await readQueuedMime(env,context.userId,row.raw_mime,Boolean(queuedApplicationAttachments(row.attachment_name)));}catch{await stmt(db,"UPDATE google_send_queue SET status='failed' WHERE owner_id=? AND id=? AND status='queued'",context.userId,row.id).run();results.push({id:row.id,status:'failed',reason:'attachment_integrity_failed'});continue;}
     const day=now().slice(0,10),attempted=now();
     const scheduleAt=Date.now(),scheduled=context.scheduledApprovalId!==undefined;
     const scheduleSQL=!hasSchedules?'':scheduled?` AND EXISTS(SELECT 1 FROM mail_scheduled_approvals a WHERE a.id=? AND a.owner_id=? AND a.profile_id=? AND a.queue_id=google_send_queue.id AND a.mailbox=? AND a.status='sending' AND a.send_after<=? AND a.expires_at>? AND a.google_subject=google_send_queue.google_subject AND a.sender=google_send_queue.google_email AND a.recipient=google_send_queue.recipient AND a.cv_version_id=google_send_queue.cv_version_id AND a.consent_version='frozen_mail_v1') AND NOT EXISTS(SELECT 1 FROM mail_scheduled_approvals other WHERE other.queue_id=google_send_queue.id AND other.status IN ('approved','sending') AND other.id<>?)`:` AND NOT EXISTS(SELECT 1 FROM mail_scheduled_approvals a WHERE a.queue_id=google_send_queue.id AND a.status IN ('approved','sending'))`;
@@ -275,5 +301,5 @@ export async function handleGoogleSendRequest(request,env,context,fetcher=fetch)
     const email=mailbox(payload.email);
     await db.batch([stmt(db,'INSERT INTO google_send_suppressions(owner_id,email,created_at) VALUES(?,?,?) ON CONFLICT DO NOTHING',context.userId,email,now()),stmt(db,"INSERT INTO mail_automation_suppressions(owner_id,email,reason,created_at) VALUES(?,?,?,?) ON CONFLICT(owner_id,email) DO NOTHING",rootOwner(context),email,'owner_suppressed',now()),stmt(db,"UPDATE google_send_queue SET status='suppressed' WHERE owner_id IN (?,?) AND recipient=? AND status='queued'",rootOwner(context),rootOwner(context)+':secondary',email)]);
     return json({email,suppressed:true});
-  }catch(error){const known=error instanceof SendError;return json({error:known?error.code:'google_mail_unavailable'},known?error.status:(Number.isInteger(error.status)&&error.status>=400&&error.status<600?error.status:503));}
+  }catch(error){const known=error instanceof SendError||error instanceof GpMailDocumentError;return json({error:known?error.code:'google_mail_unavailable',...(error instanceof GpMailDocumentError&&error.document?{document:error.document}:{})},known?error.status:(Number.isInteger(error.status)&&error.status>=400&&error.status<600?error.status:503));}
 }

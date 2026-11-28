@@ -29,10 +29,10 @@ function selectionValue(value){
  if(value.connectionId!==undefined&&(!UUID.test(value.connectionId)||value.confirmConnection!==true)||value.confirmConnection!==undefined&&typeof value.confirmConnection!=='boolean'||value.refinementId!==undefined&&!/^academic_[a-f0-9]{32}$/.test(value.refinementId))fail('invalid_manual_letter_selection');
  return {...value};
 }
-function paragraph(value){
+function paragraph(value,minimum=25){
  if(typeof value!=='string')fail('manual_letter_paragraph_required');
  const result=value.trim().replace(/[\r\n\t]+/g,' ').replace(/ {2,}/g,' ');
- if(result.length<25||result.length>2400||/[\x00-\x1f<>]/.test(result)||/\{\{|\}\}|system prompt|ignore.{0,30}instructions|javascript:/i.test(result))fail('invalid_manual_letter_paragraph');
+ if(result.length<minimum||result.length>2400||/[\x00-\x1f<>]/.test(result)||/\{\{|\}\}|system prompt|ignore.{0,30}instructions|javascript:/i.test(result))fail('invalid_manual_letter_paragraph');
  return result;
 }
 function subjectValue(value,fallback){
@@ -50,24 +50,33 @@ export async function gpLetterEditContextHash(pkg){
  return sha([GP_LETTER_EDIT_VERSION,pkg.profileId,pkg.opportunityId,pkg.cvVersionId,pkg.body,pkg.subjects,pkg.provenance,pkg.factBasis,pkg.signatureStatus,pkg.writingQuality?.version||null,pkg.refinementId||null]);
 }
 export function validateManualLetterEdit(pkg,input){
- const blocks=blocksFor(pkg);let clinic=input.clinicParagraph,value=input.valueParagraph;
+ const blocks=blocksFor(pkg);let opening=input.openingParagraph,clinic=input.clinicParagraph,value=input.valueParagraph,closing=input.closingParagraph;
  if(input.body!==undefined){
   if(typeof input.body!=='string'||input.body.length>12000)fail('invalid_manual_letter_body');
   const edited=input.body.replaceAll('\r\n','\n').trim().split('\n\n');
-  if(edited.length!==6||[0,1,4,5].some(index=>edited[index]!==blocks[index]))fail('manual_letter_fixed_sections_changed',409);
-  if(clinic!==undefined&&clinic!==edited[2]||value!==undefined&&value!==edited[3])fail('manual_letter_body_mismatch');
-  clinic=edited[2];value=edited[3];
+  if(edited.length!==6||[0,5].some(index=>edited[index]!==blocks[index]))fail('manual_letter_fixed_sections_changed',409);
+  if(opening!==undefined&&opening!==edited[1]||clinic!==undefined&&clinic!==edited[2]||value!==undefined&&value!==edited[3]||closing!==undefined&&closing!==edited[4])fail('manual_letter_body_mismatch');
+  opening=edited[1];clinic=edited[2];value=edited[3];closing=edited[4];
  }
- clinic=paragraph(clinic);value=paragraph(value);
+ opening=paragraph(opening===undefined?pkg.paragraphs.opening:opening);clinic=paragraph(clinic);value=paragraph(value);closing=paragraph(closing===undefined?pkg.paragraphs.closing:closing,15);
  const name=pkg.dossier?.name?.value;
  if(typeof name!=='string'||!name||!clinic.toLowerCase().includes(name.toLowerCase()))fail('manual_letter_clinic_name_required',409);
  if(!Number.isInteger(input.subjectIndex)||input.subjectIndex<0||input.subjectIndex>2)fail('invalid_manual_letter_subject_index');
- return {clinicParagraph:clinic,valueParagraph:value,subjectIndex:input.subjectIndex,subject:subjectValue(input.subject,pkg.subjects?.[input.subjectIndex])};
+ return {openingParagraph:opening,clinicParagraph:clinic,valueParagraph:value,closingParagraph:closing,subjectIndex:input.subjectIndex,subject:subjectValue(input.subject,pkg.subjects?.[input.subjectIndex])};
 }
+// New revisions capture the editable outer paragraphs in existing private JSON;
+// earlier rows without this optional field retain their canonical P1/P4.
+export function ownerEditedParagraphs(selectionJson){
+ const stored=typeof selectionJson==='string'?parse(selectionJson):selectionJson;
+ if(!stored?.ownerParagraphs)return {};
+ const value=stored.ownerParagraphs;if(!value||Array.isArray(value)||value.version!=='owner-paragraphs-v1')fail('edited_letter_context_changed',409);
+ return {openingParagraph:paragraph(value.openingParagraph),closingParagraph:paragraph(value.closingParagraph,15)};
+}
+function ownerParagraphSnapshot(edit){return {version:'owner-paragraphs-v1',openingParagraph:edit.openingParagraph,closingParagraph:edit.closingParagraph};}
 export function applyManualLetterEdit(pkg,edit){
  const validated=validateManualLetterEdit(pkg,edit),blocks=blocksFor(pkg),subjects=[...pkg.subjects];
- blocks[2]=validated.clinicParagraph;blocks[3]=validated.valueParagraph;subjects[validated.subjectIndex]=validated.subject;
- return {...pkg,paragraphs:{...pkg.paragraphs,clinic:validated.clinicParagraph,value:validated.valueParagraph},body:blocks.join('\n\n'),subjects,writingQuality:{...pkg.writingQuality,method:edit.method||'owner_manual_edit',manualTextIsOwnerReported:edit.method!=='fresh_adaptive_template',needsOwnerReview:true},manualReviewRequired:true,automaticSending:false};
+ blocks[1]=validated.openingParagraph;blocks[2]=validated.clinicParagraph;blocks[3]=validated.valueParagraph;blocks[4]=validated.closingParagraph;subjects[validated.subjectIndex]=validated.subject;
+ return {...pkg,paragraphs:{...pkg.paragraphs,opening:validated.openingParagraph,clinic:validated.clinicParagraph,value:validated.valueParagraph,closing:validated.closingParagraph},body:blocks.join('\n\n'),subjects,writingQuality:{...pkg.writingQuality,method:edit.method||'owner_manual_edit',manualTextIsOwnerReported:edit.method!=='fresh_adaptive_template'||validated.openingParagraph!==pkg.paragraphs.opening||validated.closingParagraph!==pkg.paragraphs.closing,needsOwnerReview:true},manualReviewRequired:true,automaticSending:false};
 }
 function templateItem(row){
  return {id:row.id,name:row.name,revision:Number(row.revision),variant:row.variant,style:styleValue(parse(row.style_json)||{}),example:parse(row.example_json),createdAt:row.created_at,clinicSpecificTextReused:false};
@@ -81,7 +90,7 @@ export function applyAdaptiveLetterStyle(pkg,style){
  const selected=styleValue(style),clinic=pkg.provenance?.find(item=>item.kind==='clinic_quote'),cv=pkg.provenance?.find(item=>item.kind==='cv_quote');
  if(!clinic?.quote||!cv?.quote)fail('gp_application_evidence_required',409);
  const professionalStrengths=Array.isArray(pkg.factBasis?.professionalStrengths)?pkg.factBasis.professionalStrengths.map(value=>typeof value==='string'?value:value?.text||value?.quote||'').filter(Boolean):[];
- const composed=composeClinicParagraphs({clinicName:pkg.dossier?.name?.value,clinicQuote:clinic.quote,cvQuote:cv.quote,confirmed:true,clinicSourceURL:clinic.sourceUrl||clinic.sourceURL,clinicReadAt:clinic.readAt,styleFocus:selected.focus,professionalStrengths});
+ const composed=composeClinicParagraphs({clinicName:pkg.dossier?.name?.value,clinicQuote:clinic.quote,cvQuote:cv.quote,confirmed:true,clinicSourceURL:clinic.sourceUrl||clinic.sourceURL,clinicReadAt:clinic.readAt,styleFocus:selected.focus,professionalStrengths,supportingClinicFacts:pkg.factBasis?.clinic?.slice(1)});
  let clinicParagraph=composed.clinicReason,valueParagraph=composed.candidateValue;
  // Tone changes courtesy only. Clinical/source claims come solely from the
  // freshly generated facts; no phrase from a previous clinic is transplanted.
@@ -96,7 +105,7 @@ export async function resolveEditedLetter(env,context,pkg,editedDraftId,subjectI
  if(!env.GOOGLE_DB)fail('gp_letter_edit_storage_required',503);
  const row=await stmt(env.GOOGLE_DB,"SELECT * FROM gp_letter_edits WHERE id=? AND owner_id=? AND profile_id='arash'",editedDraftId,context.userId).first();
  if(!row||row.opportunity_id!==pkg.opportunityId||row.cv_version_id!==pkg.cvVersionId||row.base_hash!==await gpLetterEditContextHash(pkg)||subjectIndex!==undefined&&row.subject_index!==subjectIndex)fail('edited_letter_context_changed',409);
- const applied=applyManualLetterEdit(pkg,{clinicParagraph:row.clinic_paragraph,valueParagraph:row.value_paragraph,subjectIndex:row.subject_index,subject:row.subject,method:row.method});
+ const applied=applyManualLetterEdit(pkg,{...ownerEditedParagraphs(row.selection_json),clinicParagraph:row.clinic_paragraph,valueParagraph:row.value_paragraph,subjectIndex:row.subject_index,subject:row.subject,method:row.method});
  return {...applied,editedDraftId:row.id,ownerRevision:row.revision,savedTemplateId:row.template_id,manualSubjectIndex:row.subject_index};
 }
 async function canonicalPackage(env,context,opportunityId,selection){
@@ -114,7 +123,7 @@ async function storeEdit(env,context,pkg,edit,{templateId=null,previousId=null,m
  }
  const statement=stmt(env.GOOGLE_DB,`INSERT INTO gp_letter_edits(id,owner_id,profile_id,opportunity_id,cv_version_id,base_hash,selection_json,revision,subject_index,subject,clinic_paragraph,value_paragraph,template_id,previous_id,method,created_at)
   SELECT ?,?,'arash',?,?,?,?,coalesce((SELECT max(revision) FROM gp_letter_edits WHERE owner_id=? AND opportunity_id=?),0)+1,?,?,?,?,?,?,?,?
-  WHERE (? IS NULL OR EXISTS(SELECT 1 FROM gp_letter_style_templates WHERE id=? AND owner_id=? AND profile_id='arash')) RETURNING *`,editId,context.userId,pkg.opportunityId,pkg.cvVersionId,hash,JSON.stringify(selectionValue(selection)),context.userId,pkg.opportunityId,edit.subjectIndex,edit.subject,edit.clinicParagraph,edit.valueParagraph,templateId,previousId,method,at,templateId,templateId,context.userId);
+  WHERE (? IS NULL OR EXISTS(SELECT 1 FROM gp_letter_style_templates WHERE id=? AND owner_id=? AND profile_id='arash')) RETURNING *`,editId,context.userId,pkg.opportunityId,pkg.cvVersionId,hash,JSON.stringify({...selectionValue(selection),ownerParagraphs:ownerParagraphSnapshot(edit)}),context.userId,pkg.opportunityId,edit.subjectIndex,edit.subject,edit.clinicParagraph,edit.valueParagraph,templateId,previousId,method,at,templateId,templateId,context.userId);
  const result=saved=>{
   if(!saved)fail('edited_letter_context_changed',409);
   return {...applyManualLetterEdit(pkg,{...edit,method}),editedDraftId:saved.id,ownerRevision:saved.revision,savedTemplateId:templateId,manualSubjectIndex:edit.subjectIndex};
@@ -130,7 +139,7 @@ async function planStyle(env,context,pkg,edit,input){
  const style=styleValue(input.style||previous&&parse(previous.style_json)||{}),templateId=id('gpstyle_'),at=new Date().toISOString();
  const statement=stmt(env.GOOGLE_DB,`INSERT INTO gp_letter_style_templates(id,owner_id,profile_id,name,revision,variant,style_json,example_json,created_at)
   SELECT ?,?,'arash',?,coalesce((SELECT max(revision) FROM gp_letter_style_templates WHERE owner_id=? AND name=?),0)+1,?,?,?,?
-  WHERE (?='replace' OR NOT EXISTS(SELECT 1 FROM gp_letter_style_templates WHERE owner_id=? AND name=?)) RETURNING *`,templateId,context.userId,name,context.userId,name,pkg.variant,JSON.stringify(style),JSON.stringify({opportunityId:pkg.opportunityId,clinicName:pkg.dossier?.name?.value,clinicParagraph:edit.clinicParagraph,valueParagraph:edit.valueParagraph}),at,input.saveMode,context.userId,name);
+  WHERE (?='replace' OR NOT EXISTS(SELECT 1 FROM gp_letter_style_templates WHERE owner_id=? AND name=?)) RETURNING *`,templateId,context.userId,name,context.userId,name,pkg.variant,JSON.stringify(style),JSON.stringify({opportunityId:pkg.opportunityId,clinicName:pkg.dossier?.name?.value,openingParagraph:edit.openingParagraph,clinicParagraph:edit.clinicParagraph,valueParagraph:edit.valueParagraph,closingParagraph:edit.closingParagraph}),at,input.saveMode,context.userId,name);
  return {id:templateId,statement};
 }
 async function body(request){
@@ -156,22 +165,31 @@ export async function handleGpLetterEditsRequest(request,env,context){
   }
   if(request.method!=='POST')fail('method_not_allowed',405);
   if(request.headers.get('Origin')!==url.origin)fail('origin_rejected',403);
-  const input=await body(request),allowed=match[2]==='manual-edit'?['selection','subjectIndex','subject','body','clinicParagraph','valueParagraph','saveMode','templateName','templateId','editedDraftId','style']:match[2]==='restore-edit'?['selection','editedDraftId','subjectIndex']:['selection','templateId','subjectIndex'];
+  const input=await body(request),allowed=match[2]==='manual-edit'?['selection','subjectIndex','subject','body','openingParagraph','clinicParagraph','valueParagraph','closingParagraph','saveMode','templateName','templateId','editedDraftId','style']:match[2]==='restore-edit'?['selection','editedDraftId','subjectIndex']:['selection','templateId','subjectIndex','editedDraftId'];
   if(Object.keys(input).some(key=>!allowed.includes(key)))fail('unexpected_manual_letter_field');
   if(match[2]==='restore-edit'){
    if(!EDIT.test(input.editedDraftId||''))fail('invalid_edited_letter_id');
-   const saved=await stmt(env.GOOGLE_DB,"SELECT selection_json FROM gp_letter_edits WHERE id=? AND owner_id=? AND opportunity_id=? AND profile_id='arash'",input.editedDraftId,context.userId,match[1]).first();
+   const saved=await stmt(env.GOOGLE_DB,"SELECT * FROM gp_letter_edits WHERE id=? AND owner_id=? AND opportunity_id=? AND profile_id='arash'",input.editedDraftId,context.userId,match[1]).first();
    if(!saved)fail('edited_letter_context_changed',409);
-   const restoredSelection=selectionValue(parse(saved.selection_json)),pkg=await canonicalPackage(env,context,match[1],restoredSelection);
-   const result=await resolveEditedLetter(env,context,pkg,input.editedDraftId,input.subjectIndex);
+   const {ownerParagraphs,...storedSelection}=parse(saved.selection_json)||{},restoredSelection=selectionValue(storedSelection);
+   let pkg,result;
+   try{pkg=await canonicalPackage(env,context,match[1],restoredSelection);result=await resolveEditedLetter(env,context,pkg,input.editedDraftId,input.subjectIndex);}
+   catch(error){
+    if(!['edited_letter_context_changed','gp_application_evidence_required','clinic_quote_not_in_current_source','cv_quote_not_in_owned_cv','academic_context_changed','gp_connection_not_in_current_owned_contacts'].includes(error?.code||error?.message))throw error;
+    // Keep the old owner's writing recoverable while re-reading only the owned
+    // CV and current source. A recovered draft is never a sendable old receipt.
+    const current=pkg||await getGpApplicationPackage(env,context,match[1],{variant:restoredSelection.variant,cvVersionId:restoredSelection.cvVersionId});
+    result={...current,editedDraftId:saved.id,ownerRevision:saved.revision,savedTemplateId:saved.template_id,manualSubjectIndex:saved.subject_index,ownerEditNeedsReview:true,readyForReview:false,manualReviewRequired:true,automaticSending:false,savedEdit:{id:saved.id,revision:saved.revision,cvVersionId:saved.cv_version_id,subject:saved.subject,...ownerEditedParagraphs(saved.selection_json),clinicParagraph:saved.clinic_paragraph,valueParagraph:saved.value_paragraph}};
+   }
    const template=result.savedTemplateId?await loadTemplate(env,context,result.savedTemplateId):null;
    return json({...result,restoredSelection,...(template?{savedTemplate:templateItem(template)}:{}),sourceAssessmentRequired:true,sent:false});
   }
   const selection=selectionValue(input.selection),pkg=await canonicalPackage(env,context,match[1],selection);
   if(match[2]==='apply-template'){
    const template=await loadTemplate(env,context,input.templateId),styled=applyAdaptiveLetterStyle(pkg,parse(template.style_json)||{}),index=input.subjectIndex===undefined?0:input.subjectIndex;
-   const edit=validateManualLetterEdit(pkg,{clinicParagraph:styled.paragraphs.clinic,valueParagraph:styled.paragraphs.value,subjectIndex:index});
-   const result=await storeEdit(env,context,pkg,edit,{templateId:template.id,method:'fresh_adaptive_template',selection});
+   const current=input.editedDraftId?await resolveEditedLetter(env,context,pkg,input.editedDraftId):pkg;
+   const edit=validateManualLetterEdit(pkg,{openingParagraph:current.paragraphs.opening,clinicParagraph:styled.paragraphs.clinic,valueParagraph:styled.paragraphs.value,closingParagraph:current.paragraphs.closing,subjectIndex:index});
+   const result=await storeEdit(env,context,pkg,edit,{templateId:template.id,previousId:input.editedDraftId||null,method:'fresh_adaptive_template',selection});
    return json({...result,restoredSelection:selection,savedTemplate:templateItem(template),writingQuality:{...result.writingQuality,style:styleValue(parse(template.style_json)||{}),styleFocus:styled.writingQuality?.styleFocus},sourceAssessmentRequired:true,clinicSpecificTextReused:false,sent:false});
   }
   if(!['replace','new_template'].includes(input.saveMode))fail('invalid_manual_letter_save_mode');

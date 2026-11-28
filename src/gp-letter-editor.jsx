@@ -7,21 +7,22 @@ import './gp-letter-editor.css';
 const EDIT=/^gpedit_[a-f0-9]{32}$/,STYLE=/^gpstyle_[a-f0-9]{32}$/;
 const values=pkg=>{
  const canonical=pkg?.readyForReview===true||EDIT.test(pkg?.editedDraftId||''),body=canonical?pkg?.body||'':pkg?.previewBody||pkg?.body||'',parts=body.split(/\n\s*\n/),p=canonical?pkg?.paragraphs:pkg?.previewParagraphs||pkg?.paragraphs;
- return {clinicParagraph:p?.clinicReason||p?.clinic||parts[2]||'',valueParagraph:p?.candidateValue||p?.value||parts[3]||''};
+ const saved=pkg?.ownerEditNeedsReview?pkg.savedEdit:null;
+ return {openingParagraph:saved?.openingParagraph||p?.opening||parts[1]||'',clinicParagraph:saved?.clinicParagraph||p?.clinicReason||p?.clinic||parts[2]||'',valueParagraph:saved?.valueParagraph||p?.candidateValue||p?.value||parts[3]||'',closingParagraph:saved?.closingParagraph||p?.closing||parts[4]||''};
 };
-const equal=(a,b)=>a.subject===b.subject&&a.clinicParagraph===b.clinicParagraph&&a.valueParagraph===b.valueParagraph;
+const equal=(a,b)=>['subject','openingParagraph','clinicParagraph','valueParagraph','closingParagraph'].every(key=>a[key]===b[key]);
 const focusOptions=[['clinical_breadth','تجربه و قضاوت بالینی','Clinical experience and judgement'],['teamwork','همکاری و هماهنگی تیمی','Teamwork and coordination'],['continuity','پیگیری و تداوم مراقبت','Follow-up and continuity'],['acute','رسیدگی به شرایط حاد','Acute clinical care'],['training','یادگیری و آموزش‌پذیری','Learning and development']];
 
 /** Only this reviewed letter is edited. Templates retain preferences, not old clinic facts. */
 export function GpLetterEditor({opportunityId,pkg,selection,subjectIndex=0,ready=false,disabled=false,requireSave=false,onSaved,onStateChange,onNeedReview,onDiscard,notify=()=>{}}){
  const language=useInterfaceLanguage(),t=(fa,en)=>language==='en'?en:fa;
- const original={subject:pkg?.subjects?.[subjectIndex]||'',...values(pkg)};
+ const original={subject:pkg?.ownerEditNeedsReview?pkg.savedEdit?.subject||pkg?.subjects?.[subjectIndex]||'':pkg?.subjects?.[subjectIndex]||'',...values(pkg)};
  const [draft,setDraft]=useState(original),[open,setOpen]=useState(requireSave),[busy,setBusy]=useState(''),[error,setError]=useState('');
  const [templates,setTemplates]=useState([]),[templatesLoaded,setTemplatesLoaded]=useState(false),[templateId,setTemplateId]=useState(STYLE.test(pkg?.savedTemplate?.id||pkg?.savedTemplateId||'')?pkg.savedTemplate?.id||pkg.savedTemplateId:''),[templateName,setTemplateName]=useState('');
  const [style,setStyle]=useState({focus:pkg?.savedTemplate?.style?.focus||'clinical_breadth',tone:pkg?.savedTemplate?.style?.tone||'warm_professional'});
  const mounted=useRef(true),request=useRef(0),lock=useRef(false),callbacks=useRef({onStateChange,onSaved,notify});
  callbacks.current={onStateChange,onSaved,notify};
- const dirty=requireSave||!equal(draft,original),validText=Boolean(draft.subject.trim()&&draft.clinicParagraph.trim()&&draft.valueParagraph.trim());
+ const dirty=requireSave||!equal(draft,original),validText=Boolean(draft.subject.trim()&&draft.openingParagraph.trim()&&draft.clinicParagraph.trim()&&draft.valueParagraph.trim()&&draft.closingParagraph.trim());
  const report=(changed,working)=>callbacks.current.onStateChange?.({dirty:changed,busy:Boolean(working)});
  useEffect(()=>{mounted.current=true;report(requireSave,false);if(requireSave)loadTemplates();return()=>{mounted.current=false;request.current++;lock.current=false;};},[]);
  function change(field,value){const next={...draft,[field]:value};setDraft(next);setError('');report(requireSave||!equal(next,original),busy);}
@@ -48,7 +49,7 @@ export function GpLetterEditor({opportunityId,pkg,selection,subjectIndex=0,ready
   if(lock.current||disabled||!validText||mode==='new_template'&&!templateName.trim())return;
   if(!ready){onNeedReview?.();return;}
   const seq=++request.current;let saved=false;lock.current=true;setBusy(mode);setError('');report(dirty,true);
-  const body={selection,subjectIndex,subject:draft.subject.trim(),clinicParagraph:draft.clinicParagraph.trim(),valueParagraph:draft.valueParagraph.trim(),saveMode:mode,style,...(templateId?{templateId}:{}),...(mode==='new_template'?{templateName:templateName.trim()}:{}),...(EDIT.test(pkg?.editedDraftId||'')?{editedDraftId:pkg.editedDraftId}:{})};
+  const body={selection,subjectIndex,subject:draft.subject.trim(),openingParagraph:draft.openingParagraph.trim(),clinicParagraph:draft.clinicParagraph.trim(),valueParagraph:draft.valueParagraph.trim(),closingParagraph:draft.closingParagraph.trim(),saveMode:mode,style,...(templateId?{templateId}:{}),...(mode==='new_template'?{templateName:templateName.trim()}:{}),...(!pkg?.ownerEditNeedsReview&&EDIT.test(pkg?.editedDraftId||'')?{editedDraftId:pkg.editedDraftId}:{})};
   try{
    const result=await api('gp-writing/'+opportunityId+'/manual-edit?profile=arash',{method:'POST',body:JSON.stringify(body)});
    if(!mounted.current||seq!==request.current)return;
@@ -62,7 +63,7 @@ export function GpLetterEditor({opportunityId,pkg,selection,subjectIndex=0,ready
   if(!ready){onNeedReview?.();return;}
   const seq=++request.current;lock.current=true;setBusy('apply');setError('');report(false,true);
   try{
-   const result=await api('gp-writing/'+opportunityId+'/apply-template?profile=arash',{method:'POST',body:JSON.stringify({selection,templateId,subjectIndex})});
+   const result=await api('gp-writing/'+opportunityId+'/apply-template?profile=arash',{method:'POST',body:JSON.stringify({selection,templateId,subjectIndex,...(EDIT.test(pkg?.editedDraftId||'')?{editedDraftId:pkg.editedDraftId}:{})})});
    if(!mounted.current||seq!==request.current)return;
    if(result?.profileId!=='arash'||result.opportunityId!==opportunityId||result.cvVersionId!==selection.cvVersionId||!EDIT.test(result.editedDraftId||'')||typeof result.body!=='string')throw Error('edited_letter_context_changed');
    report(false,false);callbacks.current.onSaved?.(result);callbacks.current.notify(t('قالب با اطلاعات تازهٔ همین مرکز و رزومه آماده شد؛ متن را مرور کنید.','The template has been rebuilt with this clinic’s current information and your CV. Review the letter.'));
@@ -70,12 +71,15 @@ export function GpLetterEditor({opportunityId,pkg,selection,subjectIndex=0,ready
   finally{if(mounted.current&&seq===request.current){lock.current=false;setBusy('');report(false,false);}}
  }
  return <section className="gp-letter-editor" aria-label={t('ویرایش و ذخیرهٔ نامهٔ همین کلینیک','Edit and save this clinic’s letter')}>
-  <div className="gp-letter-editor-heading"><div><strong>{t('متن را مطابق نظر خودتان اصلاح کنید','Make the letter your own')}</strong><small>{t('معرفی، پایان نامه و اطلاعات تماس ثابت‌اند؛ موضوع و بندهای دوم و سوم قابل ویرایش‌اند.','The introduction, closing and contact details stay fixed; you can edit the subject and paragraphs two and three.')}</small></div><button type="button" className="secondary" disabled={disabled||Boolean(busy)||open&&dirty} aria-expanded={open} onClick={()=>open?setOpen(false):edit()}><Edit3 size={15}/>{open?t('بستن ویرایشگر','Close editor'):t('ویرایش متن نامه','Edit letter')}</button></div>
+  <div className="gp-letter-editor-heading"><div><strong>{t('متن را مطابق نظر خودتان اصلاح کنید','Make the letter your own')}</strong><small>{t('موضوع و هر چهار بند قابل ویرایش‌اند؛ اطلاعات تماس امضای همین حساب حفظ می‌شود.','You can edit the subject and all four paragraphs; this account’s signature contact details are preserved.')}</small></div><button type="button" className="secondary" disabled={disabled||Boolean(busy)||open&&dirty} aria-expanded={open} onClick={()=>open?setOpen(false):edit()}><Edit3 size={15}/>{open?t('بستن ویرایشگر','Close editor'):t('ویرایش متن نامه','Edit letter')}</button></div>
+  {pkg?.ownerEditNeedsReview&&<p className="notice" role="status">{t('اطلاعات منبع یا رزومه تغییر کرده است. متن قبلی شما در ویرایشگر حفظ شده؛ آن را با اطلاعات تازه بررسی کنید و دوباره ذخیره کنید. تأیید ارسال قبلی منتقل نمی‌شود.','The source information or CV has changed. Your previous wording is preserved in the editor; review it against the current information and save again. Earlier send approval is not carried over.')}</p>}
   {pkg?.editedDraftId&&!dirty&&<p className="gp-letter-editor-saved" role="status"><Check size={15}/>{t('نسخهٔ ویرایش‌شدهٔ همین درخواست ذخیره شده است.','An edited version of this application has been saved.')}</p>}
   {open&&<div className="gp-letter-editor-fields">
    <label><span>{t('موضوع ایمیل','Email subject')}</span><input aria-label={t('موضوع ویرایش‌شدهٔ ایمیل','Edited email subject')} dir="ltr" value={draft.subject} maxLength={500} disabled={disabled||Boolean(busy)} onChange={e=>change('subject',e.target.value)}/></label>
+   <label><span>{t('بند اول · معرفی و هدف من','Paragraph one · My introduction and goal')}</span><textarea aria-label={t('ویرایش بند اول نامه','Edit paragraph one')} dir="ltr" rows={4} value={draft.openingParagraph} maxLength={2400} disabled={disabled||Boolean(busy)} onChange={e=>change('openingParagraph',e.target.value)}/></label>
    <label><span>{t('بند دوم · چرا این مرکز را انتخاب کرده‌ام؟','Paragraph two · Why do I want to join this practice?')}</span><textarea aria-label={t('ویرایش بند دوم نامه','Edit paragraph two')} dir="ltr" rows={4} value={draft.clinicParagraph} maxLength={1800} disabled={disabled||Boolean(busy)} onChange={e=>change('clinicParagraph',e.target.value)}/></label>
    <label><span>{t('بند سوم · چه چیزی به تیم اضافه می‌کنم؟','Paragraph three · What would I bring to the team?')}</span><textarea aria-label={t('ویرایش بند سوم نامه','Edit paragraph three')} dir="ltr" rows={5} value={draft.valueParagraph} maxLength={2400} disabled={disabled||Boolean(busy)} onChange={e=>change('valueParagraph',e.target.value)}/></label>
+   <label><span>{t('بند چهارم · دعوت به گفت‌وگو','Paragraph four · Invitation to discuss')}</span><textarea aria-label={t('ویرایش بند چهارم نامه','Edit paragraph four')} dir="ltr" rows={3} value={draft.closingParagraph} maxLength={2400} disabled={disabled||Boolean(busy)} onChange={e=>change('closingParagraph',e.target.value)}/></label>
    {dirty&&<div className="gp-letter-editor-dirty" role="status"><strong>{t('تغییرات را چطور نگه داریم؟','How would you like to keep these changes?')}</strong><p>{t('پیش از رفتن به ارسال، تغییرات را ذخیره کنید یا کنار بگذارید. نسخه‌های قبلی حفظ می‌شوند.','Save or discard your changes before continuing to send. Earlier versions are preserved.')}</p></div>}
    {!ready&&<p className="section-help">{t('برای ذخیره، ابتدا تیک بررسیِ اطلاعات مرکز و رزومه را بزنید. متنِ در حال ویرایش در همین صفحه حفظ می‌شود.','To save, first confirm the clinic and CV review checkboxes. Your edits remain on this page.')}</p>}
    {error&&<p className="notice" role="alert">{error}</p>}

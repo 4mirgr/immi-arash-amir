@@ -79,10 +79,10 @@ Tavily is configured and its free entitlement was actually verified; do not requ
 
 Four paragraphs, with salutation and complete contact signature separate:
 
-1. Owner-approved fixed introduction from the private writing profile.
-2. Why this clinic: the applicant's specific professional interest in a real, read feature of the target. Express motivation, rather than reporting the clinic's website like a news item. Do not invent shared contacts or supervisor interests.
-3. Why this doctor: selected owned-CV evidence of clinical judgment, responsibility, continuity, teamwork and learning, with a defensible benefit to this centre. Routine procedures alone are not a distinctive selling point; do not invent workload, outcomes, patient demographics or crisis history.
-4. Owner-approved fixed invitation to discuss, from the same private profile.
+1. Owner-approved introduction selected from the private writing profile by the available clinic evidence. Use A for a clearly urban network practice, C for a published rural or DPA location, and B for an independent urban practice or when the category is unclear.
+2. Why this clinic: briefly connect specific, read clinical services, team or training features to the applicant’s genuine interest in joining. Use more than one relevant fact when supported. Do not invent shared contacts or supervisor interests.
+3. Why this doctor: connect owned-CV evidence of clinical judgment, responsibility, continuity, teamwork and learning to what the practice needs. Explain what the applicant could contribute and where they could grow with the team. Do not invent workload, outcomes, patient demographics or crisis history.
+4. Invitation to discuss, with the private writing profile supplying the default.
 
 Natural, precise and professional English; clear Persian UI. Apply [WRITING-GUIDE](WRITING-GUIDE.fa.md) and [CV-STANDARD](CV-STANDARD.md). Reusable templates carry style/focus, not copied clinic facts. Conflicting historical prompts do not replace the latest approved introduction/closing or add qualifications.
 
@@ -92,8 +92,9 @@ Latest user clarification, implemented in [MAIL-PRIORITY](MAIL-PRIORITY-2026-11-
 - A labelled `initial_enquiry` needs enough for a suitable first email, not a complete dossier or confirmed current vacancy: one relevant published clinic fact, published contact, own CV and confirmed signature. Reuse fresh, actually-read own-bank evidence with original timestamps. Exact service overlap is not mandatory for this mode.
 - `job_application` and `initial_enquiry` are distinct. Never claim a confirmed vacancy, Level 1 approval or sponsorship from an enquiry. Applicable current restrictions remain visible; an unrelated old job's requirement is not a permanent clinic policy.
 - The letter appears upfront when a card is opened. Own saved-default CV is selected, otherwise the latest owned version; each card can override it. Selecting a CV is not send approval.
-- Private-mail paragraphs 2/3 are editable inline and explicitly saved; fixed introduction/closing/signature are preserved. Public GP manual editing has its own documented subject/template controls. Do not confuse the two edit API families.
+- Arash can edit paragraphs 1–4 in both application editors. Per-opportunity changes remain private and require a new review when the CV, current source or automated base changes. Public GP editing retains its subject and template controls.
 - Private mail edits use `moedit_*` with exact owner/slot/Google subject/opportunity/CV/base-hash binding. Public GP `gpedit_*` cannot substitute. Review pins an exact edit ID or explicit null; final claim also checks the edit-head revision.
+- New applications preview the short email and the four-paragraph cover letter separately. The server builds `Dr Arash Entezar – CV.pdf` and `Dr Arash Entezar – Cover Letter – [Practice Name].pdf` from the selected owned CV and exact reviewed letter. Both file hashes and the email are bound to approval for single, batch and scheduled sends. Previously approved packages retain their frozen content. Unsupported PDF characters produce a document-specific error before approval or queueing.
 
 Every currently published recipient is selected by default and can be unchecked. Advertisements themselves start unselected. Individual and batch emails require explicit current review/confirmation; approved schedules execute only their frozen entries. Each recipient gets a separate message, with owner-wide/network-address deduplication, quotas and suppression. A global flag, discovery, Telegram notice or old approval cannot authorize a new application. Never replay an uncertain send or retry a mutation during auth recovery.
 

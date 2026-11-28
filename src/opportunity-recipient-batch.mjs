@@ -18,14 +18,26 @@ function planValue(input){
  if(!input||!OPP.test(input.opportunityId||'')||!UUID.test(input.presetId||'')||!UUID.test(input.cvVersionId||'')||!['primary','secondary'].includes(input.mailbox||'primary')||!Array.isArray(input.recipients)||input.recipients.length>500)fail('invalid_recipient_batch_plan');
  return clone({opportunityId:input.opportunityId,presetId:input.presetId,cvVersionId:input.cvVersionId,mailbox:input.mailbox||'primary',recipients:input.recipients,...(input.application?{application:input.application}:{})});
 }
+function reviewedDocuments(value){
+ if(value.coverLetter===undefined&&value.attachments===undefined)return null;
+ if(typeof value.coverLetter!=='string'||!value.coverLetter.trim()||!Array.isArray(value.attachments)||value.attachments.length!==2)fail('application_changed_review_required');
+ const attachments=value.attachments.map(attachment=>{
+  if(!attachment||typeof attachment.name!=='string'||!attachment.name.toLowerCase().endsWith('.pdf')||attachment.mimeType!=='application/pdf'||!Number.isInteger(attachment.size)||attachment.size<1||!(/^[a-f0-9]{64}$/).test(attachment.hash||''))fail('application_changed_review_required');
+  const {name,mimeType,size,hash}=attachment;return {name,mimeType,size,hash};
+ });
+ if(attachments[0].name===attachments[1].name)fail('application_changed_review_required');
+ return {coverLetter:value.coverLetter,attachments};
+}
 function checkedPreview(preview,plan,recipient){
  if(!preview||preview.opportunityId!==plan.opportunityId||preview.mailbox!==plan.mailbox||preview.presetId!==plan.presetId||preview.cvVersionId!==plan.cvVersionId||!validEmail(email(preview.sender))||!preview.reviewHash||typeof preview.reviewHash!=='string'||!preview.message||typeof preview.message.subject!=='string'||typeof preview.message.body!=='string'||!preview.message.subject.trim()||!preview.message.body.trim())fail('application_changed_review_required');
  if(preview.excluded?.length)fail(preview.excluded[0]?.reason==='suppressed'?'recipient_suppressed':'recipient_unavailable');
  const rows=preview.recipients;
  if(!Array.isArray(rows)||rows.length!==1||email(rows[0].recipient)!==recipient||rows[0].cvVersionId!==plan.cvVersionId||rows[0].subject!==preview.message.subject||typeof rows[0].attachmentName!=='string'||!rows[0].attachmentName)fail('application_changed_review_required');
+ const documents=reviewedDocuments(preview);
+ if(documents&&(documents.coverLetter===preview.message.body||documents.attachments[0].name!==rows[0].attachmentName))fail('application_changed_review_required');
  const queuedExisting=typeof rows[0].existingId==='string'&&!!rows[0].existingId&&rows[0].status==='queued';
  if(!queuedExisting&&(rows[0].existingId||rows[0].status!=='preview'))fail('previous_application_exists');
- return {queuedExisting,fingerprint:JSON.stringify({sender:email(preview.sender),message:preview.message,attachment:rows[0].attachmentName,cv:plan.cvVersionId,preset:plan.presetId,mailbox:plan.mailbox,url:preview.url,lastSeenAt:preview.lastSeenAt,reading:preview.reading}),row:rows[0]};
+ return {queuedExisting,fingerprint:JSON.stringify({sender:email(preview.sender),message:preview.message,attachment:rows[0].attachmentName,documents,cv:plan.cvVersionId,preset:plan.presetId,mailbox:plan.mailbox,url:preview.url,lastSeenAt:preview.lastSeenAt,reading:preview.reading}),row:rows[0]};
 }
 export async function prepareRecipientBatch({api,person,plans,isActive=()=>true}){
  checkPerson(person);if(typeof api!=='function'||!Array.isArray(plans)||plans.length>25)fail('invalid_recipient_batch_plan');active(isActive);
@@ -62,7 +74,10 @@ function reviewed(prepared,person,confirmReviewed){
 async function checkedAccount(api,person,entry,isActive){active(isActive);const result=await api(mailboxPath(person,entry.plan.mailbox,'status'));active(isActive);if(!result?.connected||result.capabilities?.gmailSend!==true||email(result.email)!==entry.sender)fail('sender_connection_changed');}
 function queuedItem(response,entry){
  const rows=response?.items,item=Array.isArray(rows)&&rows.length===1?rows[0]:null;
- if(!item||response.opportunityId!==entry.plan.opportunityId||response.mailbox!==entry.plan.mailbox||response.excluded?.length||typeof item.id!=='string'||!item.id||email(item.recipient)!==entry.recipient||email(item.sender)!==entry.sender||item.cvVersionId!==entry.plan.cvVersionId||item.subject!==entry.preview.message.subject||item.attachmentName!==entry.preview.recipients[0].attachmentName)fail('application_changed_review_required');return item;
+ if(!item||response.opportunityId!==entry.plan.opportunityId||response.mailbox!==entry.plan.mailbox||response.excluded?.length||typeof item.id!=='string'||!item.id||email(item.recipient)!==entry.recipient||email(item.sender)!==entry.sender||item.cvVersionId!==entry.plan.cvVersionId||item.subject!==entry.preview.message.subject||item.attachmentName!==entry.preview.recipients[0].attachmentName)fail('application_changed_review_required');
+ const documents=reviewedDocuments(entry.preview);
+ if(documents&&JSON.stringify(reviewedDocuments({coverLetter:documents.coverLetter,attachments:response.attachments}))!==JSON.stringify(documents))fail('application_changed_review_required');
+ return item;
 }
 function resultFor(entry,values){return {id:entry.id,opportunityId:entry.plan.opportunityId,mailbox:entry.plan.mailbox,recipient:entry.recipient,...values};}
 function finish(results,stopped,entries=[]){if(stopped)for(const entry of entries)if(!results.some(result=>result.id===entry.id))results.push(resultFor(entry,{status:'not_attempted',reason:'batch_stopped'}));return {results,items:results,stopped,unknown:results.some(item=>['delivery_unknown','queue_unknown','schedule_unknown'].includes(item.status))};}
@@ -107,7 +122,7 @@ export async function scheduleRecipientBatch({api,person,prepared,isActive=()=>t
    await checkedAccount(api,person,entry,isActive);active(isActive);submitted=true;
    const response=await api(path(person,entry.plan.opportunityId,'schedule'),{method:'POST',body:JSON.stringify({...payload(entry),confirmReviewed:true,reviewHash:entry.preview.reviewHash,confirmSend:true,sendAfter})});active(isActive);
    const item=queuedItem(response,entry),approval=response.approval;
-   if(!approval?.id||!['approved','sending'].includes(approval.status)||approval.queueId!==item.id||approval.mailbox!==entry.plan.mailbox||approval.opportunityId!==entry.plan.opportunityId||email(approval.sender)!==entry.sender||email(approval.recipient)!==entry.recipient||approval.cvVersionId!==entry.plan.cvVersionId||Date.parse(approval.sendAfter)!==instant||approval.message?.subject!==entry.preview.message.subject||approval.message?.body!==entry.preview.message.body)fail('schedule_outcome_unconfirmed');
+   if(!approval?.id||!['approved','sending'].includes(approval.status)||approval.queueId!==item.id||approval.mailbox!==entry.plan.mailbox||approval.opportunityId!==entry.plan.opportunityId||email(approval.sender)!==entry.sender||email(approval.recipient)!==entry.recipient||approval.cvVersionId!==entry.plan.cvVersionId||Date.parse(approval.sendAfter)!==instant||approval.message?.subject!==entry.preview.message.subject||approval.message?.body!==entry.preview.message.body||JSON.stringify(reviewedDocuments(approval))!==JSON.stringify(reviewedDocuments(entry.preview)))fail('schedule_outcome_unconfirmed');
    report(results,entry,{status:approval.status==='sending'?'sending':'scheduled',queueId:item.id,approval:clone(approval)},onProgress,isActive);
   }catch(error){if(isActive()!==true){report(results,entry,{status:submitted?'schedule_unknown':'cancelled',reason:'batch_context_changed'},onProgress,isActive);return finish(results,true,prepared.entries);}report(results,entry,{status:submitted?'schedule_unknown':'failed',reason:reason(error)},onProgress,isActive);return finish(results,true,prepared.entries);}
  }

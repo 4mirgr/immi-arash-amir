@@ -11,8 +11,8 @@ function binding(db){return {prepare(sql){let args=[];return {bind(...v){args=v;
 async function fixture(){
  const privateDb=new DatabaseSync(':memory:'),publicDb=new DatabaseSync(':memory:');for(const file of ['google-schema.sql','google-send-schema.sql','mail-automation-schema.sql'])privateDb.exec(readFileSync(new URL('../cloud/'+file,import.meta.url),'utf8'));publicDb.exec(readFileSync(new URL('../cloud/opportunity-v2-schema.sql',import.meta.url),'utf8'));
  const env={GOOGLE_CLIENT_ID:'synthetic-client',GOOGLE_CLIENT_SECRET:'synthetic-secret',GOOGLE_REDIRECT_URI:origin+'/api/google/callback',GOOGLE_DB:binding(privateDb),OPPORTUNITY_DB:binding(publicDb),GOOGLE_TOKEN_KEY:Buffer.alloc(32,7).toString('base64')};
- publicDb.prepare('INSERT INTO opportunity_organizations VALUES(?,?,?,?,?,?,?,?)').run('org','Synthetic organization','source.example','AU','NSW','{}','2026-01-01','2026-01-01');
- const source={id:opp,country:'AU',title:'General Practitioner',summary:'Published contact recruit@example.invalid',fullText:'Apply via recruit@example.invalid',url:'https://source.example/jobs/1'};
+ publicDb.prepare('INSERT INTO opportunity_organizations VALUES(?,?,?,?,?,?,?,?)').run('org','synthetic organization','source.example','AU','NSW',JSON.stringify({name:'Synthetic organization'}),'2026-01-01','2026-01-01');
+ const source={id:opp,country:'AU',title:'General Practitioner',organization:'Synthetic organization',summary:'Published contact recruit@example.invalid',fullText:'Apply via recruit@example.invalid',url:'https://source.example/jobs/1'};
  publicDb.prepare('INSERT INTO opportunity_editions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(opp,'source','1','org','edition-1','both','official','job','AU','NSW',source.title,source.url,null,'2099-01-01','open',JSON.stringify(source),new Date().toISOString(),new Date().toISOString());
  const own={preset:{data:{subject:'Synthetic application',body:'Reviewed saved body'}},cv:{text:'Synthetic CV',version:1}},calls=[],restReads=[];
  for(const profile of ['amir','arash']){const owner=profile+'-owner',cipher=await encryptGoogleSecret(env,owner,{access_token:'synthetic-token'});privateDb.prepare('INSERT INTO google_accounts VALUES(?,?,?,?,?,?,?,?,?)').run(owner,profile,'subject-'+profile,profile+'@example.invalid',JSON.stringify(['https://www.googleapis.com/auth/gmail.send']),cipher,Date.now()+3600000,'connected',Date.now());}
@@ -23,11 +23,17 @@ async function fixture(){
 }
 test('published contact preview and reviewed queue use selected own preset and CV without creating clinics or sending',async()=>{
  const f=await fixture();assert.deepEqual((await(await f.call()).json()).publishedRecipients,['recruit@example.invalid']);
- const preview=await(await f.call('preview',f.payload)).json();assert.equal(preview.sender,'arash@example.invalid');assert.equal(preview.message.body,'Reviewed saved body');assert.equal(preview.recipients[0].attachmentName,'cv-arash-v1.docx');
+ const preview=await(await f.call('preview',f.payload)).json();assert.equal(preview.sender,'arash@example.invalid');assert.match(preview.message.body,/attached my CV and cover letter/);assert.equal(preview.coverLetter,'Reviewed saved body');
+ assert.deepEqual(preview.attachments.map(file=>file.name),['Dr Arash Entezar – CV.pdf','Dr Arash Entezar – Cover Letter – Synthetic organization.pdf']);
+ assert(preview.attachments.every(file=>file.mimeType==='application/pdf'&&/^[a-f0-9]{64}$/.test(file.hash)&&file.size>0));
  assert.equal(f.privateDb.prepare('SELECT count(*) n FROM google_send_queue').get().n,0);
  const queued=await(await f.call('queue',{...f.payload,confirmReviewed:true,reviewHash:preview.reviewHash})).json();assert.equal(queued.items[0].status,'queued');assert.equal(queued.items[0].recipient,f.payload.recipient);assert.equal(queued.sent,false);
  const repeated=await(await f.call('queue',{...f.payload,confirmReviewed:true,reviewHash:preview.reviewHash})).json();assert.equal(repeated.items[0].id,queued.items[0].id);assert.equal(repeated.items[0].reused,true);
- assert.equal(f.privateDb.prepare('SELECT owner_id FROM google_send_queue').get().owner_id,'arash-owner');assert.match(f.privateDb.prepare('SELECT raw_mime FROM google_send_queue').get().raw_mime,/cv-arash-v1.docx/);assert.equal(f.calls.length,0);
+ assert.equal(f.privateDb.prepare('SELECT owner_id FROM google_send_queue').get().owner_id,'arash-owner');assert.match(f.privateDb.prepare('SELECT raw_mime FROM google_send_queue').get().raw_mime,/^application-v1\./);assert.deepEqual(queued.attachments,preview.attachments);assert.equal(f.calls.length,0);
+});
+test('the GP application format does not change the other workspace mail preset or CV',async()=>{
+ const f=await fixture(),preview=await(await f.call('preview',f.payload,'amir')).json();
+ assert.equal(preview.message.body,'Reviewed saved body');assert.equal(preview.recipients[0].attachmentName,'cv-amir-v1.docx');assert.equal(preview.attachments,undefined);assert.equal(preview.coverLetter,undefined);
 });
 test('explicit review, exact published recipient, own selections and mailbox scope fail closed',async()=>{
  const f=await fixture();for(const override of [{recipient:'attacker@example.invalid'},{cvVersionId:'33333333-3333-4333-8333-333333333333'},{presetId:'33333333-3333-4333-8333-333333333333'},{mailbox:'secondary'},{owner:'amir-owner'}])assert((await f.call('preview',{...f.payload,...override})).status>=400);
@@ -82,7 +88,7 @@ test('current linked services flow through GP selection, exact child provenance,
  const f=await fixture(),evidence=seedLinkedServices(f),application={variant:'B',subjectIndex:0,clinicQuote:evidence.clinicQuote,cvQuote:evidence.cvQuote,confirmCvQuote:true};
  const generated=await getGpApplicationPackage(f.env,f.context('arash'),opp,{...application,cvVersionId});assert.equal(generated.readyForReview,true);
  assert.equal(generated.factBasis.clinic[0].sourceURL,evidence.childURL);assert.equal(generated.provenance.find(item=>item.kind==='clinic_quote').readAt,evidence.childAt);
- const payload={...f.payload,application},response=await f.call('preview',payload),preview=await response.json();assert.equal(response.status,200);assert(preview.message.body.includes('diabetes management and preventive care'));
+ const payload={...f.payload,application},response=await f.call('preview',payload),preview=await response.json();assert.equal(response.status,200);assert(preview.coverLetter.includes('diabetes management and preventive care'));
  assert.equal((await f.call('queue',{...payload,confirmReviewed:true,reviewHash:preview.reviewHash})).status,201);assert.equal(f.privateDb.prepare('SELECT count(*) n FROM google_send_queue').get().n,1);assert.equal(f.calls.length,0);
 });
 test('linked clinical fact receipt drift invalidates review and foreign or stale-parent text cannot become selected evidence',async()=>{
@@ -128,7 +134,7 @@ test('source-personalized GP package uses exact own CV/source quotes and freezes
  const row=f.publicDb.prepare('SELECT data FROM opportunity_editions WHERE id=?').get(opp),source=JSON.parse(row.data);Object.assign(source,{organization:'Synthetic Practice',summary:clinicQuote,fullText:clinicQuote+'\nApply via recruit@example.invalid'});f.publicDb.prepare('UPDATE opportunity_editions SET data=? WHERE id=?').run(JSON.stringify(source),opp);
  f.own.preset.data.name='GP B — Independent practice enquiry';f.own.cv.text=cvQuote;
  const application={variant:'B',subjectIndex:0,clinicQuote,cvQuote,confirmCvQuote:true},payload={...f.payload,application};
- const response=await f.call('preview',payload);assert.equal(response.status,200);const preview=await response.json();assert(preview.message.body.includes('Synthetic Practice'));assert(preview.message.body.includes('chronic disease care'));assert(!preview.message.body.includes('Your published information states'));assert.equal(preview.message.body.trim().split(/\n\s*\n/).length,6);assert(preview.message.body.includes('chronic disease management'));assert(preview.message.body.includes('preventive care'));assert(!preview.message.body.includes('{{'));assert.notEqual(preview.message.body,'Reviewed saved body');assert.equal(f.own.preset.data.body,'Reviewed saved body');
+ const response=await f.call('preview',payload);assert.equal(response.status,200);const preview=await response.json();assert(preview.message.body.includes('Synthetic Practice'));assert(preview.coverLetter.includes('chronic disease care'));assert(!preview.coverLetter.includes('Your published information states'));assert.equal(preview.coverLetter.trim().split(/\n\s*\n/).length,6);assert(preview.coverLetter.includes('chronic disease management'));assert(preview.coverLetter.includes('preventive care'));assert(!preview.coverLetter.includes('{{'));assert.notEqual(preview.coverLetter,'Reviewed saved body');assert.equal(f.own.preset.data.body,'Reviewed saved body');
  assert.equal((await f.call('queue',{...payload,application:{...application,subjectIndex:1},confirmReviewed:true,reviewHash:preview.reviewHash})).status,409);
  const queued=await f.call('queue',{...payload,confirmReviewed:true,reviewHash:preview.reviewHash});assert.equal(queued.status,201);assert.equal(f.privateDb.prepare('SELECT count(*) n FROM google_send_queue').get().n,1);assert.equal(f.calls.length,0);
 });
@@ -159,7 +165,7 @@ test('optional clinic contact remains owner-scoped and changing it invalidates m
  f.privateDb.prepare('INSERT INTO linkedin_contacts VALUES(?,?,?,?)').run(contactId,'arash-owner',JSON.stringify(contact),new Date().toISOString());
  const application={variant:'B',subjectIndex:0,clinicQuote,cvQuote,confirmCvQuote:true,connectionId:contactId,confirmConnection:true},payload={...f.payload,application};
  assert.equal((await f.call('preview',{...payload,application:{...application,confirmConnection:false}})).status,400);
- const response=await f.call('preview',payload);assert.equal(response.status,200);const preview=await response.json();assert(preview.message.body.includes(contact.name));
+ const response=await f.call('preview',payload);assert.equal(response.status,200);const preview=await response.json();assert(preview.coverLetter.includes(contact.name));assert(!preview.message.body.includes(contact.name));
  f.privateDb.prepare('UPDATE linkedin_contacts SET data=? WHERE id=?').run(JSON.stringify({...contact,name:'Changed Contact'}),contactId);
  assert.equal((await f.call('queue',{...payload,confirmReviewed:true,reviewHash:preview.reviewHash})).status,409);
  f.privateDb.prepare('UPDATE linkedin_contacts SET owner_id=? WHERE id=?').run('foreign-owner',contactId);
@@ -181,9 +187,9 @@ test('reviewed opportunity can be explicitly scheduled in place without dispatch
  const preview=await(await f.call('preview',f.payload)).json(),sendAfter=after();
  const response=await f.call('schedule',{...f.payload,confirmReviewed:true,reviewHash:preview.reviewHash,sendAfter,confirmSend:true});assert.equal(response.status,201);const scheduled=await response.json();
  assert.equal(scheduled.approval.status,'approved');assert.equal(scheduled.approval.sendAfter,sendAfter);assert.equal(scheduled.approval.queueId,scheduled.items[0].id);assert.equal(scheduled.approval.cvVersionId,cvVersionId);assert.equal(scheduled.sent,false);assert.equal(f.calls.length,0);
- const job=f.privateDb.prepare('SELECT * FROM mail_automation_jobs').get(),snapshot=JSON.parse(job.snapshot_json);assert.equal(snapshot.kind,'opportunity_application_v1');assert.equal(snapshot.body,'Reviewed saved body');assert.equal(snapshot.recipient,f.payload.recipient);assert.equal(job.owner_id,'arash-owner');assert.equal(job.mailbox,'primary');
+ const job=f.privateDb.prepare('SELECT * FROM mail_automation_jobs').get(),snapshot=JSON.parse(job.snapshot_json);assert.equal(snapshot.kind,'opportunity_application_v1');assert.equal(snapshot.body,preview.message.body);assert.equal(snapshot.coverLetter,'Reviewed saved body');assert.deepEqual(snapshot.attachments,preview.attachments);assert.equal(snapshot.recipient,f.payload.recipient);assert.equal(job.owner_id,'arash-owner');assert.equal(job.mailbox,'primary');
  const repeat=await f.call('schedule',{...f.payload,confirmReviewed:true,reviewHash:preview.reviewHash,sendAfter,confirmSend:true});assert.equal(repeat.status,200);assert.equal((await repeat.json()).approval.reused,true);assert.equal(f.privateDb.prepare('SELECT count(*) n FROM mail_scheduled_approvals').get().n,1);
- const listed=(await(await f.call()).json()).scheduling.approvals;assert.equal(listed.length,1);assert.equal(listed[0].message.body,'Reviewed saved body');assert.equal(listed[0].attachmentName,'cv-arash-v1.docx');
+ const listed=(await(await f.call()).json()).scheduling.approvals;assert.equal(listed.length,1);assert.equal(listed[0].message.body,preview.message.body);assert.equal(listed[0].coverLetter,'Reviewed saved body');assert.deepEqual(listed[0].attachments,preview.attachments);assert.equal(listed[0].attachmentName,preview.attachments[0].name);
  assert.equal(f.privateDb.prepare('SELECT requested_mode FROM mail_automation_settings').get().requested_mode,'automatic');
 });
 test('schedule requires enabled transport, mode, time and separate approval before any queue is created',async()=>{
@@ -234,7 +240,7 @@ test('academic letter receipt is private and revalidated before the exact review
  f.privateDb.exec(readFileSync(new URL('../cloud/ai-assistant-schema.sql',import.meta.url),'utf8'));
  const draft={clinicParagraph:"I am particularly interested in the continuity of care described at Synthetic Practice. I would value the opportunity to build long-term patient relationships through community general practice and chronic disease care.",valueParagraph:'My experience in chronic disease management and preventive care provides a relevant foundation for contributing to these services. I would bring that experience to routine consultations and follow-up, while working within the agreed supervision arrangements and local clinical protocols.',clinicFactIds:['clinic_1'],cvFactIds:['cv_1']},refinementId='academic_'+'a'.repeat(32);
  f.privateDb.prepare('INSERT INTO ai_assistant_runs VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(refinementId,'arash-owner','arash',new Date().toISOString().slice(0,10),await academicContextHash(generated),'email','Synthetic private letter','completed',JSON.stringify({draft}),null,new Date().toISOString());
- const payload={...f.payload,application:{...app,refinementId}},response=await f.call('preview',payload),preview=await response.json();assert.equal(response.status,200);assert(preview.message.body.includes(draft.valueParagraph));assert(preview.message.body.includes('Phone: +00 123 456 789'));assert(preview.message.body.includes('Email: synthetic-doctor@example.invalid'));
+ const payload={...f.payload,application:{...app,refinementId}},response=await f.call('preview',payload),preview=await response.json();assert.equal(response.status,200);assert(preview.coverLetter.includes(draft.valueParagraph));assert(preview.coverLetter.includes('Phone: +00 123 456 789'));assert(preview.coverLetter.includes('Email: synthetic-doctor@example.invalid'));
  assert.equal((await f.call('queue',{...payload,application:{...app,refinementId:'academic_'+'b'.repeat(32)},confirmReviewed:true,reviewHash:preview.reviewHash})).status,409);
  assert.equal((await f.call('queue',{...payload,confirmReviewed:true,reviewHash:preview.reviewHash})).status,201);assert.equal(f.calls.length,0);
  source.summary=source.fullText='Our clinic now provides different services. Apply via recruit@example.invalid';f.publicDb.prepare('UPDATE opportunity_editions SET data=? WHERE id=?').run(JSON.stringify(source),opp);

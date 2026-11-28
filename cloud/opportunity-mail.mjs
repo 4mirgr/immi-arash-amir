@@ -3,6 +3,8 @@
 import {getGpApplicationPackage} from './gp-application-package.mjs';
 import {resolveAcademicDraft} from './gp-academic-writing.mjs';
 import {resolveEditedLetter} from './gp-letter-edits.mjs';
+import {readGpWritingProfile} from './gp-letter-composer.mjs';
+import {buildGpApplicationEmail} from './gp-mail-documents.mjs';
 import {handleGoogleSendRequest} from './google-send.mjs';
 import {googleAccountContext} from './google-account-scope.mjs';
 import {enrichReadPages} from './opportunity-store.mjs';
@@ -51,7 +53,7 @@ export async function handleOpportunityMailRequest(request,env,context,fetcher=f
   const scoped=googleAccountContext(new Request(url.origin+'/api/google/mail/preview?mailbox='+mailbox),context);
   const suffix='&profile_id=eq.'+context.profileId;
   const [presets,cvs]=await Promise.all([context.rest('immi_presets','?select=data&id=eq.'+input.presetId+suffix),context.rest('immi_cv_versions','?select=text,version&id=eq.'+input.cvVersionId+suffix)]);
-  let preset=presets[0],applicationContactEvidence=null;const cv=cvs[0];if(!preset)fail('preset_not_found',404);if(!cv||typeof cv.text!=='string')fail('cv_not_found',404);
+  let preset=presets[0],applicationContactEvidence=null,mailEnvelope=null,applicationDocuments=null;const cv=cvs[0];if(!preset)fail('preset_not_found',404);if(!cv||typeof cv.text!=='string')fail('cv_not_found',404);
   if(input.application!==undefined){
    const app=input.application;
    if(context.profileId!=='arash'||!app||typeof app!=='object'||Array.isArray(app)||Object.keys(app).some(k=>!['variant','subjectIndex','clinicQuote','cvQuote','confirmCvQuote','connectionId','confirmConnection','refinementId','editedDraftId'].includes(k))||!['A','B','C'].includes(app.variant)||!Number.isInteger(app.subjectIndex)||app.subjectIndex<0||app.subjectIndex>2||typeof app.clinicQuote!=='string'||app.clinicQuote.length>1000||typeof app.cvQuote!=='string'||app.cvQuote.length>1200||app.confirmCvQuote!==true||(app.connectionId!==undefined&&(!UUID.test(app.connectionId)||app.confirmConnection!==true))||(app.confirmConnection!==undefined&&typeof app.confirmConnection!=='boolean')||(app.refinementId!==undefined&&!/^academic_[a-f0-9]{32}$/.test(app.refinementId))||(app.editedDraftId!==undefined&&!/^gpedit_[a-f0-9]{32}$/.test(app.editedDraftId)))fail('invalid_gp_application');
@@ -62,13 +64,26 @@ export async function handleOpportunityMailRequest(request,env,context,fetcher=f
    if(app.editedDraftId)generated=await resolveEditedLetter(env,context,generated,app.editedDraftId,app.subjectIndex);
    if(preset.data?.name!==generated.templateName)fail('gp_application_template_mismatch',409);
    applicationContactEvidence={person:generated.dossier.practiceManager,namedCandidates:generated.namedContactCandidates,checkedAt:generated.contactDiscovery?.checkedAt||null,clinicQuote:generated.provenance.find(item=>item.kind==='clinic_quote')||null};
+   mailEnvelope=generated.mailEnvelope;
    preset={...preset,data:{...preset.data,subject:generated.subjects[app.subjectIndex],body:generated.body}};
   }
   if(typeof preset.data?.subject!=='string'||typeof preset.data?.body!=='string'||/\{\{|\[\[(?:name|clinic|doctor|recipient)/i.test(preset.data.subject+' '+preset.data.body))fail('template_placeholders_require_review',409);
+  if(context.profileId==='arash'){
+   if(!mailEnvelope){
+    const [profile]=await context.rest('immi_profiles','?select=data&profile_id=eq.arash&user_id=eq.'+encodeURIComponent(context.userId));
+    const writing=readGpWritingProfile(profile?.data||{});
+    if(!writing.signatureStatus.complete)fail('gp_application_signature_required',409);
+    let practiceName=typeof source.organization==='string'?source.organization:source.organization?.name;
+    if(!practiceName){const organization=await env.OPPORTUNITY_DB.prepare("SELECT json_extract(data,'$.name') AS name FROM opportunity_organizations WHERE id=?").bind(row.organization_id).first();practiceName=organization?.name;}
+    mailEnvelope={practiceName,practiceManager:null,signatureName:writing.signatureName,signatureEmail:writing.signatureEmail,signaturePhone:writing.signaturePhone,signatureLinkedIn:writing.signatureLinkedIn};
+   }
+   applicationDocuments={practiceName:mailEnvelope.practiceName,coverLetter:preset.data.body};
+   preset={...preset,data:{...preset.data,body:buildGpApplicationEmail(mailEnvelope)}};
+  }
   // Ephemeral adapter binds exactly one server-verified source recipient. It never
   // inserts a clinic, accepts a browser clinic ID, or consults another owner.
   const clinicId='cl_'+(await digest(recipient)).slice(0,20);
-  const frozen={...scoped,rest:async(table,query)=>{
+  const frozen={...scoped,...(applicationDocuments?{applicationDocuments}:{}),rest:async(table,query)=>{
    if(table==='immi_presets')return [preset];if(table==='immi_cv_versions')return [cv];
    if(table==='immi_clinics')return [{id:clinicId,data:{email:recipient}}];
    return context.rest(table,query);
@@ -79,8 +94,9 @@ export async function handleOpportunityMailRequest(request,env,context,fetcher=f
   if(!previewResponse.ok)return json(preview,previewResponse.status);
   const identity=await env.GOOGLE_DB.prepare('SELECT google_sub,email,status FROM google_accounts WHERE owner_id=?').bind(scoped.userId).first();
   if(!identity||identity.status!=='connected'||identity.email.toLowerCase()!==preview.sender.toLowerCase())fail('google_account_changed',409);
-  const reviewHash=await digest({owner:context.userId,googleSubject:identity.google_sub,mailbox,opportunityId:row.id,editionKey:row.edition_key,sourceContent:source,applicationContactEvidence,presetId:input.presetId,cvVersionId:input.cvVersionId,recipient,subject:preset.data.subject,body:preset.data.body,cvText:cv.text,cvVersion:cv.version,sender:preview.sender,attachmentName:preview.recipients?.[0]?.attachmentName});
-  if(match[2]==='preview')return json({...preview,...sourceView,mailbox,presetId:input.presetId,cvVersionId:input.cvVersionId,message:{subject:preset.data.subject,body:preset.data.body},reviewHash,sent:false});
+  const reviewedDocuments=applicationDocuments?{coverLetter:applicationDocuments.coverLetter,attachments:preview.attachments}:null;
+  const reviewHash=await digest({owner:context.userId,googleSubject:identity.google_sub,mailbox,opportunityId:row.id,editionKey:row.edition_key,sourceContent:source,applicationContactEvidence,presetId:input.presetId,cvVersionId:input.cvVersionId,recipient,subject:preset.data.subject,body:preset.data.body,cvText:cv.text,cvVersion:cv.version,sender:preview.sender,attachmentName:preview.recipients?.[0]?.attachmentName,...(reviewedDocuments||{})});
+  if(match[2]==='preview')return json({...preview,...sourceView,...(reviewedDocuments||{}),mailbox,presetId:input.presetId,cvVersionId:input.cvVersionId,message:{subject:preset.data.subject,body:preset.data.body},reviewHash,sent:false});
   if(input.confirmReviewed!==true)fail('explicit_review_required',409);
   if(input.reviewHash!==reviewHash)fail('application_changed_review_required',409);
   if(preview.recipients?.length!==1)fail(preview.excluded?.[0]?.reason==='suppressed'?'recipient_suppressed':'recipient_unavailable',409);
@@ -88,7 +104,7 @@ export async function handleOpportunityMailRequest(request,env,context,fetcher=f
   let scheduleSnapshot=null,existingJob=null;
   if(match[2]==='schedule'){
    const evidence=await opportunityScheduleEvidence(env,row,context.profileId,source,verifiedClinicEvidence);
-   scheduleSnapshot={kind:'opportunity_application_v1',opportunityId:row.id,title:row.title,url:row.url,editionKey:row.edition_key,sourceEvidenceDigest:evidence.sourceEvidenceDigest,presetId:input.presetId,cvVersionId:input.cvVersionId,recipient,subject:preset.data.subject,body:preset.data.body,mailbox};
+   scheduleSnapshot={kind:'opportunity_application_v1',opportunityId:row.id,title:row.title,url:row.url,editionKey:row.edition_key,sourceEvidenceDigest:evidence.sourceEvidenceDigest,presetId:input.presetId,cvVersionId:input.cvVersionId,recipient,subject:preset.data.subject,body:preset.data.body,mailbox,...(reviewedDocuments||{})};
    existingJob=await env.GOOGLE_DB.prepare('SELECT * FROM mail_automation_jobs WHERE owner_id=? AND opportunity_id=? AND recipient=?').bind(context.userId,row.id,recipient).first();
    if(existingJob){
     if(existingJob.status!=='queued'||existingJob.snapshot_json!==JSON.stringify(scheduleSnapshot)||existingJob.mailbox!==mailbox)fail('existing_application_job_requires_review',409);
@@ -97,7 +113,7 @@ export async function handleOpportunityMailRequest(request,env,context,fetcher=f
    }
   }
   const response=await handleGoogleSendRequest(transportRequest('queue'),env,frozen,fetcher),queued=await response.json();
-  if(match[2]!=='schedule'||!response.ok)return json({...queued,...sourceView,mailbox,sent:false},response.status);
+  if(match[2]!=='schedule'||!response.ok)return json({...queued,...sourceView,...(reviewedDocuments?{attachments:reviewedDocuments.attachments}:{}),mailbox,sent:false},response.status);
   const item=queued.items?.length===1?queued.items[0]:null;
   if(!item||item.status!=='queued'||!UUID.test(item.id||''))fail('reviewed_queue_required',409);
   let job=existingJob,newJob=false,approved=false;
@@ -113,7 +129,7 @@ export async function handleOpportunityMailRequest(request,env,context,fetcher=f
    const approvalResponse=await handleMailSchedulerRequest(approvalRequest,env,context),approval=await approvalResponse.json();
    if(!approvalResponse.ok)fail(approval.error||'schedule_approval_failed',approvalResponse.status);
    approved=true;
-   return json({...queued,...sourceView,mailbox,approval:{...approval,opportunityId:row.id,message:{subject:scheduleSnapshot.subject,body:scheduleSnapshot.body},attachmentName:item.attachmentName||null},sent:false},approvalResponse.status);
+   return json({...queued,...sourceView,...(reviewedDocuments?{attachments:reviewedDocuments.attachments}:{}),mailbox,approval:{...approval,opportunityId:row.id,message:{subject:scheduleSnapshot.subject,body:scheduleSnapshot.body},attachmentName:item.attachmentName||null,...(reviewedDocuments||{})},sent:false},approvalResponse.status);
   }catch(error){
    if(!approved){
     // A failed schedule must not leave a newly created message available for
@@ -123,5 +139,5 @@ export async function handleOpportunityMailRequest(request,env,context,fetcher=f
    }
    throw error;
   }
- }catch(error){return json({error:Number.isInteger(error.status)?error.message:'opportunity_mail_unavailable'},Number.isInteger(error.status)?error.status:503);}
+ }catch(error){return json({error:Number.isInteger(error.status)?error.message:'opportunity_mail_unavailable',...(['cv','cover_letter'].includes(error?.document)?{document:error.document}:{})},Number.isInteger(error.status)?error.status:503);}
 }

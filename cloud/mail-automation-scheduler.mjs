@@ -66,7 +66,10 @@ export async function opportunitySchedulingStatus(env,owner,profileId,source){
  let settings=null,approvals=[];
  try{
   settings=await stmt(env.GOOGLE_DB,'SELECT requested_mode FROM mail_automation_settings WHERE owner_id=?',owner).first();
-  approvals=(await all(env.GOOGLE_DB,"SELECT a.*,j.opportunity_id,j.snapshot_json,q.attachment_name FROM mail_scheduled_approvals a JOIN mail_automation_jobs j ON j.id=a.job_id AND j.owner_id=a.owner_id LEFT JOIN google_send_queue q ON q.id=a.queue_id AND q.owner_id=(j.owner_id||CASE WHEN j.mailbox='secondary' THEN ':secondary' ELSE '' END) WHERE a.owner_id=? AND j.opportunity_id=? ORDER BY a.created_at DESC LIMIT 10",owner,source.id)).map(row=>{const snapshot=parse(row.snapshot_json);return {...itemView(row),message:{subject:snapshot.subject||'',body:snapshot.body||''},attachmentName:row.attachment_name||null};});
+ approvals=(await all(env.GOOGLE_DB,"SELECT a.*,j.opportunity_id,j.snapshot_json,q.attachment_name FROM mail_scheduled_approvals a JOIN mail_automation_jobs j ON j.id=a.job_id AND j.owner_id=a.owner_id LEFT JOIN google_send_queue q ON q.id=a.queue_id AND q.owner_id=(j.owner_id||CASE WHEN j.mailbox='secondary' THEN ':secondary' ELSE '' END) WHERE a.owner_id=? AND j.opportunity_id=? ORDER BY a.created_at DESC LIMIT 10",owner,source.id)).map(row=>{
+  const snapshot=parse(row.snapshot_json),documents=snapshot.coverLetter&&Array.isArray(snapshot.attachments)?{coverLetter:snapshot.coverLetter,attachments:snapshot.attachments}:null;
+  return {...itemView(row),message:{subject:snapshot.subject||'',body:snapshot.body||''},attachmentName:documents?.attachments[0]?.name||row.attachment_name||null,...(documents||{})};
+ });
  }catch{return {enabled:false,modeReady:false,sourceEligible:false,maxHours:23.5,status:'storage_not_configured',approvals:[]};}
  let sourceEligible=false;try{sourceEligible=await recentlyVerifiedSource(env,source,profileId);}catch{}
  return {enabled:enabled(env),modeReady:settings?.requested_mode==='automatic',sourceEligible,maxHours:23.5,validityMinutes:30,approvals};

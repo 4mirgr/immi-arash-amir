@@ -14,6 +14,7 @@ const origin='https://app.example.invalid',scopes=['https://www.googleapis.com/a
 const profile={name:'Synthetic Applicant',planning:{gpApplicationWriting:{confirmedByOwner:true,writingVersion:'human-four-paragraph-v1',openingParagraph:'I am a general practitioner seeking a long-term supervised GP role in Australia.',closingParagraph:'Please let me know a convenient time to discuss how I can support your practice.',signatureEmail:'applicant@example.invalid',signaturePhone:'+61000000000'}}};
 const cvText='Managed chronic disease consultations, acute presentations and preventive care in general practice.';
 const edited={clinicParagraph:'I would value the opportunity to join Harbour Medical Centre because its approach to chronic disease management reflects the continuing patient care I hope to provide within a supportive clinical team.',valueParagraph:'My clinical work has included assessing acute presentations and following patients with chronic conditions. I would bring that experience to your practice, communicate openly with colleagues and remain receptive to feedback within the agreed supervision arrangements.'};
+const outer={openingParagraph:'I am a general practitioner interested in a long-term clinical role in Australia, subject to appropriate registration and supervision arrangements.',closingParagraph:'I would welcome the opportunity to discuss your clinical priorities and whether my background would suit your team.'};
 const raw=id=>({id,threadId:'thread_'+id,internalDate:String(Date.now()-60000),labelIds:['INBOX'],payload:{mimeType:'text/plain',headers:[{name:'From',value:'Practice Manager <manager@clinic.example.invalid>'},{name:'To',value:'applicant@example.invalid'},{name:'Subject',value:'Australia General Practitioner vacancy at Harbour Medical Centre'},{name:'Message-ID',value:'<'+id+'@clinic.example.invalid>'}],body:{data:Buffer.from('Harbour Medical Centre is recruiting a general practitioner in regional Australia. Harbour Medical Centre provides chronic disease management, preventive care and wound care. Level 1 supervision and visa sponsorship may be available. Please email manager@clinic.example.invalid. https://clinic.example.invalid/careers/gp').toString('base64url')}}});
 
 async function fixture(){
@@ -56,20 +57,20 @@ test('default preparation respects the owner default CV and latest-owned fallbac
  assert.equal((await prepareOwnedMailOpportunity(f.env,f.context(),id,{cvVersionId:cv2})).cvVersionId,cv2);
  await assert.rejects(()=>prepareOwnedMailOpportunity(f.env,f.context(),id,{cvVersionId:other}),/cv_version_required/);
 });
-test('private edits preserve the fixed signature/paragraphs, create immutable own journal rows and rehydrate on prepare/read',async()=>{
+test('private edits version all four owner paragraphs while preserving the signature and rehydrate on prepare/read',async()=>{
  const f=await fixture(),id=await f.seed(),before=await prepareOwnedMailOpportunity(f.env,f.context(),id,{cvVersionId:cv1});
- const response=await f.save(id),saved=await response.json();assert.equal(response.status,201,JSON.stringify(saved));assert.match(saved.editedDraftId,/^moedit_[a-f0-9]{32}$/);assert.equal(saved.editRevision,1);assert.equal(saved.editStatus,'owner_edited');
- const prior=before.body.split('\n\n'),after=saved.body.split('\n\n');assert.deepEqual([after[0],after[1],after[4],after[5]],[prior[0],prior[1],prior[4],prior[5]]);assert(saved.body.includes(edited.valueParagraph));
+ const response=await f.save(id,{...edited,...outer,cvVersionId:cv1}),saved=await response.json();assert.equal(response.status,201,JSON.stringify(saved));assert.match(saved.editedDraftId,/^moedit_[a-f0-9]{32}$/);assert.equal(saved.editRevision,1);assert.equal(saved.editStatus,'owner_edited');
+ const prior=before.body.split('\n\n'),after=saved.body.split('\n\n');assert.deepEqual([after[0],after[5]],[prior[0],prior[5]]);assert.equal(after[1],outer.openingParagraph);assert.equal(after[4],outer.closingParagraph);assert(saved.body.includes(edited.valueParagraph));
  const cached=JSON.parse(f.db.prepare('SELECT draft_json FROM private_mail_opportunities WHERE id=?').get(id).draft_json);assert.equal(cached.body,before.body);assert.notEqual(cached.body,saved.body);
- const journal=f.db.prepare('SELECT * FROM gp_letter_edits WHERE id=?').get(saved.editedDraftId);assert.equal(journal.owner_id,owner);assert.equal(JSON.parse(journal.selection_json).kind,'private_mail_opportunity_v1');assert.equal(journal.cv_version_id,cv1);
+ const journal=f.db.prepare('SELECT * FROM gp_letter_edits WHERE id=?').get(saved.editedDraftId);assert.equal(journal.owner_id,owner);assert.equal(JSON.parse(journal.selection_json).kind,'private_mail_opportunity_v1');assert.deepEqual(JSON.parse(journal.selection_json).ownerParagraphs,{version:'owner-paragraphs-v1',...outer});assert.equal(journal.cv_version_id,cv1);
  assert.equal((await prepareOwnedMailOpportunity(f.env,f.context(),id,{cvVersionId:cv1})).body,saved.body);
  const read=await handleMailOpportunitiesRequest(new Request(origin+'/api/google/mail-opportunities/'+id+'?profile=arash'),f.env,f.context()),item=await read.json();assert.equal(item.draft.editedDraftId,saved.editedDraftId);assert.equal(item.draft.body,saved.body);
  assert.equal(f.counts.sends,0);
 });
 test('changing the selected CV retains the old edit for review and permits a fresh explicitly saved case without deleting history',async()=>{
- const f=await fixture(),id=await f.seed(),saved=await(await f.save(id)).json();
- const changed=await prepareOwnedMailOpportunity(f.env,f.context(),id,{cvVersionId:cv2});assert.equal(changed.readyForReview,false);assert.equal(changed.editStatus,'saved_edit_needs_review');assert.equal(changed.savedEdit.id,saved.editedDraftId);assert(changed.body);assert.equal(changed.cvVersionId,cv2);
- const response=await f.save(id,{...edited,cvVersionId:cv2}),next=await response.json();assert.equal(response.status,201,JSON.stringify(next));assert.equal(next.editRevision,2);assert.equal(next.readyForReview,true);assert.equal(next.cvVersionId,cv2);assert.equal(f.db.prepare('SELECT count(*) n FROM gp_letter_edits').get().n,2);
+ const f=await fixture(),id=await f.seed(),saved=await(await f.save(id,{...edited,...outer,cvVersionId:cv1})).json();
+ const changed=await prepareOwnedMailOpportunity(f.env,f.context(),id,{cvVersionId:cv2});assert.equal(changed.readyForReview,false);assert.equal(changed.editStatus,'saved_edit_needs_review');assert.equal(changed.savedEdit.id,saved.editedDraftId);assert.equal(changed.savedEdit.openingParagraph,outer.openingParagraph);assert.equal(changed.savedEdit.closingParagraph,outer.closingParagraph);assert(changed.body);assert.equal(changed.cvVersionId,cv2);
+ const response=await f.save(id,{...edited,...outer,cvVersionId:cv2}),next=await response.json();assert.equal(response.status,201,JSON.stringify(next));assert.equal(next.editRevision,2);assert.equal(next.readyForReview,true);assert.equal(next.cvVersionId,cv2);assert.equal(f.db.prepare('SELECT count(*) n FROM gp_letter_edits').get().n,2);
  assert.equal((await prepareOwnedMailOpportunity(f.env,f.context(),id,{cvVersionId:cv2})).editedDraftId,next.editedDraftId);
 });
 test('a successful source reread cannot silently overwrite owner text; changed source evidence requires rebase review',async()=>{
@@ -89,7 +90,7 @@ test('wrong owner, mailbox, Google identity, fixed-section edits and unpublished
 });
 test('private edited receipt drives exact preview/send and an identically worded newer edit invalidates an old approval',async()=>{
  const f=await fixture(),id=await f.seed(),saved=await(await f.save(id)).json();
- const previewResponse=await f.send(id,'preview',{cvVersionId:cv1,editedDraftId:saved.editedDraftId}),preview=await previewResponse.json();assert.equal(previewResponse.status,200,JSON.stringify(preview));assert.equal(preview.message.body,saved.body);assert.equal(preview.editedDraftId,saved.editedDraftId);
+ const previewResponse=await f.send(id,'preview',{cvVersionId:cv1,editedDraftId:saved.editedDraftId}),preview=await previewResponse.json();assert.equal(previewResponse.status,200,JSON.stringify(preview));assert.equal(preview.coverLetter,saved.body);assert.notEqual(preview.message.body,saved.body);assert.equal(preview.attachments.length,2);assert(preview.attachments.every(item=>item.mimeType==='application/pdf'&&item.size>0&&item.hash));assert.equal(preview.editedDraftId,saved.editedDraftId);
  const newer=await(await f.save(id,{...edited,cvVersionId:cv1,editedDraftId:saved.editedDraftId})).json();assert.equal(newer.body,saved.body);assert.notEqual(newer.editedDraftId,saved.editedDraftId);
  const stale=await f.send(id,'send',{cvVersionId:cv1,editedDraftId:saved.editedDraftId,reviewHash:preview.reviewHash,confirmSend:true});assert.equal(stale.status,409);assert.equal(f.counts.sends,0);
  const fresh=await(await f.send(id,'preview',{cvVersionId:cv1,editedDraftId:newer.editedDraftId})).json();f.reset();
@@ -120,8 +121,17 @@ test('an identical edit created during queue source reading cannot replace eithe
   const selection={cvVersionId:cv1,...(saved?{editedDraftId:saved.editedDraftId}:{})},preview=await(await f.send(id,'preview',selection)).json();assert(preview.reviewHash);
   f.state.sourceReads=0;f.state.onRead=async()=>{
    if(f.state.sourceReads!==1)return;f.state.onRead=null;
-   const response=await f.save(id,{cvVersionId:cv1,body:preview.message.body,...(saved?{editedDraftId:saved.editedDraftId}:{})}),updated=await response.json();assert.equal(response.status,201,JSON.stringify(updated));assert.equal(updated.body,preview.message.body);
+   const response=await f.save(id,{cvVersionId:cv1,body:preview.coverLetter,...(saved?{editedDraftId:saved.editedDraftId}:{})}),updated=await response.json();assert.equal(response.status,201,JSON.stringify(updated));assert.equal(updated.body,preview.coverLetter);
   };
   const response=await f.send(id,'send',{...selection,recipient:preview.recipient,reviewHash:preview.reviewHash,confirmSend:true});assert(response.status>=400,await response.text());assert.equal(f.counts.sends,0);assert.equal(f.db.prepare('SELECT count(*) n FROM google_send_queue').get().n,0);
  }
+});
+test('legacy private revisions retain P2/P3 and canonical outer paragraphs; an outer-only edit requires a fresh mail review',async()=>{
+ const f=await fixture(),id=await f.seed(),saved=await(await f.save(id)).json();
+ f.db.prepare("UPDATE gp_letter_edits SET selection_json=json_remove(selection_json,'$.ownerParagraphs') WHERE id=?").run(saved.editedDraftId);
+ const legacy=await prepareOwnedMailOpportunity(f.env,f.context(),id,{cvVersionId:cv1});assert.equal(legacy.body,saved.body);assert.equal(legacy.editStatus,'owner_edited');
+ const preview=await(await f.send(id,'preview',{cvVersionId:cv1,editedDraftId:saved.editedDraftId})).json();
+ const nextResponse=await f.save(id,{...edited,...outer,cvVersionId:cv1,editedDraftId:saved.editedDraftId}),next=await nextResponse.json();assert.equal(nextResponse.status,201,JSON.stringify(next));assert.equal(next.editRevision,2);assert.equal(next.paragraphs.opening,outer.openingParagraph);assert.equal(next.paragraphs.closing,outer.closingParagraph);
+ const stale=await f.send(id,'send',{cvVersionId:cv1,editedDraftId:next.editedDraftId,reviewHash:preview.reviewHash,confirmSend:true});assert.equal(stale.status,409);assert.equal(f.counts.sends,0);
+ const fresh=await(await f.send(id,'preview',{cvVersionId:cv1,editedDraftId:next.editedDraftId})).json();assert.equal(fresh.coverLetter,next.body);assert.notEqual(fresh.reviewHash,preview.reviewHash);assert.equal(fresh.attachments.length,2);assert.equal(f.db.prepare('SELECT count(*) n FROM gp_letter_edits').get().n,2);
 });

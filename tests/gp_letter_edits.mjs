@@ -14,6 +14,7 @@ const fixed={openingParagraph:'I am a general practitioner seeking an appropriat
 const profile={name:'Dr Synthetic Applicant',planning:{gpApplicationWriting:fixed}};
 const selection={variant:'B',cvVersionId:cvId,clinicQuote:clinic,cvQuote:cv,confirmCvQuote:true};
 const edited={clinicParagraph:'I would value the opportunity to join Synthetic Practice because its multidisciplinary approach fits the collaborative clinical environment in which I hope to develop my long-term general practice career.',valueParagraph:'My work in general practice has involved assessing acute presentations and following patients with chronic conditions. I would bring that clinical background to your team, remain open to feedback and adapt carefully to local protocols and agreed supervision.'};
+const outer={openingParagraph:'I am a general practitioner interested in a sustained clinical role in Australia, with supervision arrangements appropriate to my registration pathway.',closingParagraph:'I would welcome a conversation about your current needs and the contribution I could make to your clinical team.'};
 function binding(db){return {prepare(sql){let args=[];return {_sql:sql,_args:[],bind(...values){args=values;this._args=values;return this;},async first(){return db.prepare(sql).get(...args)||null;},async all(){return {results:db.prepare(sql).all(...args)};},async run(){return {meta:db.prepare(sql).run(...args)};}};},async batch(statements){db.exec('BEGIN');try{const values=statements.map(item=>({results:db.prepare(item._sql).all(...item._args)}));db.exec('COMMIT');return values;}catch(error){db.exec('ROLLBACK');throw error;}}};}
 async function fixture(){
  const db=new DatabaseSync(':memory:'),publicDb=new DatabaseSync(':memory:');
@@ -42,13 +43,15 @@ async function fixture(){
  return {db,publicDb,env,context,own,source,put,request,input,call,pkg,mail,transportCalls};
 }
 
-test('manual editing preserves fixed greeting, first/fourth paragraphs and contact signature',async()=>{
+test('all four paragraphs are owner-editable while the greeting and contact signature remain fixed',async()=>{
  const f=await fixture(),pkg=await f.pkg(),blocks=pkg.body.split('\n\n');
- blocks[2]=edited.clinicParagraph;blocks[3]=edited.valueParagraph;
- const validation=validateManualLetterEdit(pkg,{body:blocks.join('\n\n'),subjectIndex:0});assert.equal(validation.clinicParagraph,edited.clinicParagraph);
- for(const index of [0,1,4,5]){const changed=[...blocks];changed[index]+=' changed';assert.throws(()=>validateManualLetterEdit(pkg,{body:changed.join('\n\n'),subjectIndex:0}),/manual_letter_fixed_sections_changed/);}
- const response=await f.call('manual-edit',f.input()),saved=await response.json();assert.equal(response.status,201,JSON.stringify(saved));
- const result=saved.body.split('\n\n');assert.deepEqual([result[0],result[1],result[4],result[5]],[blocks[0],blocks[1],blocks[4],blocks[5]]);
+ blocks[1]=outer.openingParagraph;blocks[2]=edited.clinicParagraph;blocks[3]=edited.valueParagraph;blocks[4]=outer.closingParagraph;
+ const validation=validateManualLetterEdit(pkg,{body:blocks.join('\n\n'),subjectIndex:0});assert.equal(validation.clinicParagraph,edited.clinicParagraph);assert.equal(validation.openingParagraph,outer.openingParagraph);assert.equal(validation.closingParagraph,outer.closingParagraph);
+ for(const index of [0,5]){const changed=[...blocks];changed[index]+=' changed';assert.throws(()=>validateManualLetterEdit(pkg,{body:changed.join('\n\n'),subjectIndex:0}),/manual_letter_fixed_sections_changed/);}
+ const response=await f.call('manual-edit',f.input(outer)),saved=await response.json();assert.equal(response.status,201,JSON.stringify(saved));
+ const result=saved.body.split('\n\n');assert.deepEqual(result,blocks);
+ const stored=JSON.parse(f.db.prepare('SELECT selection_json FROM gp_letter_edits WHERE id=?').get(saved.editedDraftId).selection_json);assert.deepEqual(stored.ownerParagraphs,{version:'owner-paragraphs-v1',...outer});
+ assert.equal((await resolveEditedLetter(f.env,f.context,pkg,saved.editedDraftId,0)).body,saved.body);
  assert(saved.body.includes('Phone: '+fixed.signaturePhone));assert(saved.body.includes('Email: '+fixed.signatureEmail));assert.equal(saved.automaticSending,false);assert.equal(saved.writingQuality.manualTextIsOwnerReported,true);
  assert.match(saved.editedDraftId,/^gpedit_[a-f0-9]{32}$/);assert.match(saved.savedTemplate.id,/^gpstyle_[a-f0-9]{32}$/);assert.equal(saved.ownerRevision,1);
  assert.equal(f.db.prepare('SELECT count(*) n FROM google_send_queue').get().n,0);assert.equal(f.transportCalls.length,0);
@@ -81,19 +84,21 @@ test('unknown owner input, unconfirmed evidence, wrong source, header injection 
  assert.equal(f.db.prepare('SELECT count(*) n FROM gp_letter_edits').get().n,0);assert.equal(f.transportCalls.length,0);
 });
 test('reusing an adaptive template regenerates current clinic/CV reasoning and never copies an old edited example',async()=>{
- const f=await fixture(),saved=await(await f.call('manual-edit',f.input({saveMode:'new_template',templateName:'Collaborative practice style'}))).json();
+ const f=await fixture(),saved=await(await f.call('manual-edit',f.input({...outer,saveMode:'new_template',templateName:'Collaborative practice style'}))).json();
+ const same=await(await f.call('apply-template',{selection,templateId:saved.savedTemplate.id,subjectIndex:0,editedDraftId:saved.editedDraftId})).json();assert.equal(same.paragraphs.opening,outer.openingParagraph);assert.equal(same.paragraphs.closing,outer.closingParagraph);assert.equal(same.writingQuality.manualTextIsOwnerReported,true);
  const newer={...f.source,id:otherOpp,organization:'Fresh Community Practice',url:'https://clinic.example.invalid/jobs/2'};f.put(newer);
  const result=await f.call('apply-template',{selection,templateId:saved.savedTemplate.id,subjectIndex:2},otherOpp),fresh=await result.json();assert.equal(result.status,200,JSON.stringify(fresh));
  assert.match(fresh.editedDraftId,/^gpedit_/);assert(fresh.body.includes('Fresh Community Practice'));assert(!fresh.body.includes('Synthetic Practice'));assert(!fresh.body.includes(edited.clinicParagraph));
+ assert.notEqual(fresh.paragraphs.opening,outer.openingParagraph);assert.notEqual(fresh.paragraphs.closing,outer.closingParagraph);
  assert.equal(fresh.manualSubjectIndex,2);assert.equal(fresh.writingQuality.method,'fresh_adaptive_template');assert.equal(fresh.clinicSpecificTextReused,false);assert.equal(fresh.templateName,'GP B — Independent practice enquiry');
  assert.equal(fresh.savedTemplate.name,'Collaborative practice style');assert.equal(f.transportCalls.length,0);
  const unsupported=applyAdaptiveLetterStyle(await f.pkg(),{focus:'acute',tone:'formal'});assert(!/clinic.*emergency|practice.*emergency/i.test(unsupported.paragraphs.clinic));
 });
 test('reviewed manual text reaches the exact public mail preview/queue and a changed manual receipt requires fresh approval',async()=>{
- const f=await fixture(),saved=await(await f.call('manual-edit',f.input())).json(),application={...selection,subjectIndex:0,editedDraftId:saved.editedDraftId};delete application.cvVersionId;
+ const f=await fixture(),saved=await(await f.call('manual-edit',f.input(outer))).json(),application={...selection,subjectIndex:0,editedDraftId:saved.editedDraftId};delete application.cvVersionId;
  const payload={presetId,cvVersionId:cvId,mailbox:'primary',recipient:'recruitment@clinic.example.invalid',application};
- const response=await f.mail('preview',payload),preview=await response.json();assert.equal(response.status,200,JSON.stringify(preview));assert(preview.message.body.includes(edited.clinicParagraph));assert(preview.message.body.includes(edited.valueParagraph));assert.equal(f.transportCalls.length,0);
- const newer=await(await f.call('manual-edit',f.input({editedDraftId:saved.editedDraftId,templateId:saved.savedTemplate.id,valueParagraph:edited.valueParagraph+' I would appreciate the opportunity to discuss your priorities.'}))).json();
+ const response=await f.mail('preview',payload),preview=await response.json();assert.equal(response.status,200,JSON.stringify(preview));assert.equal(preview.coverLetter,saved.body);assert(!preview.message.body.includes(edited.clinicParagraph));assert.equal(preview.attachments.length,2);assert(preview.attachments.every(item=>item.mimeType==='application/pdf'&&item.size>0&&item.hash));assert.equal(f.transportCalls.length,0);
+ const newer=await(await f.call('manual-edit',f.input({...outer,editedDraftId:saved.editedDraftId,templateId:saved.savedTemplate.id,closingParagraph:outer.closingParagraph+' Thank you for considering my application.'}))).json();
  const stale=await f.mail('queue',{...payload,application:{...application,editedDraftId:newer.editedDraftId},confirmReviewed:true,reviewHash:preview.reviewHash});assert.equal(stale.status,409);assert.equal((await stale.json()).error,'application_changed_review_required');
  const queued=await f.mail('queue',{...payload,confirmReviewed:true,reviewHash:preview.reviewHash}),result=await queued.json();assert.equal(queued.status,201,JSON.stringify(result));assert.equal(result.sent,false);assert.equal(f.db.prepare('SELECT count(*) n FROM google_send_queue').get().n,1);assert.equal(f.transportCalls.length,0);
  f.own.profile.planning.gpApplicationWriting.signaturePhone='+00 888 888 888';assert.equal((await f.mail('preview',payload)).status,409);
@@ -104,7 +109,15 @@ test('durable restore needs only an opaque own receipt and revalidates saved sou
  const response=await f.call('restore-edit',{editedDraftId:saved.editedDraftId}),restored=await response.json();assert.equal(response.status,200,JSON.stringify(restored));assert.equal(restored.body,saved.body);assert.deepEqual(restored.restoredSelection,selection);assert.equal(restored.manualSubjectIndex,0);assert.equal(restored.manualReviewRequired,true);assert.equal(restored.automaticSending,false);
  assert.equal((await f.call('restore-edit',{editedDraftId:saved.editedDraftId},otherOpp)).status,409);
  assert.equal((await f.call('restore-edit',{editedDraftId:saved.editedDraftId},opp,{...f.context,userId:'other-owner'})).status,409);
- f.own.profile.planning.gpApplicationWriting.signaturePhone='+00 888 888 888';const changed=await f.call('restore-edit',{editedDraftId:saved.editedDraftId});assert.equal(changed.status,409);assert.equal((await changed.json()).error,'edited_letter_context_changed');assert.equal(f.transportCalls.length,0);
+ f.own.profile.planning.gpApplicationWriting.signaturePhone='+00 888 888 888';const changed=await f.call('restore-edit',{editedDraftId:saved.editedDraftId}),recovery=await changed.json();assert.equal(changed.status,200,JSON.stringify(recovery));assert.equal(recovery.ownerEditNeedsReview,true);assert.equal(recovery.readyForReview,false);assert.equal(recovery.savedEdit.clinicParagraph,edited.clinicParagraph);assert.equal(recovery.savedEdit.valueParagraph,edited.valueParagraph);assert.notEqual(recovery.body,saved.body);assert.equal(recovery.automaticSending,false);assert.equal(f.transportCalls.length,0);
+});
+test('legacy rows restore canonical outer paragraphs, and stale owner text is retained for an explicit new revision',async()=>{
+ const f=await fixture(),saved=await(await f.call('manual-edit',f.input(outer))).json();
+ f.db.prepare("UPDATE gp_letter_edits SET selection_json=json_remove(selection_json,'$.ownerParagraphs') WHERE id=?").run(saved.editedDraftId);
+ const legacy=await(await f.call('restore-edit',{editedDraftId:saved.editedDraftId})).json();assert.equal(legacy.ownerEditNeedsReview,undefined);assert.equal(legacy.paragraphs.opening,(await f.pkg()).paragraphs.opening);assert.equal(legacy.paragraphs.clinic,edited.clinicParagraph);assert.equal(legacy.paragraphs.closing,(await f.pkg()).paragraphs.closing);
+ f.own.profile.planning.gpApplicationWriting.openingParagraph='I am a general practitioner seeking a suitable supervised position within a collaborative Australian practice.';
+ const recovered=await(await f.call('restore-edit',{editedDraftId:saved.editedDraftId})).json();assert.equal(recovered.ownerEditNeedsReview,true);assert.equal(recovered.savedEdit.valueParagraph,edited.valueParagraph);assert.equal(recovered.readyForReview,false);
+ const fresh=await f.call('manual-edit',f.input({...outer,clinicParagraph:recovered.savedEdit.clinicParagraph,valueParagraph:recovered.savedEdit.valueParagraph})),next=await fresh.json();assert.equal(fresh.status,201,JSON.stringify(next));assert.equal(next.ownerRevision,2);assert.notEqual(next.editedDraftId,saved.editedDraftId);assert.equal(f.db.prepare('SELECT count(*) n FROM gp_letter_edits').get().n,2);assert.equal(f.transportCalls.length,0);
 });
 test('changing a manual letter subject creates another immutable revision, and the prior receipt cannot silently select it',async()=>{
  const f=await fixture(),saved=await(await f.call('manual-edit',f.input())).json(),pkg=await f.pkg();

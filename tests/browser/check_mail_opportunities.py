@@ -72,6 +72,7 @@ def letter_proposal(identifier, cv_id, mailbox="primary"):
     proposal = {"readyForReview": True, "recipients": recipients_for(identifier), "subject": "Application to " + label + " Practice", "body": "\n\n".join(blocks), "cvVersionId": cv_id, "evidenceHash": "synthetic-current-source-" + identifier, "missing": [], "outreachMode": "initial_enquiry" if identifier == second else "job_application"}
     saved = saved_edits.get((owner, mailbox, identifier, cv_id))
     if saved:
+        blocks[1], blocks[4] = saved.get("openingParagraph", blocks[1]), saved.get("closingParagraph", blocks[4])
         blocks[2], blocks[3] = saved["clinicParagraph"], saved["valueParagraph"]
         proposal.update(saved, body="\n\n".join(blocks))
     elif scenario == "inline_stale":
@@ -81,6 +82,15 @@ def letter_proposal(identifier, cv_id, mailbox="primary"):
     elif scenario == "inline_no_body" or scenario == "inline_order" and identifier == first:
         proposal.update(readyForReview=False, missing=["mail_opportunity_public_evidence_required"], recipients=[], body="")
     return proposal
+
+
+def reviewed_documents(proposal, recipient):
+    """The final outgoing email and attachments are frozen per recipient."""
+    label = "Coastal" if "Coastal" in proposal["subject"] else "Rural"
+    cover = proposal["body"]
+    short = "Dear Practice Manager,\n\nI have attached my CV and cover letter for " + label + " Practice.\n\nSynthetic Applicant\nEmail: applicant@example.invalid"
+    attachments = [{"name": "Dr Arash Entezar – CV.pdf", "mimeType": "application/pdf", "hash": "1" * 64, "size": 2048}, {"name": "Dr Arash Entezar – Cover Letter – " + label + " Practice.pdf", "mimeType": "application/pdf", "hash": "2" * 64, "size": 3072}]
+    return {**proposal, "body": short, "message": {"subject": proposal["subject"], "body": short}, "coverLetter": cover, "attachments": attachments, "recipient": recipient}
 
 
 def item(identifier, mailbox="primary"):
@@ -152,14 +162,14 @@ def route(request):
     elif path.endswith("/edit"):
         assert scenario.startswith("inline")
         assert body["cvVersionId"] in [cv, cv_latest]
-        assert body["clinicParagraph"] and body["valueParagraph"]
+        assert all(body[key] for key in ["openingParagraph", "clinicParagraph", "valueParagraph", "closingParagraph"])
         assert "subject" not in body, "The private letter subject must remain stable"
         if scenario == "inline_save_failure":
             request.fulfill(status=409, json={"error": "mail_opportunity_edit_context_changed"})
             return
         identifier = path.split("/")[-2]
         receipt = "moedit_" + format(len(writes), "032x")
-        saved_edits[(owner, mailbox, identifier, body["cvVersionId"])] = {"clinicParagraph": body["clinicParagraph"], "valueParagraph": body["valueParagraph"], "editedDraftId": receipt, "editRevision": len(writes), "editStatus": "owner_edited"}
+        saved_edits[(owner, mailbox, identifier, body["cvVersionId"])] = {**{key: body[key] for key in ["openingParagraph", "clinicParagraph", "valueParagraph", "closingParagraph"]}, "editedDraftId": receipt, "editRevision": len(writes), "editStatus": "owner_edited"}
         request.fulfill(json=letter_proposal(identifier, body["cvVersionId"], mailbox))
     elif path.endswith("/prepare"):
         if scenario.startswith("inline"):
@@ -182,10 +192,11 @@ def route(request):
             assert body["cvVersionId"] in [cv, cv_latest] and body["recipient"] in recipients_for(identifier)
             data = letter_proposal(path.split("/")[-2], body["cvVersionId"], mailbox)
             assert body.get("editedDraftId") == data.get("editedDraftId"), "Fresh review must use the saved edit receipt"
-            request.fulfill(json={**data, "sender": owner + "-" + mailbox + "@example.invalid", "reviewHash": "synthetic-review-" + body["recipient"] + ":" + body.get("editedDraftId", "canonical")})
+            request.fulfill(json={**reviewed_documents(data, body["recipient"]), "sender": owner + "-" + mailbox + "@example.invalid", "reviewHash": "synthetic-review-" + body["recipient"] + ":" + body.get("editedDraftId", "canonical")})
             return
         assert body["cvVersionId"] == cv and body["recipient"] in recipients_for(identifier)
-        request.fulfill(json={"readyForReview": True, "sender": owner + "-" + mailbox + "@example.invalid", "recipients": [{"recipient": body["recipient"]}], "cvVersionId": cv, "reviewHash": "synthetic-review-" + body["recipient"], "subject": "Synthetic tailored application", "body": "Synthetic clinic-specific letter.\n\nOwn verified clinical experience.\n\nPlease let me know a convenient time to discuss how I can support your practice.\n\nSynthetic Applicant\nEmail: applicant@example.invalid"})
+        data = {"readyForReview": True, "sender": owner + "-" + mailbox + "@example.invalid", "recipients": [{"recipient": body["recipient"]}], "cvVersionId": cv, "reviewHash": "synthetic-review-" + body["recipient"], "subject": "Synthetic tailored application", "body": "Synthetic clinic-specific letter.\n\nOwn verified clinical experience.\n\nPlease let me know a convenient time to discuss how I can support your practice.\n\nSynthetic Applicant\nEmail: applicant@example.invalid"}
+        request.fulfill(json=reviewed_documents(data, body["recipient"]))
     elif path.endswith("/send"):
         if scenario.startswith("inline"):
             data = letter_proposal(path.split("/")[-2], body["cvVersionId"], mailbox)
@@ -232,7 +243,10 @@ with sync_playwright() as playwright:
     assert not any(code in research.inner_text() for code in ['search_not_configured', 'discovered_not_read', 'INTERNAL_GAP_MUST_NOT_RENDER'])
     assert not research.locator('a[href*="PRIVATE_SHOULD_NOT_RENDER"]').count()
     assert not [entry for entry in writes if entry["path"].endswith("/send")]
-    expect(cards.first.locator(".mail-opportunity-letter")).to_contain_text("Own verified clinical experience")
+    expect(cards.first.locator(".mail-opportunity-review .mail-opportunity-reviewed-cover .mail-opportunity-letter").first).to_contain_text("Own verified clinical experience")
+    expect(cards.first.locator(".mail-opportunity-final-delivery")).to_have_count(2)
+    for delivery in cards.first.locator(".mail-opportunity-final-delivery").all():
+        expect(delivery.get_by_role("region", name="پیوست‌های همین ارسال", exact=True).locator("li")).to_have_count(2)
     single = page.get_by_role("region", name="ارسال همین فرصت ایمیلی", exact=True)
     expect(single.get_by_role("button", name="تأیید و ارسال ایمیل و رزومه", exact=True)).to_be_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), "Mobile opportunity UI overflows"
@@ -277,9 +291,9 @@ with sync_playwright() as playwright:
     dock.get_by_role("button", name="آماده‌کردن نامه برای ۲ آگهی", exact=True).click()
     review_one = dock.get_by_role("button", name="بازبینی و ارسال برای ۱ آگهی", exact=True)
     review_one.click()
-    expect(summary.locator("li").nth(0)).to_contain_text(recipients[0])
-    expect(summary.locator("li").nth(0)).to_contain_text("ownerA-primary@example.invalid")
-    expect(summary.locator("li").nth(1)).to_contain_text("راه تماس مناسب هنوز تأیید نشده")
+    expect(summary.locator("ol > li").nth(0)).to_contain_text(recipients[0])
+    expect(summary.locator("ol > li").nth(0)).to_contain_text("ownerA-primary@example.invalid")
+    expect(summary.locator("ol > li").nth(1)).to_contain_text("راه تماس مناسب هنوز تأیید نشده")
     summary.locator("details").first.locator("summary").click()
     expect(summary.locator(".mail-opportunity-letter").first).to_be_visible()
     confirm_one = summary.get_by_role("button", name="تأیید و ارسال برای ۱ آگهی", exact=True)
@@ -306,7 +320,7 @@ with sync_playwright() as playwright:
     cards.nth(1).locator('header>input[type="checkbox"]').check()
     dock.get_by_role("button", name="آماده‌کردن نامه برای ۲ آگهی", exact=True).click()
     dock.get_by_role("button", name="بازبینی و ارسال برای ۲ آگهی", exact=True).click()
-    expect(summary.locator("li").nth(1)).to_contain_text("گیرندهٔ مشترک گروه")
+    expect(summary.locator("ol > li").nth(1)).to_contain_text("گیرندهٔ مشترک گروه")
     before = len(writes)
     summary.get_by_role("button", name="تأیید و ارسال برای ۲ آگهی", exact=True).click()
     expect(dock.get_by_role("button", name="ارسال شد", exact=True)).to_be_disabled()
@@ -449,8 +463,10 @@ with sync_playwright() as playwright:
     before = len(writes)
     cards.first.get_by_role("button", name="بررسی و ارسال ایمیل", exact=True).click()
     letter = cards.first.locator(".mail-opportunity-letter-workspace")
+    p1 = letter.get_by_label("ویرایش بند اول نامهٔ فرصت ایمیلی", exact=True)
     p2 = letter.get_by_label("ویرایش بند دوم فرصت ایمیلی", exact=True)
     p3 = letter.get_by_label("ویرایش بند سوم فرصت ایمیلی", exact=True)
+    p4 = letter.get_by_label("ویرایش بند چهارم نامهٔ فرصت ایمیلی", exact=True)
     expect(p2).to_have_value(re.compile("Coastal Practice team"))
     expect(p3).to_have_value(re.compile("Latest CV"))
     expect(cards.first.get_by_label("رزومهٔ همین آگهی", exact=True)).to_have_value(cv_latest)
@@ -458,6 +474,10 @@ with sync_playwright() as playwright:
     assert cards.first.evaluate("node=>Boolean(node.querySelector('.mail-opportunity-letter-workspace').compareDocumentPosition(node.querySelector('.mail-opportunity-research')) & Node.DOCUMENT_POSITION_FOLLOWING)")
     assert not [entry for entry in writes[before:] if entry["path"].endswith("/send")]
     original_subject = letter.locator(".mail-opportunity-subject").inner_text()
+    revised_opening = "I am a general practitioner seeking a sustained contribution to a supervised Australian clinical team."
+    revised_closing = "I would welcome a discussion of your practice needs and the contribution I could make."
+    p1.fill(revised_opening)
+    p4.fill(revised_closing)
     p2.fill("I would welcome the opportunity to join your community-focused clinical team.")
     p3.fill("I would bring careful clinical prioritisation, reliable follow-up and constructive teamwork.")
     expect(cards.first.get_by_role("button", name="ابتدا ویرایش نامه را ذخیره کنید", exact=True)).to_be_disabled()
@@ -476,6 +496,14 @@ with sync_playwright() as playwright:
     expect(p2).to_have_value("I would welcome the opportunity to join your community-focused clinical team.")
     expect(letter.locator(".mail-opportunity-subject")).to_have_text(original_subject)
     saved = saved_edits[(owner, "primary", first, cv_latest)]
+    assert saved["openingParagraph"] == revised_opening and saved["closingParagraph"] == revised_closing
+    expect(p1).to_have_value(revised_opening)
+    expect(p4).to_have_value(revised_closing)
+    review = cards.first.locator(".mail-opportunity-review")
+    expect(review.locator(".mail-opportunity-reviewed-cover .mail-opportunity-letter").first).to_contain_text(revised_opening)
+    expect(review.locator(".mail-opportunity-reviewed-cover .mail-opportunity-letter").first).to_contain_text(revised_closing)
+    expect(review.get_by_role("region", name="متن ایمیل ارسالی", exact=True).first).not_to_contain_text(revised_opening)
+    expect(review.get_by_role("region", name="پیوست‌های همین ارسال", exact=True).first.locator("li")).to_have_count(2)
     edited_previews = [entry for entry in writes[before:] if entry["path"].endswith("/preview") and entry["body"].get("editedDraftId")]
     assert len(edited_previews) == 2 and all(entry["body"]["editedDraftId"] == saved["editedDraftId"] for entry in edited_previews)
     cards.first.get_by_role("button", name="تأیید و ارسال ایمیل و رزومه", exact=True).click()
@@ -499,8 +527,11 @@ with sync_playwright() as playwright:
     cards.nth(1).locator('header>input[type="checkbox"]').check()
     dock.get_by_role("button", name="آماده‌کردن نامه برای ۱ آگهی", exact=True).click()
     dock.get_by_role("button", name="بازبینی و ارسال برای ۲ آگهی", exact=True).click()
-    expect(summary.locator("li").nth(0)).to_contain_text("Synthetic own GP CV")
-    expect(summary.locator("li").nth(1)).to_contain_text("Synthetic latest GP CV")
+    for delivery in summary.locator(".mail-opportunity-batch-delivery").all():
+        expect(delivery.get_by_role("region", name="پیوست‌های همین ارسال", exact=True).locator("li")).to_have_count(2)
+        expect(delivery.locator(".mail-opportunity-reviewed-cover")).to_have_count(1)
+    expect(summary.locator("ol > li").nth(0)).to_contain_text("Synthetic own GP CV")
+    expect(summary.locator("ol > li").nth(1)).to_contain_text("Synthetic latest GP CV")
     before = len(writes)
     summary.get_by_role("button", name="تأیید و ارسال برای ۲ آگهی", exact=True).click()
     expect(dock.get_by_role("button", name="ارسال شد", exact=True)).to_be_disabled()
@@ -540,7 +571,7 @@ with sync_playwright() as playwright:
     cards.first.get_by_role("button", name="بررسی و ارسال ایمیل", exact=True).click()
     p2 = cards.first.get_by_label("ویرایش بند دوم فرصت ایمیلی", exact=True)
     expect(p2).to_have_value("Previous owner paragraph requiring current CV review.")
-    cards.first.get_by_role("button", name="جایگزینی این دو بند با پیشنهاد تازه", exact=True).click()
+    cards.first.get_by_role("button", name="جایگزینی متن با پیشنهاد تازه", exact=True).click()
     expect(p2).to_have_value(re.compile("Coastal Practice team"))
     save_button = cards.first.get_by_role("button", name="ذخیرهٔ ویرایش و بازبینی نامه", exact=True)
     expect(save_button).to_be_enabled()

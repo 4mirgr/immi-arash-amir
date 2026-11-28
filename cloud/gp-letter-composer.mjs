@@ -40,6 +40,23 @@ const services=value=>SERVICES.filter(service=>positiveTopic(service,value));
 const sentence=value=>{const result=clean(value).replace(/[.;:,]+$/,'');return result?result+'.':'';};
 const list=values=>values.length<2?values[0]||'':values.length===2?values.join(' and '):values.slice(0,-1).join(', ')+', and '+values.at(-1);
 const words=value=>clean(value).split(/\s+/).filter(Boolean).length;
+const GP_NETWORKS=['IPN','ForHealth','Sonic HealthPlus','Ochre Health','Partnered Health','Healius','NCN Health'];
+// This chooses letter emphasis from publisher wording, never a registration,
+// visa or independently verified MMM classification. Unknown stays B.
+export function classifyGpApplicationVariant({practiceName='',sourceText='',location='',city=''}={}){
+ const name=clean(practiceName),statements=[sourceText,location,city].filter(value=>typeof value==='string').flatMap(value=>value.slice(0,50000).split(/\n+|(?<=[.!?;])\s+/)).map(clean).filter(value=>value&&!INSTRUCTION.test(value));
+ const positive=statements.filter(value=>!NEGATIVE.test(value));
+ const quotedMMM=positive.flatMap(value=>[...value.matchAll(/\b(?:MMM|MM|Modified\s+Monash(?:\s+Model)?)\s*(?:category|classification)?\s*[:=\-]?\s*([1-7])(?:\s*(?:[-–—]|to)\s*(?:(?:MMM|MM)\s*)?([1-7]))?\b/gi)].map(match=>[Number(match[1]),Number(match[2]||match[1])])).filter(([low,high])=>high>=low);
+ const mixedMMM=quotedMMM.some(([low])=>low<=2)&&quotedMMM.some(([,high])=>high>=3);
+ const rural=!mixedMMM&&(quotedMMM.some(([low])=>low>=3)||positive.some(value=>/\b(?:rural|regional|remote)\s+(?:(?:general|medical|family|Australian)\s+){0,2}(?:clinic|practice|community|communities|town|location|area|position|role)\b|\brural generalist\b|\b(?:based|located|situated|work(?:ing)?)\s+in\s+(?:(?:a|our|the)\s+)?(?:rural|regional|remote)\b/i.test(value))||[location,city].some(value=>typeof value==='string'&&!INSTRUCTION.test(value)&&!/\b(?:not|no|non[- ])\b/i.test(value)&&/^\s*(?:regional|rural|remote)\b/i.test(value)));
+ const urban=!mixedMMM&&(quotedMMM.some(([,high])=>high<=2)||positive.some(value=>/\b(?:metropolitan|urban)\b/i.test(value)));
+ const network=GP_NETWORKS.find(item=>{
+  const escaped=item.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),named=new RegExp('\\b'+escaped+'\\b','i');
+  return named.test(name)||positive.some(value=>new RegExp('(?:part of (?:the )?'+escaped+'\\b|\\b'+escaped+' (?:network|medical centres?|practices?))','i').test(value));
+ })||null;
+ const variant=rural?'C':network&&urban?'A':'B';
+ return {variant,network,reasons:[rural?'explicit_rural_or_mmm3_7_source_wording':network&&urban?'published_network_and_urban_wording':'independent_or_unknown_location_or_network_default'],eligibility:'not_assessed'};
+}
 function sourceURL(value){try{const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password?url.href:null;}catch{return null;}}
 function readAt(value){const time=Date.parse(value||'');return Number.isFinite(time)?new Date(time).toISOString():null;}
 const CV_ACTION_BOUNDARY=/(?:,\s*(?:and\s+)?|\s+(?:and|while|alongside)\s+)(?=(?:I\s+(?:have\s+)?)?(?:manag\w*|treat\w*|assess\w*|provid\w*|deliver\w*|perform\w*|coordinat\w*|train\w*|conduct\w*|contribut\w*|support\w*|develop\w*|teach\w*|taught|led|research|training|(?:clinical|medical)\s+(?:research|training))\b)/i;
@@ -85,10 +102,31 @@ function servicesPhrase(quote){
  if(!phrase||words(phrase)>27||/\b(?:we|our|I|your|you|a GP|general practitioner (?:to|with))\b/i.test(phrase)||!positiveTopics(phrase).length&&!services(phrase).length)return null;
  return phrase;
 }
+function supportingClinicFact(name,primary,candidates,primaryURL,now){
+ const root=sourceURL(primaryURL);if(!root||!Number.isFinite(now))return null;
+ const primaryTopics=positiveTopics(primary).map(topic=>topic.id),options=[];
+ for(const item of (Array.isArray(candidates)?candidates:[]).slice(0,36)){
+  const fact=safeFact(item?.text),url=sourceURL(item?.sourceURL||item?.sourceUrl),at=readAt(item?.readAt);
+  if(!fact||!url||!at||Date.parse(at)>now+60000||now-Date.parse(at)>7*86400000||new URL(url).hostname.replace(/^www\./,'')!==new URL(root).hostname.replace(/^www\./,'')||fact===primary||primary.includes(fact)||fact.includes(primary)||NEGATIVE.test(fact)||!/^(?:Our (?:practice|clinic|team)|We)\b/i.test(fact)&&!fact.toLowerCase().includes(name.toLowerCase())||/\b(?:sponsorship|visa|PESCI|Level\s*[1-4]|patients?\s+per|patient (?:numbers?|volume)|crisis|shortage)\b/i.test(fact))continue;
+  // A shared domain may contain several branches. A linked page's generic
+  // "our clinic" cannot establish that it describes this particular practice.
+  if(url!==root&&!fact.toLowerCase().includes(name.toLowerCase()))continue;
+  const topics=positiveTopics(fact);if(!topics.length)continue;
+  const services=servicesPhrase(fact),setting=fact.match(/\b(?:is|operates as)\s+((?:a|an)\s+[^.!?;]+)/i)?.[1]?.replace(/[.;:,]+$/,'');
+  const preciseSetting=setting&&words(setting)<=27&&!/\b(?:our|your|you)\b|\b(?:contact|phone|email)\s*:/i.test(setting)?setting:null;
+  const sentence=services?`I am also drawn to your work in ${services}.`:preciseSetting?`Your role as ${preciseSetting} also appeals to me.`:null;
+  if(sentence)options.push({text:fact,sourceURL:url,readAt:at,sentence,distinct:topics.some(topic=>!primaryTopics.includes(topic.id))});
+ }
+ return options.find(item=>item.distinct)||options[0]||null;
+}
 function clinicParagraph(name,clinic,topic){
  if(!name||!clinic)return '{{clinicEvidence}}';
  if(NEGATIVE.test(clinic))return `${clinicFact(name,clinic)} I would wish to clarify these requirements before considering whether a supervised appointment could be appropriate.`;
  const phrase=servicesPhrase(clinic),topics=positiveTopics(clinic).map(item=>item.id);
+ // Keep a specific teaching/community description (including a named
+ // affiliation) instead of reducing it to generic "clinical learning".
+ const describedSetting=clinic.match(/\b(?:is|operates as)\s+((?:a|an)\s+[^.!?;]+)/i)?.[1]?.replace(/[.;:,]+$/,'');
+ const setting=describedSetting&&words(describedSetting)<=32&&!/\b(?:we|our|your|you)\b|\b(?:contact|phone|email)\s*:/i.test(describedSetting)&&(positiveTopics(describedSetting).length||services(describedSetting).length)?describedSetting:null;
  const feature=phrase||(
   topics.includes('learning')?'emphasis on clinical learning':
   topics.includes('team_care')?'team approach to patient care':
@@ -98,14 +136,14 @@ function clinicParagraph(name,clinic,topic){
   topics.includes('procedures')?'hands-on clinical work':
   services(clinic).length?'work in '+list(services(clinic).slice(0,2).map(item=>item.label)):null);
  if(!feature)return `I would welcome a discussion about joining ${name} and the clinical work described by your practice. I would like to understand how I could contribute within an appropriately supervised role.`;
- const reason=topic?.id==='learning'?'I would value the opportunity to discuss cases, learn from feedback and develop within your clinical team.':
-  topic?.id==='team_care'?'I would value working alongside colleagues who bring different perspectives to clinical decisions and patient follow-up.':
-  topic?.id==='chronic_care'?'I would value the opportunity to follow patients over time and contribute to thoughtful, consistent care.':
-  topic?.id==='acute_care'?'I would welcome the clinical variety and the opportunity to contribute while learning from your team.':
-  topic?.id==='community'?'I would value building lasting relationships with patients and colleagues through day-to-day clinical work.':
-  topic?.id==='procedures'?'I would value a role that brings clinical assessment and hands-on patient care together.':
-  'I would value the opportunity to understand your clinical approach, work with your team and develop within that setting.';
- return `I am particularly interested in joining ${name} for its ${feature}. ${reason}`;
+ const reason=topic?.id==='learning'?'I would value regular case discussion and feedback as part of a practice where clinical development is integrated into day-to-day patient care.':
+  topic?.id==='team_care'?'I would value a setting where shared clinical decisions and coordinated follow-up help patients receive consistent care across the team.':
+  topic?.id==='chronic_care'?'I would value the opportunity to combine continuity, preventive care and thoughtful follow-up in a long-term role with your team.':
+  topic?.id==='acute_care'?'I would welcome the clinical variety and the opportunity to contribute to responsive, well-coordinated care alongside an experienced team.':
+  topic?.id==='community'?'I would value building lasting relationships with patients and colleagues while contributing to the community through consistent day-to-day care.':
+  topic?.id==='procedures'?'I would value a role that combines considered clinical assessment, practical patient care and the opportunity to follow patients through their treatment.':
+  'I would value the opportunity to understand your clinical priorities and contribute to a stable, collaborative practice over the long term.';
+ return `I am particularly interested in joining ${name} ${!phrase&&setting?'because it is '+setting:'for its '+feature}. ${reason}`;
 }
 const GERUNDS={managed:'managing',delivered:'delivering',provided:'providing',assessed:'assessing',performed:'performing',coordinated:'coordinating',supported:'supporting',treated:'treating',developed:'developing',led:'leading'};
 function capabilityPhrase(value){
@@ -143,21 +181,22 @@ function clinicalApproach(strengths,match){
  if(triage)return 'My approach is to prioritise patients according to clinical urgency.';
  return null;
 }
-function candidateParagraph(cv,match,professionalStrengths){
+function candidateParagraph(cv,match,professionalStrengths,name){
  if(!cv)return '{{cvEvidence}}';
  if(match.cvScope==='limitation')return `${sentence(cv)} I would want to discuss the role’s clinical requirements openly and establish an appropriate scope of work and supervision before proceeding.`;
  if(match.cvScope==='research'||match.cvScope==='training')return `${cvSentence(cv)} I would welcome the opportunity to build on this knowledge in an appropriately supervised role, while discussing the practical experience and preparation required for your clinical services.`;
  const opening=professionalBackground(cv);
  const approach=clinicalApproach(professionalStrengths,match);
- if(approach)return `${opening} ${approach} I would welcome feedback on my clinical reasoning and adapt to your protocols within the agreed supervision arrangements.`;
  const primary=match.preferredTopic,emphasise=topic=>primary?primary===topic:match.sharedTopics.includes(topic);
- const focus=emphasise('chronic_care')?'I would aim to support sound clinical decisions and consistent follow-up, working with your team and learning from feedback within the agreed supervision arrangements.':
-  emphasise('acute_care')?'I would approach varied presentations with careful assessment, timely discussion with colleagues and a willingness to learn your local protocols and supervision arrangements.':
-  emphasise('team_care')?'I would work closely with your team, communicate clearly about clinical decisions and remain receptive to feedback as I adapt to your protocols and agreed supervision arrangements.':
-  emphasise('learning')?'I would take an active part in case discussion and feedback, with a careful approach to clinical decisions and a commitment to developing within the agreed supervision arrangements.':
-  match.sharedTopics.includes('procedures')?'I would bring a careful approach to assessment and clinical decisions, work closely with your team and remain receptive to feedback within the agreed supervision arrangements.':
-  'I would welcome a discussion of your clinical priorities, bringing a careful approach to assessment, teamwork and learning within an agreed supervised scope of practice.';
- return `${opening} ${focus}`;
+ const sharedServices=SERVICES.filter(item=>match.sharedServices.includes(item.id)&&!['wound','minor_procedures','suturing','fracture'].includes(item.id)).slice(0,2).map(item=>item.label);
+ const clinic=name?`${name}’s`:'your';
+ const focus=emphasise('chronic_care')?`I would bring this experience to ${clinic} ${sharedServices.length?list(sharedServices):'clinical work'}, supporting sound clinical decisions, clear patient communication and coordinated follow-up within the agreed supervision arrangements.`:
+  emphasise('acute_care')?`At ${name||'your practice'}, I would contribute a considered approach to varied presentations: careful assessment, timely escalation and clear discussion with colleagues within the agreed supervision plan.`:
+  emphasise('team_care')?`I would bring this experience to ${clinic} clinical team, with clear communication about patient care, coordinated follow-up and an active response to supervision and feedback.`:
+  emphasise('learning')?`I would contribute to ${clinic} clinical work while making active use of case discussion and feedback, adapting my decisions and practice to your protocols and agreed supervision arrangements.`:
+  match.sharedTopics.includes('procedures')?`At ${name||'your practice'}, I would bring a careful approach to assessment and clinical decisions, working with your team to provide consistent care within the agreed supervision arrangements.`:
+  `I would bring this experience to ${clinic} day-to-day clinical work, with careful assessment, clear teamwork and a commitment to learning your protocols within an agreed supervised scope of practice.`;
+ return `${opening}${approach?' '+approach:''} ${focus}`;
 }
 
 // Describe clinical responsibility rather than listing routine procedures as
@@ -206,7 +245,7 @@ export function suggestEvidencePair(clinicCandidates=[],cvCandidates=[]){
  if(!best)return null;const {score,...suggestion}=best;return {...suggestion,status:'suggested_requires_owner_review'};
 }
 
-export function composeClinicParagraphs({clinicName,clinicQuote,cvQuote,confirmed=false,selectedConnection=null,confirmConnection=false,clinicSourceURL=null,clinicReadAt=null,professionalStrengths=[],styleFocus=null}={}){
+export function composeClinicParagraphs({clinicName,clinicQuote,cvQuote,confirmed=false,selectedConnection=null,confirmConnection=false,clinicSourceURL=null,clinicReadAt=null,supportingClinicFacts=[],professionalStrengths=[],styleFocus=null,now=Date.now()}={}){
  const name=safeFact(clinicName),clinic=safeFact(clinicQuote),cv=safeFact(cvQuote),evidenceMatch=matchEvidence(clinic,cv);
  const focusTopics={teamwork:'team_care',continuity:'chronic_care',acute:'acute_care',training:'learning'},requestedFocus=Object.hasOwn(focusTopics,styleFocus)?focusTopics[styleFocus]:null;
  const focused=TOPICS.find(item=>item.id===requestedFocus&&positiveTopic(item,clinic));
@@ -214,25 +253,32 @@ export function composeClinicParagraphs({clinicName,clinicQuote,cvQuote,confirme
  const candidateMatch=focused&&evidenceMatch.sharedTopics.includes(focused.id)?{...evidenceMatch,preferredTopic:focused.id}:evidenceMatch;
  const connectionName=confirmConnection===true?safeFact(selectedConnection?.name):'',connectionSentence=connectionName&&connectionName.length<=140?` I would also welcome the opportunity to speak with ${connectionName} about the practice and the requirements of a supervised GP role.`:'';
  const strengths=safeStrengths(professionalStrengths);
- const clinicReason=clinicParagraph(name,clinic,topic)+(name&&clinic?connectionSentence:''),candidateValue=cv&&confirmed?candidateParagraph(cv,candidateMatch,strengths):'{{cvEvidence}}';
+ const supporting=name&&clinic&&!NEGATIVE.test(clinic)?supportingClinicFact(name,clinic,supportingClinicFacts,clinicSourceURL,now):null;
+ const baseReason=clinicParagraph(name,clinic,topic),boundary=baseReason.indexOf('. ');
+ const clinicReason=(supporting&&boundary>=0?baseReason.slice(0,boundary+1)+' '+supporting.sentence+' '+baseReason.slice(boundary+2):baseReason)+(name&&clinic?connectionSentence:''),candidateValue=cv&&confirmed?candidateParagraph(cv,candidateMatch,strengths,name):'{{cvEvidence}}';
  const gaps=[];
  if(!clinic)gaps.push('clinic_facts_missing');if(!cv)gaps.push('cv_facts_missing');if(!confirmed)gaps.push('cv_not_confirmed');
  if(clinic&&NEGATIVE.test(clinic))gaps.push('clinic_statement_limitation_requires_review');if(evidenceMatch.cvScope==='limitation')gaps.push('cv_limitation_requires_review');
  if(['research','training'].includes(evidenceMatch.cvScope))gaps.push('cv_clinical_scope_not_established');if(clinic&&cv&&!evidenceMatch.sharedServices.length)gaps.push('no_specific_service_overlap');
  return {clinicReason,candidateValue,topic:topic?.id||'general_practice',evidenceMatch,
-  factBasis:{clinic:clinic?[{text:clinic,sourceURL:sourceURL(clinicSourceURL),readAt:readAt(clinicReadAt)}]:[],cv:cv?[{text:cv,status:confirmed?'owner_confirmed_self_report':'owner_confirmation_required'}]:[],professionalStrengths:strengths.map(text=>({text,status:'owner_reported_professional_strength'})),sharedTopics:evidenceMatch.sharedTopics,unsupportedInferences:[...UNSUPPORTED]},
-  writingQuality:{method:'deterministic_evidence_composer',version:'evidence-four-paragraph-v3',status:!name||!clinic||!cv||!confirmed?'incomplete':gaps.length?'evidence_review_required':'evidence_matched_draft',needsOwnerReview:true,valueEmphasis:'clinical_responsibility_teamwork_and_learning',styleFocus:{requested:['clinical_breadth',...Object.keys(focusTopics)].includes(styleFocus)?styleFocus:null,applied:focused?styleFocus:'clinical_breadth',sourceSupported:Boolean(focused)},paragraphWordCounts:{clinic:words(clinicReason),value:words(candidateValue)},preferredClinicWordRange:[30,55],gaps},
+  factBasis:{clinic:clinic?[{text:clinic,sourceURL:sourceURL(clinicSourceURL),readAt:readAt(clinicReadAt)},...(supporting?[{text:supporting.text,sourceURL:supporting.sourceURL,readAt:supporting.readAt}]:[])]:[],cv:cv?[{text:cv,status:confirmed?'owner_confirmed_self_report':'owner_confirmation_required'}]:[],professionalStrengths:strengths.map(text=>({text,status:'owner_reported_professional_strength'})),sharedTopics:evidenceMatch.sharedTopics,unsupportedInferences:[...UNSUPPORTED]},
+  writingQuality:{method:'deterministic_evidence_composer',version:'evidence-four-paragraph-v4',status:!name||!clinic||!cv||!confirmed?'incomplete':gaps.length?'evidence_review_required':'evidence_matched_draft',needsOwnerReview:true,valueEmphasis:'clinic_specific_clinical_contribution',styleFocus:{requested:['clinical_breadth',...Object.keys(focusTopics)].includes(styleFocus)?styleFocus:null,applied:focused?styleFocus:'clinical_breadth',sourceSupported:Boolean(focused)},paragraphWordCounts:{clinic:words(clinicReason),value:words(candidateValue)},preferredClinicWordRange:[30,55],gaps},
   mutualConnections:connectionSentence?{status:'owner_confirmed_contact_reference',contactId:selectedConnection.id,relationshipVerified:false}:{status:'not_asserted',reason:'No independently reviewed owner-specific relationship evidence was supplied.'}};
 }
 
-export function readGpWritingProfile(profile={}){
- const raw=profile?.planning?.gpApplicationWriting,opening=clean(raw?.openingParagraph),closing=clean(raw?.closingParagraph);
+export function readGpWritingProfile(profile={},{variant='B'}={}){
+ const raw=profile?.planning?.gpApplicationWriting,openingVariant=['A','B','C'].includes(variant)?variant:'B';
+ const configured=raw?.openingParagraphs!==undefined;
+ const opening=clean(configured?raw?.openingParagraphs?.[openingVariant]:raw?.openingParagraph),closing=clean(raw?.closingParagraph);
  const valid=raw?.confirmedByOwner===true&&raw?.writingVersion==='human-four-paragraph-v1'&&opening.length>=40&&opening.length<=1600&&closing.length>=15&&closing.length<=1000&&!INSTRUCTION.test(opening+' '+closing)&&!/[{}]/.test(opening+' '+closing);
- const rawEmail=typeof raw?.signatureEmail==='string'?raw.signatureEmail:'',rawPhone=typeof raw?.signaturePhone==='string'?raw.signaturePhone:'',email=clean(rawEmail),phone=clean(rawPhone),name=safeFact(profile.name||profile.fullName||profile.full_name);
+ const ownerName=typeof raw?.signatureName==='string'&&!/[\r\n<>]/.test(raw.signatureName)?safeFact(raw.signatureName):'';
+ const rawEmail=typeof raw?.signatureEmail==='string'?raw.signatureEmail:'',rawPhone=typeof raw?.signaturePhone==='string'?raw.signaturePhone:'',email=clean(rawEmail),phone=clean(rawPhone),name=ownerName||safeFact(profile.name||profile.fullName||profile.full_name);
  const signatureEmail=valid&&!/[\r\n]/.test(rawEmail)&&/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)?email:'';
  const digits=phone.replace(/\D/g,''),signaturePhone=valid&&!/[\r\n]/.test(rawPhone)&&/^[+()\d .-]{7,40}$/.test(phone)&&digits.length>=7&&digits.length<=15?phone:'',signatureName=valid&&name&&name.length<=150?name:'';
+ let signatureLinkedIn='';
+ if(valid&&typeof raw?.signatureLinkedIn==='string'&&!/[\s<>]/.test(raw.signatureLinkedIn))try{const url=new URL(raw.signatureLinkedIn);if(url.protocol==='https:'&&['linkedin.com','www.linkedin.com'].includes(url.hostname)&&!url.username&&!url.password&&!url.port&&/^\/in\/[\w%.-]+\/?$/.test(url.pathname)){url.search='';url.hash='';signatureLinkedIn=url.href;}}catch{}
  const missingSignatureFields=[];for(const [missing,code]of[[!signatureName,'signature_name_required'],[!signatureEmail,'signature_email_required'],[!signaturePhone,'signature_phone_required']])if(missing)missingSignatureFields.push(code);
- return {confirmed:valid,opening:valid?opening:'{{openingParagraph}}',closing:valid?closing:'{{closingParagraph}}',clinicalStrengths:valid?safeStrengths(raw?.clinicalStrengths):[],signatureName,signatureEmail,signaturePhone,missingSignatureFields,
-  signatureStatus:{complete:missingSignatureFields.length===0,namePresent:Boolean(signatureName),emailPresent:Boolean(signatureEmail),phonePresent:Boolean(signaturePhone),source:'own_private_writing_profile',status:missingSignatureFields.length?'owner_contact_confirmation_required':'owner_confirmed_profile_contacts'},
+ return {confirmed:valid,opening:valid?opening:'{{openingParagraph}}',openingVariant,openingSource:configured?'owner_confirmed_variant':'legacy_owner_opening',closing:valid?closing:'{{closingParagraph}}',clinicalStrengths:valid?safeStrengths(raw?.clinicalStrengths):[],signatureName,signatureEmail,signaturePhone,signatureLinkedIn,missingSignatureFields,
+  signatureStatus:{complete:missingSignatureFields.length===0,namePresent:Boolean(signatureName),emailPresent:Boolean(signatureEmail),phonePresent:Boolean(signaturePhone),linkedInPresent:Boolean(signatureLinkedIn),source:'own_private_writing_profile',status:missingSignatureFields.length?'owner_contact_confirmation_required':'owner_confirmed_profile_contacts'},
   version:'human-four-paragraph-v1',issues:(Array.isArray(raw?.issues)?raw.issues:[]).slice(0,5).filter(item=>typeof item?.code==='string'&&typeof item?.message==='string').map(item=>({code:clean(item.code).slice(0,80),message:clean(item.message).slice(0,600)}))};
 }

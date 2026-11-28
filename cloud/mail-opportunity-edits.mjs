@@ -1,6 +1,6 @@
 // Immutable private Gmail-opportunity edits. Reuses the private GP edit journal;
 // distinct IDs, source IDs, owner slots and kind prevent crossing the GP API.
-import {validateManualLetterEdit,applyManualLetterEdit} from './gp-letter-edits.mjs';
+import {validateManualLetterEdit,applyManualLetterEdit,ownerEditedParagraphs} from './gp-letter-edits.mjs';
 
 const ID=/^mop_[a-f0-9]{32}$/,EDIT=/^moedit_[a-f0-9]{32}$/;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
@@ -20,7 +20,7 @@ function wrapper(proposal){
  return {...proposal,opportunityId:proposal.id,subjects:[proposal.subject,proposal.subject,proposal.subject],dossier:{name:{value:name}}};
 }
 function apply(proposal,row){
- const adjusted=applyManualLetterEdit(wrapper(proposal),{clinicParagraph:row.clinic_paragraph,valueParagraph:row.value_paragraph,subjectIndex:0,subject:row.subject,method:'owner_manual_edit'});
+ const adjusted=applyManualLetterEdit(wrapper(proposal),{...ownerEditedParagraphs(row.selection_json),clinicParagraph:row.clinic_paragraph,valueParagraph:row.value_paragraph,subjectIndex:0,subject:row.subject,method:'owner_manual_edit'});
  return {...proposal,subject:adjusted.subjects[0],body:adjusted.body,paragraphs:adjusted.paragraphs,writingQuality:adjusted.writingQuality,editedDraftId:row.id,editRevision:row.revision,editStatus:'owner_edited',manualReviewRequired:true,automaticSending:false};
 }
 export async function mailOpportunityEditContextHash(proposal){
@@ -44,7 +44,7 @@ export async function hydrateMailOpportunityEdit(env,context,proposal,{editedDra
  if(!row){if(editedDraftId||strict)fail('mail_opportunity_edit_context_changed',409);return {...proposal,...head,editStatus:'generated'};}
  if(row.base_hash!==hash||row.cv_version_id!==proposal.cvVersionId||!proposal.readyForReview){
   if(editedDraftId||strict)fail('mail_opportunity_edit_context_changed',409);
-  return {...proposal,...head,status:proposal.status==='ready_for_review'?'needs_edit_review':proposal.status,readyForReview:false,missing:[...new Set([...(proposal.missing||[]),'mail_opportunity_saved_edit_requires_review'])],editStatus:'saved_edit_needs_review',ownerEditNeedsReview:true,savedEdit:{id:row.id,revision:row.revision,cvVersionId:row.cv_version_id,subject:row.subject,clinicParagraph:row.clinic_paragraph,valueParagraph:row.value_paragraph},automaticSending:false};
+  return {...proposal,...head,status:proposal.status==='ready_for_review'?'needs_edit_review':proposal.status,readyForReview:false,missing:[...new Set([...(proposal.missing||[]),'mail_opportunity_saved_edit_requires_review'])],editStatus:'saved_edit_needs_review',ownerEditNeedsReview:true,savedEdit:{id:row.id,revision:row.revision,cvVersionId:row.cv_version_id,subject:row.subject,...ownerEditedParagraphs(row.selection_json),clinicParagraph:row.clinic_paragraph,valueParagraph:row.value_paragraph},automaticSending:false};
  }
  return {...apply(proposal,row),...head};
 }
@@ -52,7 +52,7 @@ async function input(request){
  if(Number(request.headers.get('content-length')||0)>16000)fail('payload_too_large',413);
  const raw=await request.text();if(new TextEncoder().encode(raw).length>16000)fail('payload_too_large',413);
  let value;try{value=JSON.parse(raw);}catch{fail('invalid_mail_opportunity_edit');}
- if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!['cvVersionId','subject','body','clinicParagraph','valueParagraph','editedDraftId'].includes(key))||!UUID.test(value.cvVersionId||'')||value.editedDraftId!==undefined&&!EDIT.test(value.editedDraftId))fail('invalid_mail_opportunity_edit');
+ if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!['cvVersionId','subject','body','openingParagraph','clinicParagraph','valueParagraph','closingParagraph','editedDraftId'].includes(key))||!UUID.test(value.cvVersionId||'')||value.editedDraftId!==undefined&&!EDIT.test(value.editedDraftId))fail('invalid_mail_opportunity_edit');
  return value;
 }
 export async function handleMailOpportunityEditsRequest(request,env,context){
@@ -75,7 +75,7 @@ export async function handleMailOpportunityEditsRequest(request,env,context){
   }
   const id='moedit_'+crypto.randomUUID().replaceAll('-',''),at=new Date().toISOString(),snapshot=proposal.sourceState;
   if(!snapshot||!Number.isSafeInteger(snapshot.updatedAt)||typeof snapshot.dataJson!=='string'||typeof snapshot.draftJson!=='string')fail('mail_opportunity_edit_context_required',409);
-  const selection=JSON.stringify({kind:KIND,googleSubject:proposal.googleSubject,sender:proposal.sender,mailbox:context.mailbox||'primary'}),time=Date.now();
+  const selection=JSON.stringify({kind:KIND,googleSubject:proposal.googleSubject,sender:proposal.sender,mailbox:context.mailbox||'primary',ownerParagraphs:{version:'owner-paragraphs-v1',openingParagraph:validated.openingParagraph,closingParagraph:validated.closingParagraph}}),time=Date.now();
   const insert=stmt(env.GOOGLE_DB,`INSERT INTO gp_letter_edits(id,owner_id,profile_id,opportunity_id,cv_version_id,base_hash,selection_json,revision,subject_index,subject,clinic_paragraph,value_paragraph,template_id,previous_id,method,created_at)
    SELECT ?,?,'arash',?,?,?,?,coalesce((SELECT max(revision) FROM gp_letter_edits WHERE owner_id=? AND opportunity_id=?),0)+1,0,?,?,?,NULL,?,'owner_manual_edit',?
    FROM private_mail_opportunities o WHERE o.id=? AND o.owner_id=? AND o.google_sub=? AND o.updated_at=? AND o.data_json=? AND o.draft_json=? AND o.status IN ('suggested','reviewed')

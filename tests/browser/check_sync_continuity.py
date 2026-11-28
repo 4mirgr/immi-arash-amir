@@ -48,8 +48,8 @@ with sync_playwright() as p:
  page.route('**/api/**',route)
  def start():
   page.goto('http://127.0.0.1:'+str(server.server_port));page.locator('.arash-opportunity-row').first.wait_for()
- start();page.locator('.arash-opportunity-toggle').first.click();page.get_by_role('region',name='متن نامهٔ پیشنهادی',exact=True).wait_for()
- page.get_by_label('نسخهٔ رزومهٔ بستهٔ GP',exact=True).select_option(cv2);page.get_by_role('region',name='متن نامهٔ پیشنهادی',exact=True).wait_for();page.get_by_label('موضوع پیشنهادی نامه').select_option('1')
+ start();page.locator('.arash-opportunity-toggle').first.click();page.get_by_role('region',name='پیش‌نمایش ایمیل و کاورلتر',exact=True).wait_for()
+ page.get_by_label('نسخهٔ رزومهٔ بستهٔ GP',exact=True).select_option(cv2);page.get_by_role('region',name='پیش‌نمایش ایمیل و کاورلتر',exact=True).wait_for();page.get_by_label('موضوع پیشنهادی نامه').select_option('1')
  page.wait_for_timeout(200)
  fail_poll=True;before=len(calls);page.clock.run_for(10050);page.wait_for_timeout(200);assert len(calls)>before
  assert page.locator('.arash-opportunity-inline').count()==1,'Poll failure discarded open letter'
@@ -61,7 +61,7 @@ with sync_playwright() as p:
  fail_poll=False;reorder=True;page.evaluate('window.dispatchEvent(new Event("online"))');page.wait_for_timeout(350)
  assert page.get_by_role('button',name='پیش‌نمایش نهایی ایمیل',exact=True).count()==1,'Successful list reordering discarded the current mail step'
  assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
- reorder=False;page.reload();page.get_by_role('region',name='متن نامهٔ پیشنهادی',exact=True).wait_for()
+ reorder=False;page.reload();page.get_by_role('region',name='پیش‌نمایش ایمیل و کاورلتر',exact=True).wait_for()
  assert page.get_by_label('نسخهٔ رزومهٔ بستهٔ GP',exact=True).input_value()==cv2
  assert page.get_by_label('موضوع پیشنهادی نامه').input_value()=='1'
  assert not page.get_by_label('متنِ مربوط به کلینیک و سابقهٔ همین رزومه را بررسی کردم.').is_checked(),'Checkpoint restored send consent'
